@@ -1,0 +1,122 @@
+/* ==========================================
+   RM OS BUTTON SYSTEM
+========================================== */
+
+.rm-btn{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+
+    width:180px;        
+    min-height:48px;
+    height:48px;         
+    box-sizing:border-box;
+
+    padding:12px 24px;
+
+    border-radius:14px;
+    border:none;
+
+    font-size:15px;
+    font-weight:600;
+
+    text-decoration:none !important;
+    cursor:pointer;
+
+    transition:.25s;
+
+    appearance:none;
+    -webkit-appearance:none;
+
+    flex-shrink:0;  
+}
+
+/* Primary — keep bold, this is your one real "call to action" color */
+.rm-btn-primary{
+    background:#4F46E5 !important;
+    color:#fff !important;
+}
+.rm-btn-primary:hover{
+    background:#4338CA !important;
+    color:#fff !important;
+}
+
+/* Secondary */
+.rm-btn-secondary{
+    background:#F1F5F9 !important;
+    color:#475569 !important;
+    border:1px solid #E2E8F0;
+}
+.rm-btn-secondary:hover{
+    background:#E2E8F0 !important;
+    color:#334155 !important;
+}
+
+/* Success */
+.rm-btn-success{
+    background:#DCFCE7;
+    color:#15803D;
+}
+.rm-btn-success:hover{
+    background:#BBF7D0;
+    color:#166534;
+}
+
+/* Danger */
+.rm-btn-danger{
+    background:#FEE2E2;
+    color:#B91C1C;
+}
+.rm-btn-danger:hover{
+    background:#FECACA;
+    color:#991B1B;
+}
+
+/* Warning */
+.rm-btn-warning{
+    background:#FEF3C7;
+    color:#92400E;
+}
+.rm-btn-warning:hover{
+    background:#FDE68A;
+    color:#78350F;
+}
+
+/* Outline */
+.rm-btn-outline{
+    background:#fff;
+    border:1px solid #D6DCE8;
+    color:#374151;
+}
+.rm-btn-outline:hover{
+    background:#F8FAFC;
+}
+
+/* Small */
+.rm-btn-sm{
+    min-height:38px;
+    padding:8px 18px;
+    font-size:13px;
+}
+
+/* Large */
+.rm-btn-lg{
+    min-height:56px;
+    padding:14px 30px;
+    font-size:16px;
+}
+a.rm-btn, button.rm-btn{
+    width:180px;
+    height:48px;
+}
+
+/* Info */
+.rm-btn-info{
+    background:#E0F2FE;
+    color:#0369A1;
+}
+.rm-btn-info:hover{
+    background:#BAE6FD;
+    color:#075985;
+}

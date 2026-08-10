@@ -1,0 +1,77 @@
+<?php
+require '../../config/db.php';
+require '../../includes/sales_helpers.php';
+require_role(['Manager', 'Admin']);
+
+$id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
+if (!$id) { header('Location: index.php?success=Invalid sale selected.'); exit; }
+
+$statement = mysqli_prepare($conn, 'SELECT sales.*, customers.name AS customer_name, users.names AS requested_by_name FROM sales LEFT JOIN customers ON sales.customer_id = customers.id LEFT JOIN users ON sales.discount_requested_by = users.id WHERE sales.id = ?');
+mysqli_stmt_bind_param($statement, 'i', $id);
+mysqli_stmt_execute($statement);
+$sale = mysqli_fetch_assoc(mysqli_stmt_get_result($statement));
+if (!$sale) { header('Location: index.php?success=Sale not found.'); exit; }
+
+$itemsStatement = mysqli_prepare($conn, 'SELECT sale_items.*, products.product_name FROM sale_items LEFT JOIN products ON sale_items.product_id = products.id WHERE sale_id = ? ORDER BY sale_items.id');
+mysqli_stmt_bind_param($itemsStatement, 'i', $id);
+mysqli_stmt_execute($itemsStatement);
+$items = mysqli_stmt_get_result($itemsStatement);
+
+$canAct = $sale['status'] === 'Pending Discount Approval';
+
+if ($canAct && isset($_POST['decision'])) {
+    $decision = $_POST['decision'];
+    $managerId = current_user_id();
+
+    if ($decision === 'approve') {
+        $update = mysqli_prepare($conn, 'UPDATE sales SET discount_approved_by = ?, discount_approved_at = NOW() WHERE id = ?');
+        mysqli_stmt_bind_param($update, 'ii', $managerId, $id);
+        mysqli_stmt_execute($update);
+        sales_finalize($conn, $id);
+        header('Location: invoice.php?id=' . $id . '&success=Discount approved. Invoice released.');
+        exit;
+    } elseif ($decision === 'reject') {
+        $update = mysqli_prepare($conn, "UPDATE sales SET status = 'Cancelled' WHERE id = ?");
+        mysqli_stmt_bind_param($update, 'i', $id);
+        mysqli_stmt_execute($update);
+        header('Location: index.php?success=Sale cancelled — discount was not approved.');
+        exit;
+    }
+}
+
+include '../../includes/header.php'; include '../../includes/sidebar.php';
+$modal_icon = 'bi-percent'; $modal_title = 'Discount Approval'; $modal_subtitle = 'Requested by ' . htmlspecialchars($sale['requested_by_name'] ?? '—', ENT_QUOTES, 'UTF-8');
+?>
+<div class="rm-modal-backdrop"><div class="rm-modal">
+    <?php include '../../includes/model_header.php'; ?>
+    <div class="rm-modal-body">
+        <table class="table table-bordered mb-3">
+            <tr><th>Product</th><th>Qty</th><th>Unit Price</th><th>Line Total</th></tr>
+            <?php while ($item = mysqli_fetch_assoc($items)) { ?>
+            <tr><td><?= htmlspecialchars($item['product_name'] ?? $item['service_name'] ?? 'Item', ENT_QUOTES, 'UTF-8'); ?></td><td><?= (int) $item['quantity']; ?></td><td>RWF <?= number_format($item['unit_price'], 2); ?></td><td>RWF <?= number_format($item['line_total'], 2); ?></td></tr>
+            <?php } ?>
+        </table>
+        <div class="mb-3 p-3" style="background:#F8FAFC; border-radius:12px;">
+            <div class="row g-2 small">
+                <div class="col-6"><span class="text-muted">Customer:</span> <strong><?= htmlspecialchars($sale['customer_name'] ?? 'Walk-in', ENT_QUOTES, 'UTF-8'); ?></strong></div>
+                <div class="col-6"><span class="text-muted">Subtotal:</span> <strong>RWF <?= number_format($sale['subtotal'], 2); ?></strong></div>
+                <div class="col-6"><span class="text-muted">Discount Requested:</span> <strong class="text-danger">- RWF <?= number_format($sale['discount_amount'], 2); ?></strong></div>
+                <div class="col-6"><span class="text-muted">Total After Discount:</span> <strong>RWF <?= number_format($sale['total_amount'], 2); ?></strong></div>
+            </div>
+        </div>
+
+        <?php if (!$canAct) { ?>
+            <div class="alert alert-secondary" style="border-radius:10px;">This sale has already been actioned (<?= htmlspecialchars($sale['status'], ENT_QUOTES, 'UTF-8'); ?>).</div>
+            <a href="index.php" class="btn btn-light rm-btn-light">Back</a>
+        <?php } else { ?>
+        <form method="POST">
+            <div class="d-grid gap-2 d-md-flex justify-content-end mt-4">
+                <button class="btn btn-success rm-btn-primary" type="submit" name="decision" value="approve"><i class="bi bi-check-circle-fill me-2"></i>Approve Discount</button>
+                <button class="btn btn-danger rm-btn-primary" type="submit" name="decision" value="reject"><i class="bi bi-x-circle-fill me-2"></i>Reject & Cancel Sale</button>
+                <a href="index.php" class="btn btn-light rm-btn-light">Cancel</a>
+            </div>
+        </form>
+        <?php } ?>
+    </div>
+</div></div>
+<?php include '../../includes/footer.php'; ?>

@@ -1,0 +1,2 @@
+<?php
+require '../../config/db.php'; if ($_SERVER['REQUEST_METHOD'] !== 'POST') { header('Location: index.php'); exit; } $id = filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT); if (!$id) { header('Location: index.php?success=Invalid task selected.'); exit; } $statement = mysqli_prepare($conn, 'DELETE FROM tasks WHERE id = ?'); mysqli_stmt_bind_param($statement, 'i', $id); mysqli_stmt_execute($statement); $message = mysqli_stmt_affected_rows($statement) ? 'Task deleted successfully.' : 'Task not found.'; header('Location: index.php?success=' . urlencode($message)); exit;

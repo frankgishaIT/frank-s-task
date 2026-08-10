@@ -1,0 +1,92 @@
+/* ==========================================
+   RM OS TABLE SYSTEM
+========================================== */
+
+.rm-card{
+    background:#fff;
+    border-radius:18px;
+    border:1px solid #EEF2F7;
+    box-shadow:0 8px 24px rgba(15,23,42,.05);
+    overflow:hidden;
+}
+
+.rm-card-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:20px 24px;
+    border-bottom:1px solid #EEF2F7;
+    background:#fff;
+}
+
+.rm-card-title{
+    margin:0;
+    font-size:20px;
+    font-weight:700;
+    color:#1F2937;
+}
+
+.rm-card-subtitle{
+    margin:3px 0 0;
+    font-size:13px;
+    color:#6B7280;
+}
+
+.rm-table{
+    width:100%;
+    border-collapse:collapse;
+}
+
+.rm-table thead th{
+    background:#F8FAFC;
+    color:#475569;
+    font-size:13px;
+    font-weight:600;
+    padding:16px 20px;
+    border-bottom:1px solid #E5E7EB;
+}
+
+.rm-table tbody td{
+    padding:18px 20px;
+    border-bottom:1px solid #F1F5F9;
+    vertical-align:middle;
+}
+
+.rm-table tbody tr{
+    transition:.2s;
+}
+
+.rm-table tbody tr:hover{
+    background:#F8FAFC;
+}
+
+.rm-table tbody tr:last-child td{
+    border-bottom:none;
+}
+
+.rm-actions{
+    display:flex;
+    gap:8px;
+}
+
+.rm-btn-icon{
+    width:38px;
+    height:38px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    border:none;
+    border-radius:10px;
+    background:#F1F5F9;
+    color:#475569;
+    transition:.2s;
+}
+
+.rm-btn-icon:hover{
+    background:#2563EB;
+    color:#fff;
+}
+.rm-table-scroll{
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+}

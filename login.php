@@ -250,7 +250,7 @@ if (isset($_POST['login'])) {
             </div>
 
             <div class="brand-copy">
-                <h1>Run your business,<br>all in one place.</h1>
+                <!-- <h1>Run your business,<br>all in one place.</h1> -->
                 <p>Manage employees, projects, sales, and finances from a single dashboard built for growing teams.</p>
             </div>
 

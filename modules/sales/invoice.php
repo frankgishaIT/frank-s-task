@@ -73,27 +73,30 @@ function money($v) { return number_format((float) $v, 2); }
         .signature-block .sig-line .sig-fill { flex:1; min-width:120px; }
         .signature-block .sig-line .sig-value { font-weight:600; }
         .footnote { margin-top:36px; font-size:11px; color:var(--muted); line-height:1.6; }
-        @media print {
-            body{background:#fff; font-size:16px;}
-            .toolbar{display:none;}
-            .sheet{box-shadow:none;margin:0;border-radius:0;max-width:100%;padding:24px 20px;}
-            .brand{font-size:26px;}
-            .brand-sub{font-size:14px;}
-            .doc-title h2{font-size:24px;}
-            .doc-title .num{font-size:15px;}
-            .status-pill{font-size:13px; padding:5px 14px;}
-            .info-grid{font-size:15px; gap:8px 24px;}
-            .info-grid .label{width:130px;}
-            table.items{font-size:15px;}
-            table.items th{font-size:13px; padding:10px 0;}
-            table.items td{padding:12px 0;}
-            .totals{font-size:15px; width:320px;}
-            .totals .grand{font-size:22px;}
-            .signature-block{font-size:15px;}
-            .signature-block .sig-heading{font-size:15px;}
-            .signature-block .sig-line{font-size:15px;}
-            .footnote{font-size:13px;}
-        }
+       @media print {
+    @page {
+        margin: 0;
+    }
+    body{background:#fff; font-size:16px; margin:1.6cm;}
+    .toolbar{display:none;}
+    .sheet{box-shadow:none;margin:0;border-radius:0;max-width:100%;padding:24px 20px;}
+    .brand{font-size:26px;}
+    .brand-sub{font-size:14px;}
+    .doc-title h2{font-size:24px;}
+    .doc-title .num{font-size:15px;}
+    .status-pill{font-size:13px; padding:5px 14px;}
+    .info-grid{font-size:15px; gap:8px 24px;}
+    .info-grid .label{width:130px;}
+    table.items{font-size:15px;}
+    table.items th{font-size:13px; padding:10px 0;}
+    table.items td{padding:12px 0;}
+    .totals{font-size:15px; width:320px;}
+    .totals .grand{font-size:22px;}
+    .signature-block{font-size:15px;}
+    .signature-block .sig-heading{font-size:15px;}
+    .signature-block .sig-line{font-size:15px;}
+    .footnote{font-size:13px;}
+}
     </style>
 </head>
 <body>

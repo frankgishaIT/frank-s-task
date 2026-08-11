@@ -71,9 +71,9 @@ $result = mysqli_query($conn, $query);
     <td class="text-nowrap">
         <a href="view.php?id=<?= (int) $row['id']; ?>" class="rm-btn rm-btn-info rm-btn-sm">View</a>
         <a href="edit.php?id=<?= (int) $row['id']; ?>" class="rm-btn rm-btn-warning rm-btn-sm">Edit</a>
-        <form method="POST" action="delete.php" class="d-inline" onsubmit="return confirm('Deactivate this employee? Their history is kept but they will no longer be able to log in.')">
+        <form method="POST" action="toggle_status.php" class="d-inline" onsubmit="return confirm('<?= $row['is_active'] ? 'Deactivate this employee? Their history is kept but they will no longer be able to log in.' : 'Reactivate this employee? They will be able to log in again.'; ?>')">
             <input type="hidden" name="id" value="<?= (int) $row['id']; ?>">
-            <button type="submit" class="rm-btn rm-btn-secondary rm-btn-sm">Deactivate</button>
+            <button type="submit" class="rm-btn <?= $row['is_active'] ? 'rm-btn-secondary' : 'rm-btn-success'; ?> rm-btn-sm"><?= $row['is_active'] ? 'Deactivate' : 'Reactivate'; ?></button>
         </form>
         <form method="POST" action="delete_permanent.php" class="d-inline" onsubmit="return confirm('Permanently delete this employee? This cannot be undone. It only works if they have no attendance, tasks, sales, payroll, or leave history.')">
             <input type="hidden" name="id" value="<?= (int) $row['id']; ?>">

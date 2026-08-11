@@ -86,9 +86,9 @@ while ($role = mysqli_fetch_assoc($rolesQuery)) {
     <td class="text-nowrap">
         <a href="view.php?id=<?= (int) $row['id']; ?>" class="rm-btn rm-btn-info rm-btn-sm">View / Manage Roles</a>
         <a href="edit.php?id=<?= (int) $row['id']; ?>" class="rm-btn rm-btn-warning rm-btn-sm">Edit</a>
-        <form method="POST" action="delete.php" class="d-inline" onsubmit="return confirm('Deactivate this department? It will be hidden from the Add Employee dropdown but its data is kept.')">
+        <form method="POST" action="toggle_status.php" class="d-inline" onsubmit="return confirm('<?= $row['is_active'] ? 'Deactivate this department? It will be hidden from the Add Employee dropdown but its data is kept.' : 'Reactivate this department? It will show up in the Add Employee dropdown again.'; ?>')">
             <input type="hidden" name="id" value="<?= (int) $row['id']; ?>">
-            <button type="submit" class="rm-btn rm-btn-secondary rm-btn-sm">Deactivate</button>
+            <button type="submit" class="rm-btn <?= $row['is_active'] ? 'rm-btn-secondary' : 'rm-btn-success'; ?> rm-btn-sm"><?= $row['is_active'] ? 'Deactivate' : 'Reactivate'; ?></button>
         </form>
         <form method="POST" action="delete_permanent.php" class="d-inline" onsubmit="return confirm('Permanently delete this department? This cannot be undone. It only works if no employees or roles are assigned to it.')">
             <input type="hidden" name="id" value="<?= (int) $row['id']; ?>">

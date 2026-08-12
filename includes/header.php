@@ -4,9 +4,9 @@
     <title>MY MOTIVE</title>
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="/rm_os/assets/css/rm-form.css">
-    <link rel="stylesheet" href="/rm_os/assets/css/rm-table.css">
-    <link rel="stylesheet" href="/rm_os/assets/css/components/button.css">
+    <link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/rm-form.css">
+    <link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/rm-table.css">
+    <link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/components/button.css">
 
     <style>
 

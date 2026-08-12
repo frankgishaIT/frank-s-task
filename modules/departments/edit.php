@@ -1,5 +1,6 @@
 <?php
 require '../../config/db.php';
+require_role(['Admin']);
 
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
 

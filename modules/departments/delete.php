@@ -1,5 +1,6 @@
 <?php
 require '../../config/db.php';
+require_role(['Admin']);
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     header('Location: index.php');

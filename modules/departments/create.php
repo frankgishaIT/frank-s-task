@@ -1,7 +1,7 @@
 <?php
 require '../../config/db.php';
 require '../../includes/notification_helper.php';
-
+require_role(['Admin']);
 if (isset($_POST['save'])) {
     $name = trim($_POST['name'] ?? '');
     $description = trim($_POST['description'] ?? '');

@@ -80,7 +80,7 @@ $lowStockCount = mysqli_fetch_assoc(mysqli_query($conn, "SELECT COUNT(*) AS c FR
         <?php if (!$isService) { ?>
         <a href="restock.php?id=<?= (int) $row['id']; ?>" class="rm-btn rm-btn-success rm-btn-sm"><i class="bi bi-box-arrow-in-down"></i> Restock</a>
         <?php } ?>
-        <a href="delete.php?id=<?= (int) $row['id']; ?>" class="rm-btn rm-btn-danger rm-btn-sm" onclick="return confirm('Deactivate this?')">Deactivate</a>
+        <a href="delete.php?id=<?= (int) $row['id']; ?>" class="rm-btn <?= $row['is_active'] ? 'rm-btn-danger' : 'rm-btn-success'; ?> rm-btn-sm" onclick="return confirm('<?= $row['is_active'] ? 'Deactivate this?' : 'Reactivate this?'; ?>')"><?= $row['is_active'] ? 'Deactivate' : 'Activate'; ?></a>
     </td>
 </tr>
 <?php } ?>

@@ -1,10 +1,10 @@
 <?php
 require '../../config/db.php';
+require_role(['Admin']);
 include '../../includes/header.php';
 include '../../includes/sidebar.php';
 require '../../includes/status_filter.php';
 require '../../includes/pagination.php';
-
 const PER_PAGE = 10;
 $currentPage = get_current_page();
 $totalRows = mysqli_fetch_assoc(mysqli_query($conn, 'SELECT COUNT(*) AS c FROM departments'))['c'];

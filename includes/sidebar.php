@@ -10,7 +10,7 @@ $initials = strtoupper(substr($userName, 0, 1) . (strpos($userName, ' ') !== fal
 <div class="sidebar">
 
     <h3>
-        <img src="../../assets/images/logo.jpg"
+        <img src="<?= BASE_URL ?>/assets/images/logo.jpg"
              alt="Rise Motive Logo"
              style="width:36px; height:36px; object-fit:contain; vertical-align:middle; margin-right:8px; border-radius:8px;">
         MY MOTIVE
@@ -20,9 +20,11 @@ $initials = strtoupper(substr($userName, 0, 1) . (strpos($userName, ' ') !== fal
         <i class="bi bi-house-door-fill"></i> Dashboard
     </a>
 
+    <?php if (current_user_role() === 'Admin') { ?>
     <a href="../departments/index.php" class="<?= navActive('departments', $currentPath) ?>">
         <i class="bi bi-building"></i> Departments
     </a>
+    <?php } ?>
 
     <?php if (current_user_role() === 'Admin') { ?>
     <a href="../users/index.php" class="<?= navActive('users', $currentPath) ?>">

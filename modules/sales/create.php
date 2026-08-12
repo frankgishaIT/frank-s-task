@@ -88,7 +88,7 @@ if (isset($_POST['save'])) {
 
             foreach ($lineItems as $item) {
                 $itemStatement = mysqli_prepare($conn, 'INSERT INTO sale_items (sale_id, item_type, product_id, service_name, quantity, unit, unit_price, line_total) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-                mysqli_stmt_bind_param($itemStatement, 'isissidd', $saleId, $item['item_type'], $item['product_id'], $item['service_name'], $item['quantity'], $item['unit'], $item['unit_price'], $item['line_total']);
+                mysqli_stmt_bind_param($itemStatement, 'isisssdd', $saleId, $item['item_type'], $item['product_id'], $item['service_name'], $item['quantity'], $item['unit'], $item['unit_price'], $item['line_total']);
                 mysqli_stmt_execute($itemStatement);
             }
 

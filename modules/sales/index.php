@@ -85,7 +85,12 @@ function sale_status_badge($status) {
                 <td>RWF <?= number_format($sale['total_amount'], 2); ?></td>
                 <td>RWF <?= number_format($sale['amount_paid'], 2); ?></td>
                 <td><?= sale_status_badge($sale['status']); ?></td>
-                <td><a href="invoice.php?id=<?= (int) $sale['id']; ?>" target="_blank" class="btn btn-outline-primary btn-sm">Invoice</a></td>
+                <td>
+                    <a href="invoice.php?id=<?= (int) $sale['id']; ?>" target="_blank" class="btn btn-outline-primary btn-sm">Invoice</a>
+                    <?php if ($sale['status'] === 'Credit' || $sale['status'] === 'Partially Paid') { ?>
+                        <a href="pay_credit.php?id=<?= (int) $sale['id']; ?>" class="btn btn-outline-success btn-sm">Pay</a>
+                    <?php } ?>
+                </td>
             </tr>
             <?php } ?>
         </table>

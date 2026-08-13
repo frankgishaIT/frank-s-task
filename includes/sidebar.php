@@ -119,7 +119,7 @@ $initials = strtoupper(substr($userName, 0, 1) . (strpos($userName, ' ') !== fal
                 <div class="topbar-org-avatar">
                     <i class="bi bi-building"></i>
                 </div>
-                <span class="d-none d-md-inline"><?= htmlspecialchars($_SESSION['company_name'] ?? 'MY MOTIVE', ENT_QUOTES, 'UTF-8'); ?></span>
+                <span class="d-none d-md-inline"><?= htmlspecialchars($_SESSION['user_name'] ?? 'Account', ENT_QUOTES, 'UTF-8'); ?></span>
                 <i class="bi bi-chevron-down small d-none d-md-inline"></i>
             </div>
         </div>

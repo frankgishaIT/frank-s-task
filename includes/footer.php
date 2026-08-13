@@ -1,4 +1,5 @@
 </div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 (function () {
     const input = document.getElementById('topbarSearchInput');

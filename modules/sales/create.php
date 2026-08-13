@@ -5,6 +5,9 @@ require '../../includes/sales_helpers.php';
 require_role(['Admin', 'Manager', 'Employee']);
 
 $customers = mysqli_query($conn, 'SELECT id, name FROM customers WHERE is_active = 1 ORDER BY name');
+$customerList = [];
+while ($c = mysqli_fetch_assoc($customers)) { $customerList[] = $c; }
+
 $catalog = mysqli_query($conn, "SELECT id, item_type, product_name, product_code, selling_price, quantity, unit FROM products WHERE is_active = 1 ORDER BY item_type, product_name");
 $catalogList = [];
 while ($p = mysqli_fetch_assoc($catalog)) { $catalogList[] = $p; }
@@ -107,6 +110,49 @@ if (isset($_POST['save'])) {
 include '../../includes/header.php'; include '../../includes/sidebar.php';
 ?>
 
+<style>
+.rm-searchable { position: relative; }
+.rm-searchable-dropdown {
+    display: none;
+    position: absolute;
+    z-index: 30;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: #fff;
+    border: 1px solid #E2E5EF;
+    border-radius: 10px;
+    max-height: 230px;
+    overflow-y: auto;
+    box-shadow: 0 10px 30px rgba(30,35,51,.10);
+    padding: 4px;
+}
+.rm-searchable-option {
+    padding: 8px 10px;
+    border-radius: 7px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+}
+.rm-searchable-option:hover,
+.rm-searchable-option.active {
+    background: #EEF1FE;
+}
+.rm-searchable-option .opt-meta {
+    color: #8A90A3;
+    font-size: 12px;
+    white-space: nowrap;
+}
+.rm-searchable-empty {
+    padding: 10px;
+    font-size: 13px;
+    color: #8A90A3;
+    text-align: center;
+}
+</style>
+
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2>New Sale</h2>
     <a href="index.php" class="rm-btn rm-btn-light">Back to Sales</a>
@@ -125,12 +171,7 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
             <div class="row g-3 mb-3">
                 <div class="col-md-4">
                     <label class="form-label small fw-semibold text-muted">Customer</label>
-                    <select name="customer_id" class="form-select rm-input">
-                        <option value="">Walk-in Customer</option>
-                        <?php while ($customer = mysqli_fetch_assoc($customers)) { ?>
-                            <option value="<?= (int) $customer['id']; ?>"><?= htmlspecialchars($customer['name'], ENT_QUOTES, 'UTF-8'); ?></option>
-                        <?php } ?>
-                    </select>
+                    <div class="rm-searchable" id="customerField"></div>
                 </div>
                 <div class="col-md-4">
                     <label class="form-label small fw-semibold text-muted">Sale Date</label>
@@ -195,18 +236,131 @@ const CATALOG = <?= json_encode(array_map(function ($p) {
     return ['id' => (int) $p['id'], 'type' => $p['item_type'], 'name' => $p['product_name'], 'code' => $p['product_code'], 'price' => (float) $p['selling_price'], 'stock' => (int) $p['quantity'], 'unit' => $p['unit']];
 }, $catalogList)); ?>;
 
+const CUSTOMERS = <?= json_encode(array_map(function ($c) {
+    return ['id' => (int) $c['id'], 'name' => $c['name']];
+}, $customerList)); ?>;
+
 const itemsBody = document.querySelector('#itemsTable tbody');
 const discountInput = document.getElementById('discountInput');
 const amountPaidInput = document.getElementById('amountPaidInput');
 
-function catalogOptions(itemType) {
-    let html = '<option value="">Select ' + (itemType === 'Service' ? 'service' : 'item') + '</option>';
-    CATALOG.filter(function (p) { return p.type === itemType; }).forEach(function (p) {
-        const stockLabel = itemType === 'Item' ? (' — ' + p.stock + ' ' + p.unit + ' in stock') : '';
-        html += '<option value="' + p.id + '" data-price="' + p.price + '" data-stock="' + p.stock + '" data-unit="' + (p.unit || '') + '">'
-            + p.name + ' (' + p.code + ')' + stockLabel + '</option>';
+/**
+ * Small reusable "type to filter" dropdown.
+ * Renders a text input + hidden input (for form submission) + a filtered list.
+ */
+function createSearchable(wrapper, options) {
+    const {
+        items,               // array of { id, label, meta, ...extra }
+        hiddenName,          // name attribute for the posted hidden input
+        placeholder,
+        initialLabel,        // text shown before anything is picked
+        initialValue,        // value for the hidden input before anything is picked
+        onSelect,             // called with the chosen item (or null when cleared)
+    } = options;
+
+    wrapper.innerHTML =
+        '<input type="text" class="form-control rm-input rs-input" autocomplete="off" placeholder="' + placeholder + '" value="' + (initialLabel || '') + '">' +
+        '<input type="hidden" name="' + hiddenName + '" value="' + (initialValue !== undefined ? initialValue : '') + '">';
+
+    const input = wrapper.querySelector('.rs-input');
+    const hidden = wrapper.querySelector('input[type=hidden]');
+    let currentItems = items;
+
+    // The dropdown is attached to <body> (not to the wrapper) and positioned with
+    // "fixed" coordinates. This avoids it being clipped when the field sits inside
+    // a bordered table cell, which some browsers otherwise cut off.
+    const dropdown = document.createElement('div');
+    dropdown.className = 'rm-searchable-dropdown';
+    dropdown.style.position = 'fixed';
+    dropdown.style.display = 'none';
+    document.body.appendChild(dropdown);
+
+    function positionDropdown() {
+        const rect = input.getBoundingClientRect();
+        dropdown.style.left = rect.left + 'px';
+        dropdown.style.top = (rect.bottom + 4) + 'px';
+        dropdown.style.width = rect.width + 'px';
+    }
+
+    function renderList(filterText) {
+        const f = (filterText || '').trim().toLowerCase();
+        const filtered = f === '' ? currentItems : currentItems.filter(function (it) {
+            return it.label.toLowerCase().includes(f);
+        });
+
+        if (filtered.length === 0) {
+            dropdown.innerHTML = '<div class="rm-searchable-empty">No matches found</div>';
+        } else {
+            dropdown.innerHTML = filtered.map(function (it) {
+                const meta = it.meta ? '<span class="opt-meta">' + it.meta + '</span>' : '';
+                return '<div class="rm-searchable-option" data-id="' + it.id + '"><span>' + it.label + '</span>' + meta + '</div>';
+            }).join('');
+        }
+        positionDropdown();
+        dropdown.style.display = 'block';
+    }
+
+    input.addEventListener('focus', function () { renderList(input.value === (initialLabel || '') ? '' : input.value); });
+    input.addEventListener('input', function () {
+        hidden.value = '';
+        if (onSelect) { onSelect(null); }
+        renderList(input.value);
     });
-    return html;
+
+    dropdown.addEventListener('mousedown', function (e) {
+        // mousedown (not click) so it fires before the input's blur hides the dropdown
+        const optEl = e.target.closest('.rm-searchable-option');
+        if (!optEl) { return; }
+        const id = optEl.getAttribute('data-id');
+        const item = currentItems.find(function (it) { return String(it.id) === String(id); });
+        if (!item) { return; }
+        input.value = item.label;
+        hidden.value = item.id;
+        dropdown.style.display = 'none';
+        if (onSelect) { onSelect(item); }
+    });
+
+    document.addEventListener('click', function (e) {
+        if (!wrapper.contains(e.target) && !dropdown.contains(e.target)) { dropdown.style.display = 'none'; }
+    });
+    window.addEventListener('scroll', function () {
+        if (dropdown.style.display === 'block') { positionDropdown(); }
+    }, true);
+    window.addEventListener('resize', function () {
+        if (dropdown.style.display === 'block') { positionDropdown(); }
+    });
+
+    return {
+        setItems: function (newItems) { currentItems = newItems; },
+        reset: function (label, value) {
+            input.value = label || '';
+            hidden.value = value !== undefined ? value : '';
+        },
+        destroy: function () { dropdown.remove(); },
+    };
+}
+
+// --- Customer field ---
+createSearchable(document.getElementById('customerField'), {
+    items: [{ id: '', label: 'Walk-in Customer' }].concat(CUSTOMERS.map(function (c) { return { id: c.id, label: c.name }; })),
+    hiddenName: 'customer_id',
+    placeholder: 'Search or select customer',
+    initialLabel: 'Walk-in Customer',
+    initialValue: '',
+});
+
+// --- Item / Service rows ---
+function catalogItemsFor(itemType) {
+    return CATALOG.filter(function (p) { return p.type === itemType; }).map(function (p) {
+        return {
+            id: p.id,
+            label: p.name + ' (' + p.code + ')',
+            meta: itemType === 'Item' ? (p.stock + ' ' + p.unit + ' in stock') : '',
+            price: p.price,
+            stock: p.stock,
+            unit: p.unit,
+        };
+    });
 }
 
 function buildRow() {
@@ -219,9 +373,7 @@ function buildRow() {
                 '<option value="Service">Service</option>' +
             '</select>' +
         '</td>' +
-        '<td class="target-cell">' +
-            '<select class="form-select rm-input catalog-select" name="catalog_id[]">' + catalogOptions('Item') + '</select>' +
-        '</td>' +
+        '<td class="target-cell"><div class="rm-searchable catalog-field"></div></td>' +
         '<td class="unit-cell"><span class="badge bg-light text-dark border unit-badge">—</span></td>' +
         '<td><input type="number" class="form-control rm-input qty-input" name="quantity[]" min="1" value="1" required></td>' +
         '<td><input type="number" class="form-control rm-input price-input" readonly value="0.00"></td>' +
@@ -232,33 +384,39 @@ function buildRow() {
 
 function bindRow(row) {
     const typeSelect = row.querySelector('.type-select');
-    const targetCell = row.querySelector('.target-cell');
+    const catalogFieldEl = row.querySelector('.catalog-field');
     const unitCell = row.querySelector('.unit-cell');
     const qty = row.querySelector('.qty-input');
     const priceInput = row.querySelector('.price-input');
     const lineTotalEl = row.querySelector('.line-total');
     const removeBtn = row.querySelector('.remove-row');
 
-    function rebuildCatalogSelect() {
-        targetCell.innerHTML = '<select class="form-select rm-input catalog-select" name="catalog_id[]">' + catalogOptions(typeSelect.value) + '</select>';
-        targetCell.querySelector('.catalog-select').addEventListener('change', updateFromCatalog);
+    let catalogWidget = null;
+
+    function handleSelect(item) {
+        const price = item ? item.price : 0;
+        priceInput.value = price.toFixed(2);
+        if (typeSelect.value === 'Item') {
+            const badge = unitCell.querySelector('.unit-badge');
+            if (badge) { badge.textContent = item ? (item.unit || '—') : '—'; }
+        }
+        updateTotal();
+    }
+
+    function initCatalogField() {
+        if (catalogWidget) { catalogWidget.destroy(); }
+        catalogWidget = createSearchable(catalogFieldEl, {
+            items: catalogItemsFor(typeSelect.value),
+            hiddenName: 'catalog_id[]',
+            placeholder: 'Select ' + (typeSelect.value === 'Service' ? 'service' : 'item'),
+            initialLabel: '',
+            initialValue: '',
+            onSelect: handleSelect,
+        });
         priceInput.value = '0.00';
         unitCell.innerHTML = typeSelect.value === 'Service'
             ? '<span class="text-muted small">N/A</span>'
             : '<span class="badge bg-light text-dark border unit-badge">—</span>';
-        updateTotal();
-    }
-
-    function updateFromCatalog() {
-        const select = targetCell.querySelector('.catalog-select');
-        const opt = select ? select.options[select.selectedIndex] : null;
-        const price = opt ? parseFloat(opt.dataset.price || 0) : 0;
-        priceInput.value = price.toFixed(2);
-        if (typeSelect.value === 'Item') {
-            const unit = opt ? (opt.dataset.unit || '—') : '—';
-            const badge = unitCell.querySelector('.unit-badge');
-            if (badge) { badge.textContent = unit; }
-        }
         updateTotal();
     }
 
@@ -269,17 +427,17 @@ function bindRow(row) {
         recalcTotals();
     }
 
-    typeSelect.addEventListener('change', rebuildCatalogSelect);
+    typeSelect.addEventListener('change', initCatalogField);
     qty.addEventListener('input', updateTotal);
-    targetCell.addEventListener('change', function (e) {
-        if (e.target.classList.contains('catalog-select')) { updateFromCatalog(); }
-    });
     removeBtn.addEventListener('click', function () {
         if (itemsBody.querySelectorAll('.item-row').length > 1) {
+            if (catalogWidget) { catalogWidget.destroy(); }
             row.remove();
             recalcTotals();
         }
     });
+
+    initCatalogField();
 }
 
 function recalcTotals() {

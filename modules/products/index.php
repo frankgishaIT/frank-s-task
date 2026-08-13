@@ -1,4 +1,5 @@
 <?php
+session_start();
 require '../../config/db.php';
 require '../../includes/pagination.php';
 include '../../includes/header.php';
@@ -6,6 +7,8 @@ include '../../includes/sidebar.php';
 
 const LOW_STOCK_THRESHOLD = 5;
 const PER_PAGE = 10;
+
+$isAdmin = isset($_SESSION['user_role']) && strtolower($_SESSION['user_role']) === 'admin';
 
 $currentPage = get_current_page();
 $totalRows = mysqli_fetch_assoc(mysqli_query($conn, 'SELECT COUNT(*) AS c FROM products'))['c'];
@@ -28,7 +31,9 @@ $lowStockCount = mysqli_fetch_assoc(mysqli_query($conn, "SELECT COUNT(*) AS c FR
     <h2>Items &amp; Services</h2>
     <div class="d-flex gap-2">
         <a href="../purchases/index.php" class="rm-btn rm-btn-secondary"><i class="bi bi-clock-history me-1"></i>Purchase History</a>
+        <?php if ($isAdmin) { ?>
         <a href="create.php" class="rm-btn rm-btn-primary">+ Add Item or Service</a>
+        <?php } ?>
     </div>
 </div>
 
@@ -76,11 +81,13 @@ $lowStockCount = mysqli_fetch_assoc(mysqli_query($conn, "SELECT COUNT(*) AS c FR
     </td>
     <td class="text-nowrap">
         <a href="view.php?id=<?= (int) $row['id']; ?>" class="rm-btn rm-btn-info rm-btn-sm">View</a>
+        <?php if ($isAdmin) { ?>
         <a href="edit.php?id=<?= (int) $row['id']; ?>" class="rm-btn rm-btn-warning rm-btn-sm">Edit</a>
         <?php if (!$isService) { ?>
         <a href="restock.php?id=<?= (int) $row['id']; ?>" class="rm-btn rm-btn-success rm-btn-sm"><i class="bi bi-box-arrow-in-down"></i> Restock</a>
         <?php } ?>
         <a href="delete.php?id=<?= (int) $row['id']; ?>" class="rm-btn <?= $row['is_active'] ? 'rm-btn-danger' : 'rm-btn-success'; ?> rm-btn-sm" onclick="return confirm('<?= $row['is_active'] ? 'Deactivate this?' : 'Reactivate this?'; ?>')"><?= $row['is_active'] ? 'Deactivate' : 'Activate'; ?></a>
+        <?php } ?>
     </td>
 </tr>
 <?php } ?>

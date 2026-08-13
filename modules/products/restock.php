@@ -1,5 +1,15 @@
 <?php
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require '../../config/db.php';
+
+// Admin-only action
+$isAdmin = isset($_SESSION['user_role']) && strtolower($_SESSION['user_role']) === 'admin';
+if (!$isAdmin) {
+    header('Location: index.php?success=' . urlencode('You do not have permission to restock items.'));
+    exit;
+}
 
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
 if (!$id) { header('Location: index.php?success=Invalid item selected.'); exit; }

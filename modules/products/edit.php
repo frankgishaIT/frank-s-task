@@ -1,4 +1,5 @@
 <?php
+session_start();
 require '../../config/db.php';
 
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
@@ -9,6 +10,13 @@ mysqli_stmt_bind_param($productStatement, 'i', $id);
 mysqli_stmt_execute($productStatement);
 $product = mysqli_fetch_assoc(mysqli_stmt_get_result($productStatement));
 if (!$product) { header('Location: index.php?success=Item not found.'); exit; }
+
+// Admin-only action
+$isAdmin = isset($_SESSION['user_role']) && strtolower($_SESSION['user_role']) === 'admin';
+if (!$isAdmin) {
+    header('Location: index.php?success=' . urlencode('You do not have permission to edit items or services.'));
+    exit;
+}
 
 if (isset($_POST['update'])) {
     $itemType = in_array($_POST['item_type'] ?? '', ['Item', 'Service'], true) ? $_POST['item_type'] : 'Item';

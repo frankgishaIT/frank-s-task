@@ -1,5 +1,16 @@
 <?php
-require '../../config/db.php'; $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+require '../../config/db.php';
+
+$isAdmin = isset($_SESSION['user_role']) && strtolower($_SESSION['user_role']) === 'admin';
+if (!$isAdmin) {
+    header('Location: index.php?success=' . urlencode('You do not have permission to edit projects.'));
+    exit;
+}
+
+$id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
 if (!$id) { header('Location: index.php?success=Invalid project selected.'); exit; }
 $projectStatement = mysqli_prepare($conn, 'SELECT * FROM projects WHERE id = ?'); mysqli_stmt_bind_param($projectStatement, 'i', $id); mysqli_stmt_execute($projectStatement); $project = mysqli_fetch_assoc(mysqli_stmt_get_result($projectStatement));
 if (!$project) { header('Location: index.php?success=Project not found.'); exit; }

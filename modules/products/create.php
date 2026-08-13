@@ -1,6 +1,14 @@
 <?php
+session_start();
 require '../../config/db.php';
 require '../../includes/notification_helper.php';
+
+// Admin-only action
+$isAdmin = isset($_SESSION['user_role']) && strtolower($_SESSION['user_role']) === 'admin';
+if (!$isAdmin) {
+    header('Location: index.php?success=' . urlencode('You do not have permission to add items or services.'));
+    exit;
+}
 
 function generate_product_code($conn, $itemType) {
     $prefix = $itemType === 'Service' ? 'SRV' : 'ITM';

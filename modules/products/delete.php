@@ -1,5 +1,13 @@
 <?php
+session_start();
 require '../../config/db.php';
+
+// Admin-only action
+$isAdmin = isset($_SESSION['user_role']) && strtolower($_SESSION['user_role']) === 'admin';
+if (!$isAdmin) {
+    header('Location: index.php?success=' . urlencode('You do not have permission to perform this action.'));
+    exit;
+}
 
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
 if (!$id) {

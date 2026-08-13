@@ -1,6 +1,16 @@
 <?php
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require '../../config/db.php';
 require '../../includes/notification_helper.php';
+
+$isAdmin = isset($_SESSION['user_role']) && strtolower($_SESSION['user_role']) === 'admin';
+if (!$isAdmin) {
+    header('Location: index.php?success=' . urlencode('You do not have permission to add projects.'));
+    exit;
+}
+
 if (isset($_POST['save'])) {
     $projectName = trim($_POST['project_name'] ?? ''); $description = trim($_POST['description'] ?? '');
     $startDate = $_POST['start_date'] ?? ''; $endDate = $_POST['end_date'] ?? ''; $status = $_POST['status'] ?? '';

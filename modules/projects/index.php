@@ -1,7 +1,12 @@
 <?php
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require '../../config/db.php';
 include '../../includes/header.php';
 include '../../includes/sidebar.php';
+
+$isAdmin = isset($_SESSION['user_role']) && strtolower($_SESSION['user_role']) === 'admin';
 
 $sql = "SELECT projects.*, users.names AS creator_name
         FROM projects
@@ -19,7 +24,9 @@ $projects = mysqli_query($conn, $sql);
 
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2>Projects Management</h2>
+    <?php if ($isAdmin) { ?>
     <a href="create.php" class="rm-btn rm-btn-primary">+ Add Project</a>
+    <?php } ?>
 </div>
 
 <div class="card border-0 shadow-sm"><div class="card-body p-0"><div class="table-responsive">
@@ -38,11 +45,14 @@ $projects = mysqli_query($conn, $sql);
             <td><?= htmlspecialchars($project['creator_name'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></td>
             <td class="text-nowrap">
                 <a href="view.php?id=<?= (int) $project['id']; ?>" class="rm-btn rm-btn-info rm-btn-sm">View</a>
+                <?php if ($isAdmin) { ?>
              <a href="edit.php?id=<?= (int) $project['id']; ?>" class="rm-btn rm-btn-warning rm-btn-sm">Edit</a> 
              <form method="POST" action="delete.php" class="d-inline" onsubmit="return confirm('Delete this project?')">
                 <input type="hidden" name="id" value="<?= (int) $project['id']; ?>">
                 <button type="submit" class="rm-btn rm-btn-danger rm-btn-sm">Delete</button>
-            </form></td>
+            </form>
+                <?php } ?>
+            </td>
         </tr>
     <?php } ?>
 </table>

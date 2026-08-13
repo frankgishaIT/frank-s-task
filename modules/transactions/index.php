@@ -1,8 +1,12 @@
 <?php
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require '../../config/db.php';
 require '../../includes/pagination.php';
 include '../../includes/header.php'; include '../../includes/sidebar.php';
 const PER_PAGE = 10;
+$isAdmin = isset($_SESSION['user_role']) && strtolower($_SESSION['user_role']) === 'admin';
 $currentPage = get_current_page();
 $totalRows = mysqli_fetch_assoc(mysqli_query($conn, 'SELECT COUNT(*) AS c FROM transactions'))['c'];
 $totalPages = max(1, (int) ceil($totalRows / PER_PAGE));
@@ -68,9 +72,12 @@ $sql = 'SELECT transactions.*, users.names AS recorder_name FROM transactions LE
     <td><?= htmlspecialchars($transaction['recorder_name'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></td>
     <td class="text-nowrap">
         <a href="view.php?id=<?= (int) $transaction['id']; ?>" class="rm-btn rm-btn-info rm-btn-sm">View</a>
+        <?php if ($isAdmin) { ?>
          <a href="edit.php?id=<?= (int) $transaction['id']; ?>" class="rm-btn rm-btn-warning rm-btn-sm">Edit</a> 
          <form method="POST" action="delete.php" class="d-inline" onsubmit="return confirm('Delete this transaction?')">
             <input type="hidden" name="id" value="<?= (int) $transaction['id']; ?>">
             <button type="submit" class="rm-btn rm-btn-danger rm-btn-sm">Delete</button>
-        </form></td></tr><?php } ?></table></div><?php render_pagination($currentPage, $totalPages); ?></div></div>
+        </form>
+        <?php } ?>
+        </td></tr><?php } ?></table></div><?php render_pagination($currentPage, $totalPages); ?></div></div>
 <?php include '../../includes/footer.php'; ?>

@@ -115,12 +115,18 @@ $initials = strtoupper(substr($userName, 0, 1) . (strpos($userName, ' ') !== fal
                 <i class="bi bi-bell"></i>
                 <span class="topbar-badge">3</span>
             </a>
-            <div class="topbar-org">
-                <div class="topbar-org-avatar">
-                    <i class="bi bi-building"></i>
-                </div>
-                <span class="d-none d-md-inline"><?= htmlspecialchars($_SESSION['user_name'] ?? 'Account', ENT_QUOTES, 'UTF-8'); ?></span>
-                <i class="bi bi-chevron-down small d-none d-md-inline"></i>
-            </div>
+            <div class="dropdown">
+    <div class="topbar-org dropdown-toggle" role="button" data-bs-toggle="dropdown" aria-expanded="false" style="cursor:pointer;">
+        <div class="topbar-org-avatar">
+            <i class="bi bi-building"></i>
+        </div>
+        <span class="d-none d-md-inline"><?= htmlspecialchars($_SESSION['user_name'] ?? 'Account', ENT_QUOTES, 'UTF-8'); ?></span>
+    </div>
+    <ul class="dropdown-menu dropdown-menu-end">
+        <li><a class="dropdown-item" href="../users/profile.php"><i class="bi bi-person-circle me-2"></i>Profile</a></li>
+        <li><hr class="dropdown-divider"></li>
+        <li><a class="dropdown-item text-danger" href="../../logout.php"><i class="bi bi-box-arrow-right me-2"></i>Logout</a></li>
+    </ul>
+</div>
         </div>
     </div>

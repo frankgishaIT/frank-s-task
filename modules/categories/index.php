@@ -1,5 +1,8 @@
 <?php
-require '../../config/db.php'; include '../../includes/header.php'; include '../../includes/sidebar.php';
+require '../../config/db.php';
+$pageSearchScope = 'categories'; 
+include '../../includes/header.php'; 
+include '../../includes/sidebar.php';
 $categories = mysqli_query($conn, 'SELECT * FROM categories ORDER BY category_name');
 ?>
 <?php if (isset($_GET['success'])) { ?><div class="alert alert-success alert-dismissible fade show" role="alert"><?= htmlspecialchars($_GET['success'], ENT_QUOTES, 'UTF-8'); ?><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><?php } ?>

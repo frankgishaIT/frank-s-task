@@ -1,5 +1,8 @@
 <?php
-require '../../config/db.php'; include '../../includes/header.php'; include '../../includes/sidebar.php';
+require '../../config/db.php'; 
+$pageSearchScope = 'customers'; // tells the topbar search what module we're in
+include '../../includes/header.php'; 
+include '../../includes/sidebar.php';
 $customers = mysqli_query($conn, "SELECT customers.*, COALESCE(SUM(CASE WHEN sales.status != 'Cancelled' THEN sales.total_amount - sales.amount_paid ELSE 0 END), 0) AS balance FROM customers LEFT JOIN sales ON sales.customer_id = customers.id WHERE customers.is_active = 1 GROUP BY customers.id ORDER BY customers.name");
 ?>
 <?php if (isset($_GET['success'])) { ?>

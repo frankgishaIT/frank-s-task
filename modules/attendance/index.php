@@ -1,4 +1,5 @@
 <?php
+$pageSearchScope = 'attendance'; // tells the topbar search what module we're in
 require '../../config/db.php';
 require '../../includes/pagination.php';
 include '../../includes/header.php';

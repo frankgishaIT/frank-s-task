@@ -106,8 +106,10 @@ $initials = strtoupper(substr($userName, 0, 1) . (strpos($userName, ' ') !== fal
         <button class="menu-toggle-btn" onclick="toggleSidebar()" aria-label="Toggle menu">
             <i class="bi bi-list"></i>
         </button>
-       <form class="topbar-search" method="GET" action="../search/index.php" id="topbarSearchForm">
+       <?php $searchScope = $pageSearchScope ?? 'all'; ?>
+<form class="topbar-search" method="GET" action="../search/index.php" id="topbarSearchForm">
     <i class="bi bi-search"></i>
+    <input type="hidden" name="scope" value="<?= htmlspecialchars($searchScope, ENT_QUOTES, 'UTF-8'); ?>">
     <input type="text" name="q" id="topbarSearchInput" placeholder="Search anything..." value="<?= htmlspecialchars($_GET['q'] ?? '', ENT_QUOTES, 'UTF-8'); ?>" autocomplete="off">
 </form>
         <div class="topbar-icons">

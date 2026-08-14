@@ -3,6 +3,7 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 require '../../config/db.php';
+$pageSearchScope = 'transactions'; // tells the topbar search what module we're in
 require '../../includes/pagination.php';
 include '../../includes/header.php'; include '../../includes/sidebar.php';
 const PER_PAGE = 10;

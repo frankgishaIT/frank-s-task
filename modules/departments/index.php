@@ -1,5 +1,6 @@
 <?php
 require '../../config/db.php';
+$pageSearchScope = 'departments'; // tells the topbar search what module we're in
 require_role(['Admin']);
 include '../../includes/header.php';
 include '../../includes/sidebar.php';

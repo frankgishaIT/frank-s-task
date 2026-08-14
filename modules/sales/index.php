@@ -1,4 +1,5 @@
 <?php
+$pageSearchScope = 'sales'; // tells the topbar search what module we're in
 require '../../config/db.php';
 require_role(['Admin', 'Manager', 'Employee']);
 require '../../includes/pagination.php';
@@ -33,7 +34,15 @@ function sale_status_badge($status) {
     return '<span class="badge bg-' . $class . '">' . htmlspecialchars($status, ENT_QUOTES, 'UTF-8') . '</span>';
 }
 ?>
-<?php if (isset($_GET['success'])) { ?><div class="alert alert-success alert-dismissible fade show" role="alert"><?= htmlspecialchars($_GET['success'], ENT_QUOTES, 'UTF-8'); ?><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><?php } ?>
+<?php if (isset($_GET['success'])) { ?>
+<div class="alert alert-success alert-dismissible fade show" role="alert">
+    <?= htmlspecialchars($_GET['success'], ENT_QUOTES, 'UTF-8'); ?>
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><?php } ?>
+    <?php if (isset($_GET['error'])) { ?>
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <?= htmlspecialchars($_GET['error'], ENT_QUOTES, 'UTF-8'); ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+    <?php } ?>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2>Sales</h2>
@@ -43,6 +52,35 @@ function sale_status_badge($status) {
 <?php if ($pending && mysqli_num_rows($pending) > 0) { ?>
 <div class="card border-0 shadow-sm mb-4">
     <div class="card-header bg-white"><h5 class="mb-0">Awaiting Discount Approval</h5></div>
+    <?php
+$cancelRequests = null;
+if (in_array($role, ['Manager', 'Admin'], true)) {
+    $cancelRequests = mysqli_query($conn, "SELECT sales.*, customers.name AS customer_name, users.names AS requested_by_name
+        FROM sales LEFT JOIN customers ON sales.customer_id = customers.id
+        LEFT JOIN users ON sales.cancel_requested_by = users.id
+        WHERE sales.cancel_requested_by IS NOT NULL ORDER BY sales.cancel_requested_at");
+}
+?>
+<?php if ($cancelRequests && mysqli_num_rows($cancelRequests) > 0) { ?>
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white"><h5 class="mb-0">Pending Cancellation Requests</h5></div>
+    <div class="card-body p-0">
+        <table class="table table-bordered table-hover bg-white mb-0">
+            <tr><th>Date</th><th>Customer</th><th>Requested By</th><th>Reason</th><th>Total</th><th>Action</th></tr>
+            <?php while ($row = mysqli_fetch_assoc($cancelRequests)) { ?>
+            <tr>
+                <td><?= date('d M Y', strtotime($row['sale_date'])); ?></td>
+                <td><?= htmlspecialchars($row['customer_name'] ?? 'Walk-in', ENT_QUOTES, 'UTF-8'); ?></td>
+                <td><?= htmlspecialchars($row['requested_by_name'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></td>
+                <td><?= htmlspecialchars($row['cancel_request_reason'], ENT_QUOTES, 'UTF-8'); ?></td>
+                <td>RWF <?= number_format($row['total_amount'], 2); ?></td>
+                <td><a href="review_cancel_request.php?id=<?= (int) $row['id']; ?>" class="btn btn-primary btn-sm">Review</a></td>
+            </tr>
+            <?php } ?>
+        </table>
+    </div>
+</div>
+<?php } ?>
     <div class="card-body p-0">
         <table class="table table-bordered table-hover bg-white mb-0">
             <tr><th>Date</th><th>Customer</th><th>Requested By</th><th>Discount</th><th>Total</th><th>Action</th></tr>
@@ -86,11 +124,25 @@ function sale_status_badge($status) {
                 <td>RWF <?= number_format($sale['amount_paid'], 2); ?></td>
                 <td><?= sale_status_badge($sale['status']); ?></td>
                 <td>
-                    <a href="invoice.php?id=<?= (int) $sale['id']; ?>" target="_blank" class="btn btn-outline-primary btn-sm">Invoice</a>
-                    <?php if ($sale['status'] === 'Credit' || $sale['status'] === 'Partially Paid') { ?>
-                        <a href="pay_credit.php?id=<?= (int) $sale['id']; ?>" class="btn btn-outline-success btn-sm">Pay</a>
-                    <?php } ?>
-                </td>
+               <a href="invoice.php?id=<?= (int) $sale['id']; ?>" target="_blank" class="btn btn-outline-primary btn-sm">Invoice</a>
+
+    <?php if ($sale['status'] === 'Credit' || $sale['status'] === 'Partially Paid') { ?>
+        <a href="pay_credit.php?id=<?= (int) $sale['id']; ?>" class="btn btn-outline-success btn-sm">Pay</a>
+    <?php } ?>
+
+    <?php if (in_array($sale['status'], ['Credit', 'Partially Paid', 'Paid'], true)) { ?>
+        <?php if (in_array($role, ['Admin', 'Manager'], true)) { ?>
+            <?php if (!empty($sale['cancel_requested_by'])) { ?>
+                <a href="review_cancel_request.php?id=<?= (int) $sale['id']; ?>" class="btn btn-warning btn-sm">Review Request</a>
+            <?php } else { ?>
+                <a href="cancel.php?id=<?= (int) $sale['id']; ?>" class="btn btn-outline-danger btn-sm">Cancel</a>
+            <?php } ?>
+        <?php } elseif (!empty($sale['cancel_requested_by'])) { ?>
+            <span class="badge bg-secondary">Cancel Requested</span>
+        <?php } else { ?>
+            <a href="request_cancel.php?id=<?= (int) $sale['id']; ?>" class="btn btn-outline-warning btn-sm">Request Cancel</a>
+        <?php } ?>
+    <?php } ?>
             </tr>
             <?php } ?>
         </table>

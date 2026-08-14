@@ -1,5 +1,6 @@
 <?php
 require '../../config/db.php';
+$pageSearchScope = 'purchases'; // tells the topbar search what module we're in
 require '../../includes/pagination.php';
 include '../../includes/header.php';
 include '../../includes/sidebar.php';

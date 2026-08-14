@@ -3,6 +3,7 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 require '../../config/db.php';
+$pageSearchScope = 'projects'; // tells the topbar search what module we're in
 include '../../includes/header.php';
 include '../../includes/sidebar.php';
 

@@ -1,5 +1,6 @@
 <?php
 require '../../config/db.php';
+$pageSearchScope = 'employees   '; // tells the topbar search what module we're in
 require_role(['Admin']);
 require '../../includes/pagination.php';
 include '../../includes/header.php';

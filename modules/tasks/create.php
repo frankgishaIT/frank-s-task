@@ -5,7 +5,22 @@ require_role(['Admin', 'Manager']);
 if (isset($_POST['save'])) {
     $projectId = filter_input(INPUT_POST, 'project_id', FILTER_VALIDATE_INT); $title = trim($_POST['title'] ?? ''); $description = trim($_POST['description'] ?? ''); $assignedTo = filter_input(INPUT_POST, 'assigned_to', FILTER_VALIDATE_INT) ?: null; $priority = $_POST['priority'] ?? ''; $dueDate = $_POST['due_date'] ?? '';
     if (!$projectId || $title === '' || !in_array($priority, ['Low', 'Medium', 'High'], true)) { $error = 'Please provide valid task details.'; }
-    else { $status = 'Pending'; $statement = mysqli_prepare($conn, "INSERT INTO tasks (project_id, title, description, assigned_to, priority, status, due_date) VALUES (?, ?, ?, ?, ?, ?, NULLIF(?, ''))"); mysqli_stmt_bind_param($statement, 'ississs', $projectId, $title, $description, $assignedTo, $priority, $status, $dueDate); if (mysqli_stmt_execute($statement)) { header('Location: index.php?success=Task created successfully.'); exit; } $error = 'Unable to create the task.'; }
+    else {
+        $status = 'Pending'; $statement = mysqli_prepare($conn, "INSERT INTO tasks (project_id, title, description, assigned_to, priority, status, due_date) VALUES (?, ?, ?, ?, ?, ?, NULLIF(?, ''))"); mysqli_stmt_bind_param($statement, 'ississs', $projectId, $title, $description, $assignedTo, $priority, $status, $dueDate);
+        if (mysqli_stmt_execute($statement)) {
+            if ($assignedTo) {
+                $dueDateText = $dueDate !== '' ? ' (due ' . date('d M Y', strtotime($dueDate)) . ')' : '';
+                notifyUser(
+                    $conn,
+                    $assignedTo,
+                    'New task assigned',
+                    'You have been assigned a new ' . $priority . '-priority task: "' . $title . '"' . $dueDateText . '.'
+                );
+            }
+            header('Location: index.php?success=Task created successfully.'); exit;
+        }
+        $error = 'Unable to create the task.';
+    }
 }
 $projects = mysqli_query($conn, "SELECT id, project_name FROM projects WHERE status != 'Completed' ORDER BY project_name"); $employees = mysqli_query($conn, 'SELECT id, names FROM users WHERE is_active = 1 ORDER BY names'); include '../../includes/header.php'; include '../../includes/sidebar.php';
 

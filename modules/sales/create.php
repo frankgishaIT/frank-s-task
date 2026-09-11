@@ -53,6 +53,7 @@ if (isset($_POST['save'])) {
             'quantity' => $qty,
             'unit_price' => (float) $found['selling_price'],
             'line_total' => $lineTotal,
+            'name' => $found['product_name'], // used for the customer receipt email
         ];
     }
 
@@ -118,6 +119,51 @@ if (isset($_POST['save'])) {
             }
 
             mysqli_commit($conn);
+
+            // --- Notifications --------------------------------------------------
+            // Find the customer's display name (or fall back to "Walk-in customer")
+            // for use in the notification text.
+            $customerName = 'Walk-in customer';
+            foreach ($customerList as $c) {
+                if ((int) $c['id'] === (int) $customerId) {
+                    $customerName = $c['name'];
+                    break;
+                }
+            }
+
+            if ($needsApproval) {
+                $reason = $needsCreditApproval
+                    ? 'this customer has fewer than 500 Loyalty Points'
+                    : 'a discount was requested';
+                notify_admins_and_managers(
+                    $conn,
+                    'Sale awaiting approval',
+                    'A sale of RWF ' . number_format($totalAmount, 2) . ' for ' . $customerName . ' needs your approval (' . $reason . ').'
+                );
+            } elseif ($paymentMethod === 'Credit') {
+                notify_admins_and_managers(
+                    $conn,
+                    'New credit sale',
+                    'A credit sale of RWF ' . number_format($totalAmount, 2) . ' was recorded for ' . $customerName . '. Amount paid so far: RWF ' . number_format($amountPaidInput, 2) . '.'
+                );
+            }
+
+            // Email the customer their receipt — only once the sale is actually
+            // finalized (not while it's still pending discount/credit approval),
+            // and only if there's a real customer on file (not a walk-in).
+            if (!$needsApproval && $customerId) {
+                notify_customer_purchase(
+                    $conn,
+                    $customerId,
+                    $lineItems,
+                    $subtotal,
+                    $discountAmount,
+                    $totalAmount,
+                    $amountPaidInput,
+                    $paymentMethod
+                );
+            }
+            // ---------------------------------------------------------------------
 
             $successMessage = 'Sale recorded successfully.';
             if ($needsApproval) {

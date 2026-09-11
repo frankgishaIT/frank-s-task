@@ -132,6 +132,15 @@ if (isset($_POST['save'])) {
                 - $calc['attendance_deduction'];
             $paidAt = $status === 'Paid' ? date('Y-m-d H:i:s') : null;
 
+            // Fetched once here and reused both for the auto-posted Transaction
+            // description (Paid runs only) and the notification to the employee
+            // below (all runs) — avoids querying it twice.
+            $nameStatement = mysqli_prepare($conn, 'SELECT names FROM users WHERE id = ?');
+            mysqli_stmt_bind_param($nameStatement, 'i', $userId);
+            mysqli_stmt_execute($nameStatement);
+            $employeeRow = mysqli_fetch_assoc(mysqli_stmt_get_result($nameStatement));
+            $employeeName = $employeeRow['names'] ?? ('Employee #' . $userId);
+
             mysqli_begin_transaction($conn);
             try {
                 $statement = mysqli_prepare($conn, "INSERT INTO payroll
@@ -152,12 +161,6 @@ if (isset($_POST['save'])) {
                 // No approval needed — mirrors how sales_finalize() posts income
                 // for Sales, so it appears in Transactions immediately.
                 if ($status === 'Paid') {
-                    $nameStatement = mysqli_prepare($conn, 'SELECT names FROM users WHERE id = ?');
-                    mysqli_stmt_bind_param($nameStatement, 'i', $userId);
-                    mysqli_stmt_execute($nameStatement);
-                    $employeeRow = mysqli_fetch_assoc(mysqli_stmt_get_result($nameStatement));
-                    $employeeName = $employeeRow['names'] ?? ('Employee #' . $userId);
-
                     $adminId = $_SESSION['user_id'] ?? null;
                     $paidDate = date('Y-m-d');
                     $description = 'Payroll: ' . $employeeName . ' (' . date('F Y', strtotime($periodDate)) . ')';
@@ -170,6 +173,18 @@ if (isset($_POST['save'])) {
                 }
 
                 mysqli_commit($conn);
+
+                // Let the employee know their payroll was generated/paid.
+                $periodLabel = date('F Y', strtotime($periodDate));
+                notifyUser(
+                    $conn,
+                    $userId,
+                    $status === 'Paid' ? 'Payslip ready — payment made' : 'Payslip generated (draft)',
+                    'Your payroll for ' . $periodLabel . ' has been '
+                        . ($status === 'Paid' ? 'processed and paid' : 'generated as a draft')
+                        . '. Net salary: RWF ' . number_format($netSalary, 2) . '.'
+                );
+
                 header('Location: index.php?success=Payroll generated successfully.');
                 exit;
             } catch (Exception $e) {

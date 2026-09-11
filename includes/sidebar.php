@@ -113,10 +113,44 @@ $initials = strtoupper(substr($userName, 0, 1) . (strpos($userName, ' ') !== fal
             <input type="text" name="q" id="topbarSearchInput" placeholder="Search anything..." value="<?= htmlspecialchars($_GET['q'] ?? '', ENT_QUOTES, 'UTF-8'); ?>" autocomplete="off">
         </form>
         <div class="topbar-icons">
-            <a href="../notifications/index.php" class="topbar-icon-btn">
-                <i class="bi bi-bell"></i>
-                <span class="topbar-badge">3</span>
-            </a>
+            <?php
+            $notifUserId = current_user_id();
+
+            $unreadStatement = mysqli_prepare($conn, 'SELECT COUNT(*) AS c FROM notifications WHERE user_id = ? AND is_read = 0');
+            mysqli_stmt_bind_param($unreadStatement, 'i', $notifUserId);
+            mysqli_stmt_execute($unreadStatement);
+            $unreadCount = (int) mysqli_fetch_assoc(mysqli_stmt_get_result($unreadStatement))['c'];
+
+            $recentStatement = mysqli_prepare($conn, 'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 6');
+            mysqli_stmt_bind_param($recentStatement, 'i', $notifUserId);
+            mysqli_stmt_execute($recentStatement);
+            $recentNotifications = mysqli_stmt_get_result($recentStatement);
+            ?>
+            <div class="dropdown">
+                <a href="#" class="topbar-icon-btn" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="bi bi-bell"></i>
+                    <?php if ($unreadCount > 0) { ?>
+                        <span class="topbar-badge"><?= $unreadCount > 9 ? '9+' : $unreadCount; ?></span>
+                    <?php } ?>
+                </a>
+                <div class="dropdown-menu dropdown-menu-end p-0 shadow" style="width:320px; max-height:400px; overflow-y:auto;">
+                    <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom">
+                        <strong class="small">Notifications</strong>
+                        <a href="../notifications/index.php" class="small">View all</a>
+                    </div>
+                    <?php if (mysqli_num_rows($recentNotifications) === 0) { ?>
+                        <div class="text-muted small text-center py-3">No notifications yet.</div>
+                    <?php } ?>
+                    <?php while ($n = mysqli_fetch_assoc($recentNotifications)) { ?>
+                        <a href="../notifications/open.php?id=<?= (int) $n['id']; ?>"
+                           class="dropdown-item py-2 <?= $n['is_read'] ? '' : 'bg-light'; ?>" style="white-space:normal;">
+                            <div class="fw-semibold small"><?= htmlspecialchars($n['title'], ENT_QUOTES, 'UTF-8'); ?></div>
+                            <div class="text-muted small"><?= htmlspecialchars(mb_strimwidth($n['message'], 0, 80, '…'), ENT_QUOTES, 'UTF-8'); ?></div>
+                            <div class="text-muted" style="font-size:11px;"><?= date('d M, H:i', strtotime($n['created_at'])); ?></div>
+                        </a>
+                    <?php } ?>
+                </div>
+            </div>
             <div class="dropdown">
     <div class="topbar-org dropdown-toggle" role="button" data-bs-toggle="dropdown" aria-expanded="false" style="cursor:pointer;">
         <div class="topbar-org-avatar">

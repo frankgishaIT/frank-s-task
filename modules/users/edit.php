@@ -26,6 +26,9 @@ if (isset($_POST['update'])) {
     $role = $_POST['role'] ?? '';
     $departmentId = filter_input(INPUT_POST, 'department_id', FILTER_VALIDATE_INT);
     $roleId = filter_input(INPUT_POST, 'role_id', FILTER_VALIDATE_INT); // department role, nullable
+    if ($roleId === false) {
+        $roleId = null; // "— None —" was selected, or nothing was submitted
+    }
     $monthlySalary = filter_input(INPUT_POST, 'monthly_salary', FILTER_VALIDATE_FLOAT);
     $password = $_POST['password'] ?? '';
 

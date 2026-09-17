@@ -56,6 +56,18 @@ $initials = strtoupper(substr($userName, 0, 1) . (strpos($userName, ' ') !== fal
         <i class="bi bi-box-seam"></i> RM Offerings
     </a>
 
+    <?php if (in_array(current_user_role(), ['Admin', 'Manager'], true)) { ?>
+    <a href="../purchase_orders/index.php" class="<?= navActive('purchase_orders', $currentPath) ?>">
+        <i class="bi bi-clipboard-check"></i> Purchase Orders
+    </a>
+    <?php } ?>
+
+    <?php if (in_array(current_user_role(), ['Admin', 'Manager'], true)) { ?>
+    <a href="../business_parties/index.php" class="<?= navActive('business_parties', $currentPath) ?>">
+        <i class="bi bi-briefcase-fill"></i> Business Parties
+    </a>
+    <?php } ?>
+
     <a href="../customers/index.php" class="<?= navActive('customers', $currentPath) ?>">
         <i class="bi bi-person-lines-fill"></i> Customers
     </a>

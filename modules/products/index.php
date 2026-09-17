@@ -10,6 +10,7 @@ const LOW_STOCK_THRESHOLD = 5;
 const PER_PAGE = 10;
 
 $isAdmin = isset($_SESSION['user_role']) && strtolower($_SESSION['user_role']) === 'admin';
+$canManagePurchaseOrders = in_array(current_user_role(), ['Admin', 'Manager'], true);
 
 $currentPage = get_current_page();
 $totalRows = mysqli_fetch_assoc(mysqli_query($conn, 'SELECT COUNT(*) AS c FROM products'))['c'];
@@ -38,6 +39,9 @@ $totalStockValue = (float) $stockValueRow['stock_value'];
     <h2>Items &amp; Services</h2>
     <div class="d-flex gap-2">
         <a href="../purchases/index.php" class="rm-btn rm-btn-secondary"><i class="bi bi-clock-history me-1"></i>Purchase History</a>
+        <?php if ($canManagePurchaseOrders) { ?>
+        <a href="../purchase_orders/index.php" class="rm-btn rm-btn-secondary"><i class="bi bi-clipboard-check me-1"></i>Purchase Orders</a>
+        <?php } ?>
         <?php if ($isAdmin) { ?>
         <a href="create.php" class="rm-btn rm-btn-primary">+ Add Item or Service</a>
         <?php } ?>
@@ -57,9 +61,11 @@ $totalStockValue = (float) $stockValueRow['stock_value'];
 </div>
 
 <?php if ($lowStockCount > 0) { ?>
-<div class="alert alert-warning d-flex align-items-center gap-2 mb-4" style="border-radius:10px;">
-    <i class="bi bi-exclamation-triangle-fill"></i>
-    <span><?= (int) $lowStockCount; ?> item<?= $lowStockCount == 1 ? '' : 's'; ?> at or below <?= LOW_STOCK_THRESHOLD; ?> units in stock.</span>
+<div class="alert alert-warning d-flex align-items-center justify-content-between gap-2 mb-4" style="border-radius:10px;">
+    <span><i class="bi bi-exclamation-triangle-fill"></i> <?= (int) $lowStockCount; ?> item<?= $lowStockCount == 1 ? '' : 's'; ?> at or below <?= LOW_STOCK_THRESHOLD; ?> units in stock.</span>
+    <?php if ($canManagePurchaseOrders) { ?>
+    <a href="../purchase_orders/create.php?from_low_stock=1" class="rm-btn rm-btn-warning rm-btn-sm">Create Purchase Order</a>
+    <?php } ?>
 </div>
 <?php } ?>
 

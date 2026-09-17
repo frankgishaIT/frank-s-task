@@ -3,6 +3,7 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 require '../../config/db.php';
+require '../../includes/business_party_helpers.php';
 
 // Admin-only action
 $isAdmin = isset($_SESSION['user_role']) && strtolower($_SESSION['user_role']) === 'admin';
@@ -21,10 +22,12 @@ $product = mysqli_fetch_assoc(mysqli_stmt_get_result($statement));
 
 if (!$product) { header('Location: index.php?success=Item not found or is a service.'); exit; }
 
+$supplierList = business_parties_of_type($conn, 'Supplier');
+
 if (isset($_POST['save'])) {
     $quantity = filter_input(INPUT_POST, 'quantity', FILTER_VALIDATE_INT);
     $unitCost = filter_input(INPUT_POST, 'unit_cost', FILTER_VALIDATE_FLOAT);
-    $supplier = trim($_POST['supplier'] ?? '');
+    $supplierPartyId = filter_input(INPUT_POST, 'supplier_party_id', FILTER_VALIDATE_INT) ?: null;
     $purchaseDate = $_POST['purchase_date'] ?? '';
     $notes = trim($_POST['notes'] ?? '');
     $recordedBy = $_SESSION['user_id'] ?? null;
@@ -32,11 +35,17 @@ if (isset($_POST['save'])) {
 
     if (!$quantity || $quantity <= 0 || $unitCost === false || $unitCost < 0 || !$validDate || $validDate->format('Y-m-d') !== $purchaseDate) {
         $error = 'Please enter a valid quantity, unit cost, and date.';
+    } elseif (!$supplierPartyId) {
+        $error = 'Please select a Supplier.';
     } else {
+        $selectedSupplier = null;
+        foreach ($supplierList as $s) { if ((int) $s['id'] === $supplierPartyId) { $selectedSupplier = $s; break; } }
+        $supplier = $selectedSupplier ? $selectedSupplier['business_name'] : '';
+
         mysqli_begin_transaction($conn);
         try {
-            $insertPurchase = mysqli_prepare($conn, 'INSERT INTO purchases (product_id, quantity, unit_cost, supplier, purchase_date, notes, recorded_by) VALUES (?, ?, ?, ?, ?, ?, ?)');
-            mysqli_stmt_bind_param($insertPurchase, 'iidsssi', $id, $quantity, $unitCost, $supplier, $purchaseDate, $notes, $recordedBy);
+            $insertPurchase = mysqli_prepare($conn, 'INSERT INTO purchases (product_id, quantity, unit_cost, supplier, supplier_party_id, purchase_date, notes, recorded_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+            mysqli_stmt_bind_param($insertPurchase, 'iidsissi', $id, $quantity, $unitCost, $supplier, $supplierPartyId, $purchaseDate, $notes, $recordedBy);
             mysqli_stmt_execute($insertPurchase);
 
             $updateStock = mysqli_prepare($conn, 'UPDATE products SET quantity = quantity + ? WHERE id = ?');
@@ -110,7 +119,15 @@ $modal_subtitle = 'Add new stock and record the purchase.';
 
                 <div class="mb-3">
                     <label class="form-label small fw-semibold text-muted">Supplier</label>
-                    <input type="text" name="supplier" class="form-control rm-input" placeholder="e.g. ABC Wholesalers">
+                    <select name="supplier_party_id" class="form-select rm-input" required>
+                        <option value="">Select supplier</option>
+                        <?php foreach ($supplierList as $s) { ?>
+                        <option value="<?= (int) $s['id']; ?>"><?= htmlspecialchars($s['business_name'], ENT_QUOTES, 'UTF-8'); ?></option>
+                        <?php } ?>
+                    </select>
+                    <?php if (empty($supplierList)) { ?>
+                    <small class="text-danger">No RM Suppliers found. <a href="../business_parties/create.php">Add one first</a>.</small>
+                    <?php } ?>
                 </div>
 
                 <div class="mb-3">

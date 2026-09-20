@@ -1,6 +1,7 @@
 <?php
 session_start();
 require '../../config/db.php';
+require '../../includes/product_unit_helpers.php';
 
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
 if (!$id) { header('Location: index.php?success=Invalid item selected.'); exit; }
@@ -18,6 +19,9 @@ if (!$isAdmin) {
     exit;
 }
 
+$unitCatalog = all_units($conn);
+$existingUnits = array_values(array_filter(product_units_for($conn, $id), function ($u) { return !$u['is_base']; }));
+
 if (isset($_POST['update'])) {
     $itemType = in_array($_POST['item_type'] ?? '', ['Item', 'Service'], true) ? $_POST['item_type'] : 'Item';
     $product_name = trim($_POST['product_name'] ?? '');
@@ -25,6 +29,9 @@ if (isset($_POST['update'])) {
     $product_code = $product['product_code'];
     $description = trim($_POST['description'] ?? '');
     $selling_price = filter_input(INPUT_POST, 'selling_price', FILTER_VALIDATE_FLOAT);
+
+    $unitNames = $_POST['unit_name'] ?? [];
+    $unitPackSizes = $_POST['unit_pack_size'] ?? [];
 
     if ($itemType === 'Item') {
         $buying_price = filter_input(INPUT_POST, 'buying_price', FILTER_VALIDATE_FLOAT);
@@ -40,17 +47,31 @@ if (isset($_POST['update'])) {
     if ($product_name === '' || $selling_price === false || ($itemType === 'Item' && $buying_price === false)) {
         $error = "Please provide valid details.";
     } else {
+        mysqli_begin_transaction($conn);
+
         $statement = mysqli_prepare($conn, "UPDATE products SET
             item_type = ?, product_name = ?, description = ?,
             buying_price = ?, selling_price = ?, quantity = ?, unit = ? WHERE id = ?");
         mysqli_stmt_bind_param($statement, 'sssddisi', $itemType, $product_name, $description, $buying_price, $selling_price, $quantity, $unit, $id);
+        mysqli_stmt_execute($statement);
 
-        if (mysqli_stmt_execute($statement)) {
-            header("Location: index.php?success=" . $itemType . " updated successfully.");
-            exit;
+        // Product Units — replace the full set with whatever was submitted,
+        // resolved against the shared Units catalog. Services get an empty
+        // set (no packaging).
+        if ($itemType === 'Item') {
+            $unitsToSave = [];
+            foreach ($unitNames as $index => $name) {
+                $unitsToSave[] = ['unit_name' => $name, 'pack_size' => (int) ($unitPackSizes[$index] ?? 0)];
+            }
+            save_product_units($conn, $id, $unitsToSave);
+        } else {
+            save_product_units($conn, $id, []);
         }
 
-        $error = "Unable to update. Please try again.";
+        mysqli_commit($conn);
+
+        header("Location: index.php?success=" . $itemType . " updated successfully.");
+        exit;
     }
     $product = array_merge($product, ['item_type' => $itemType, 'product_name' => $product_name, 'product_code' => $product_code, 'description' => $description, 'buying_price' => $buying_price, 'selling_price' => $selling_price, 'quantity' => $quantity, 'unit' => $unit]);
 }
@@ -61,6 +82,12 @@ $modal_subtitle = 'Update these catalog details.';
 include '../../includes/header.php';
 include '../../includes/sidebar.php';
 ?>
+
+<datalist id="allUnitsList">
+    <?php foreach ($unitCatalog as $u) { ?>
+    <option value="<?= htmlspecialchars($u['name'], ENT_QUOTES, 'UTF-8'); ?>">
+    <?php } ?>
+</datalist>
 
 <div class="rm-modal-backdrop">
     <div class="rm-modal">
@@ -114,12 +141,28 @@ include '../../includes/sidebar.php';
                         <input type="number" step="1" min="0" name="quantity" class="form-control rm-input" value="<?= htmlspecialchars((string) ($product['quantity'] ?? 0), ENT_QUOTES, 'UTF-8'); ?>">
                     </div>
                     <div class="col-3 item-only-field">
-                        <label class="form-label small fw-semibold text-muted">Unit</label>
-                        <select name="unit" class="form-select rm-input">
+                        <label class="form-label small fw-semibold text-muted">Base Unit</label>
+                        <select name="unit" id="baseUnitSelect" class="form-select rm-input">
                             <option value="Pieces" <?= ($product['unit'] ?? 'Pieces') === 'Pieces' ? 'selected' : ''; ?>>Pieces</option>
                             <option value="Boxes" <?= ($product['unit'] ?? '') === 'Boxes' ? 'selected' : ''; ?>>Boxes</option>
                         </select>
                     </div>
+                </div>
+
+                <div class="mb-4 item-only-field" id="unitsSection">
+                    <label class="form-label small fw-semibold text-muted">Product Units</label>
+                    <p class="small text-muted mb-2">Extra ways this item can be bought or sold, e.g. <strong>1 Carton = 200 <span class="base-unit-label"><?= htmlspecialchars($product['unit'] ?? 'Pieces', ENT_QUOTES, 'UTF-8'); ?></span></strong>. Pick from existing units below, or type a new name to add it to your Units catalog.</p>
+                    <table class="table table-bordered bg-white align-middle" id="unitsTable">
+                        <thead>
+                            <tr>
+                                <th>Unit Name</th>
+                                <th style="width:180px;">1 Unit = How Many <span class="base-unit-label"><?= htmlspecialchars($product['unit'] ?? 'Pieces', ENT_QUOTES, 'UTF-8'); ?></span>?</th>
+                                <th style="width:40px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="unitsBody"></tbody>
+                    </table>
+                    <button type="button" id="addUnitRow" class="rm-btn rm-btn-outline-primary rm-btn-sm"><i class="bi bi-plus-circle me-1"></i>Add Product Unit</button>
                 </div>
 
                 <div class="d-grid gap-2 d-md-flex justify-content-end mt-4">
@@ -138,6 +181,12 @@ const itemTypeSelect = document.getElementById('itemTypeSelect');
 const itemOnlyFields = document.querySelectorAll('.item-only-field');
 const nameLabel = document.getElementById('nameLabel');
 const priceLabel = document.getElementById('priceLabel');
+const baseUnitSelect = document.getElementById('baseUnitSelect');
+const baseUnitLabels = document.querySelectorAll('.base-unit-label');
+const unitsBody = document.getElementById('unitsBody');
+const EXISTING_UNITS = <?= json_encode(array_map(function ($u) {
+    return ['unit_name' => $u['unit_name'], 'pack_size' => $u['pack_size']];
+}, $existingUnits)); ?>;
 
 function toggleFields() {
     const isService = itemTypeSelect.value === 'Service';
@@ -149,8 +198,33 @@ function toggleFields() {
     priceLabel.textContent = isService ? 'Price' : 'Selling Price';
 }
 
+function updateBaseUnitLabels() {
+    baseUnitLabels.forEach(function (el) { el.textContent = baseUnitSelect.value; });
+}
+
+function buildUnitRow(unit) {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+        '<td><input type="text" class="form-control rm-input" name="unit_name[]" list="allUnitsList" autocomplete="off" placeholder="Pick or type a unit, e.g. Carton" value="' + (unit ? unit.unit_name.replace(/"/g, '&quot;') : '') + '"></td>' +
+        '<td><input type="number" class="form-control rm-input" name="unit_pack_size[]" min="2" step="1" placeholder="e.g. 200" value="' + (unit ? unit.pack_size : '') + '"></td>' +
+        '<td><button type="button" class="btn btn-outline-danger btn-sm remove-unit-row">&times;</button></td>';
+    tr.querySelector('.remove-unit-row').addEventListener('click', function () { tr.remove(); });
+    return tr;
+}
+
+document.getElementById('addUnitRow').addEventListener('click', function () {
+    unitsBody.appendChild(buildUnitRow(null));
+});
+
 itemTypeSelect.addEventListener('change', toggleFields);
+baseUnitSelect.addEventListener('change', updateBaseUnitLabels);
 toggleFields();
+updateBaseUnitLabels();
+
+// Pre-fill existing units for this product
+EXISTING_UNITS.forEach(function (u) {
+    unitsBody.appendChild(buildUnitRow(u));
+});
 </script>
 
 <?php include '../../includes/footer.php'; ?>

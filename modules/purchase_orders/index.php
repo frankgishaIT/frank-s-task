@@ -63,7 +63,10 @@ $lowStockCount = count(po_low_stock_products($conn));
     <td>RWF <?= number_format((float) $po['total_amount'], 2); ?></td>
     <td><?= po_status_badge($po['status']); ?></td>
     <td><?= htmlspecialchars($po['created_by_name'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></td>
-    <td><a href="view.php?id=<?= (int) $po['id']; ?>" class="rm-btn rm-btn-info rm-btn-sm">View</a></td>
+    <td class="text-nowrap">
+        <a href="view.php?id=<?= (int) $po['id']; ?>" class="rm-btn rm-btn-info rm-btn-sm">View</a>
+        <a href="invoice.php?id=<?= (int) $po['id']; ?>" target="_blank" class="rm-btn rm-btn-secondary rm-btn-sm">PDF</a>
+    </td>
 </tr>
 <?php } ?>
 </table>

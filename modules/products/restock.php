@@ -4,6 +4,7 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 require '../../config/db.php';
 require '../../includes/business_party_helpers.php';
+require '../../includes/product_unit_helpers.php';
 
 // Admin-only action
 $isAdmin = isset($_SESSION['user_role']) && strtolower($_SESSION['user_role']) === 'admin';
@@ -23,40 +24,61 @@ $product = mysqli_fetch_assoc(mysqli_stmt_get_result($statement));
 if (!$product) { header('Location: index.php?success=Item not found or is a service.'); exit; }
 
 $supplierList = business_parties_of_type($conn, 'Supplier');
+$productUnits = product_units_for($conn, $id); // this product's Base unit + any Product Units defined in Add/Edit Item
 
 if (isset($_POST['save'])) {
-    $quantity = filter_input(INPUT_POST, 'quantity', FILTER_VALIDATE_INT);
-    $unitCost = filter_input(INPUT_POST, 'unit_cost', FILTER_VALIDATE_FLOAT);
+    $packQuantity = filter_input(INPUT_POST, 'quantity', FILTER_VALIDATE_INT); // number of packs
+    $costPerPack = filter_input(INPUT_POST, 'unit_cost', FILTER_VALIDATE_FLOAT);
+    $selectedUnitName = trim($_POST['unit_choice'] ?? '');
     $supplierPartyId = filter_input(INPUT_POST, 'supplier_party_id', FILTER_VALIDATE_INT) ?: null;
     $purchaseDate = $_POST['purchase_date'] ?? '';
     $notes = trim($_POST['notes'] ?? '');
     $recordedBy = $_SESSION['user_id'] ?? null;
     $validDate = DateTime::createFromFormat('Y-m-d', $purchaseDate);
 
-    if (!$quantity || $quantity <= 0 || $unitCost === false || $unitCost < 0 || !$validDate || $validDate->format('Y-m-d') !== $purchaseDate) {
-        $error = 'Please enter a valid quantity, unit cost, and date.';
+    // Resolve the chosen unit against this product's defined units, so the
+    // pack size can never be tampered with client-side.
+    $matchedUnit = null;
+    foreach ($productUnits as $u) { if ($u['unit_name'] === $selectedUnitName) { $matchedUnit = $u; break; } }
+    $packLabel = $matchedUnit ? $matchedUnit['unit_name'] : ($product['unit'] ?: 'Piece');
+    $packSize = $matchedUnit ? max(1, (int) $matchedUnit['pack_size']) : 1;
+
+    if (!$packQuantity || $packQuantity <= 0 || $costPerPack === false || $costPerPack < 0 || !$validDate || $validDate->format('Y-m-d') !== $purchaseDate) {
+        $error = 'Please enter a valid quantity, cost, and date.';
     } elseif (!$supplierPartyId) {
         $error = 'Please select a Supplier.';
+    } elseif (!$matchedUnit) {
+        $error = 'Please select a valid unit for this item.';
     } else {
         $selectedSupplier = null;
         foreach ($supplierList as $s) { if ((int) $s['id'] === $supplierPartyId) { $selectedSupplier = $s; break; } }
         $supplier = $selectedSupplier ? $selectedSupplier['business_name'] : '';
 
+        // Convert what was actually bought (packs) into base stock units,
+        // and derive the cost per base unit so buying_price/profit math
+        // downstream stays consistent regardless of how it was packaged.
+        $baseQuantity = $packQuantity * $packSize;
+        $costPerBaseUnit = $costPerPack / $packSize;
+
         mysqli_begin_transaction($conn);
         try {
-            $insertPurchase = mysqli_prepare($conn, 'INSERT INTO purchases (product_id, quantity, unit_cost, supplier, supplier_party_id, purchase_date, notes, recorded_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-            mysqli_stmt_bind_param($insertPurchase, 'iidsissi', $id, $quantity, $unitCost, $supplier, $supplierPartyId, $purchaseDate, $notes, $recordedBy);
+            $insertPurchase = mysqli_prepare($conn, 'INSERT INTO purchases
+                (product_id, quantity, unit_cost, supplier, supplier_party_id, purchase_date, notes, recorded_by, pack_label, pack_size, pack_quantity)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+            mysqli_stmt_bind_param($insertPurchase, 'iidsisssiii',
+                $id, $baseQuantity, $costPerBaseUnit, $supplier, $supplierPartyId, $purchaseDate, $notes, $recordedBy, $packLabel, $packSize, $packQuantity);
             mysqli_stmt_execute($insertPurchase);
 
             $updateStock = mysqli_prepare($conn, 'UPDATE products SET quantity = quantity + ? WHERE id = ?');
-            mysqli_stmt_bind_param($updateStock, 'ii', $quantity, $id);
+            mysqli_stmt_bind_param($updateStock, 'ii', $baseQuantity, $id);
             mysqli_stmt_execute($updateStock);
 
             // Auto-post the restock cost to Transactions as an Expense.
             // No approval needed — mirrors how sales_finalize() posts income
             // for Sales, so it appears in Transactions immediately.
-            $totalCost = $quantity * $unitCost;
-            $description = 'Restock: ' . $quantity . ' x ' . $product['product_name']
+            $totalCost = $packQuantity * $costPerPack;
+            $packSummary = $packQuantity . ' x ' . $packLabel . ($packSize > 1 ? ' (' . $packSize . ' ' . ($product['unit'] ?: 'units') . ' each)' : '');
+            $description = 'Restock: ' . $packSummary . ' of ' . $product['product_name']
                 . ($supplier !== '' ? ' from ' . $supplier : '');
             $insertTransaction = mysqli_prepare($conn, "INSERT INTO transactions
                 (category, transaction_type, amount, transaction_date, description, recorded_by, status)
@@ -65,7 +87,7 @@ if (isset($_POST['save'])) {
             mysqli_stmt_execute($insertTransaction);
 
             mysqli_commit($conn);
-            header('Location: index.php?success=' . urlencode($quantity . ' units added to ' . $product['product_name'] . '.'));
+            header('Location: index.php?success=' . urlencode($baseQuantity . ' ' . ($product['unit'] ?: 'units') . ' added to ' . $product['product_name'] . '.'));
             exit;
         } catch (Exception $e) {
             mysqli_rollback($conn);
@@ -105,16 +127,30 @@ $modal_subtitle = 'Add new stock and record the purchase.';
             </div>
             <?php } ?>
 
-            <form method="POST">
+            <form method="POST" id="restockForm">
                 <div class="row g-3 mb-3">
+                    <div class="col-6">
+                        <label class="form-label small fw-semibold text-muted">Buying As</label>
+                        <select name="unit_choice" class="form-select rm-input" required>
+                            <?php foreach ($productUnits as $u) { ?>
+                            <option value="<?= htmlspecialchars($u['unit_name'], ENT_QUOTES, 'UTF-8'); ?>">
+                                <?= htmlspecialchars($u['unit_name'], ENT_QUOTES, 'UTF-8'); ?><?= $u['pack_size'] > 1 ? ' (' . $u['pack_size'] . ' each)' : ''; ?>
+                            </option>
+                            <?php } ?>
+                        </select>
+                        <?php if (count($productUnits) <= 1) { ?>
+                        <small class="text-muted">Only the base unit is set up for this item. <a href="edit.php?id=<?= (int) $id; ?>">Add more units (Carton, Box, etc.) here</a>.</small>
+                        <?php } ?>
+                    </div>
                     <div class="col-6">
                         <label class="form-label small fw-semibold text-muted">Quantity to add</label>
                         <input type="number" name="quantity" class="form-control rm-input" min="1" step="1" required>
                     </div>
-                    <div class="col-6">
-                        <label class="form-label small fw-semibold text-muted">Unit cost (RWF)</label>
-                        <input type="number" name="unit_cost" class="form-control rm-input" min="0" step="0.01" required>
-                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label small fw-semibold text-muted">Cost per Unit (RWF)</label>
+                    <input type="number" name="unit_cost" class="form-control rm-input" min="0" step="0.01" required>
                 </div>
 
                 <div class="mb-3">

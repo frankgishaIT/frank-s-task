@@ -50,16 +50,27 @@ $purchases = mysqli_query($conn, $sql);
 <div class="table-responsive">
 <table class="table table-bordered table-hover bg-white mb-0">
 <tr>
-    <th>Date</th><th>Item</th><th>Code</th><th>Quantity</th><th>Unit Cost</th><th>Total</th><th>Supplier</th><th>Recorded By</th>
+    <th>Date</th><th>Item</th><th>Code</th><th>Bought As</th><th>Total Units</th><th>Unit Cost</th><th>Total</th><th>Supplier</th><th>Recorded By</th>
 </tr>
 <?php if (mysqli_num_rows($purchases) === 0) { ?>
-<tr><td colspan="8" class="text-center text-muted py-4">No restock history yet.</td></tr>
+<tr><td colspan="9" class="text-center text-muted py-4">No restock history yet.</td></tr>
 <?php } ?>
-<?php while ($p = mysqli_fetch_assoc($purchases)) { ?>
+<?php while ($p = mysqli_fetch_assoc($purchases)) {
+    $packSize = (int) ($p['pack_size'] ?? 1);
+    $packQuantity = $p['pack_quantity'];
+?>
 <tr>
     <td><?= date('d M Y', strtotime($p['purchase_date'])); ?></td>
     <td><?= htmlspecialchars($p['product_name'], ENT_QUOTES, 'UTF-8'); ?></td>
     <td><?= htmlspecialchars($p['product_code'], ENT_QUOTES, 'UTF-8'); ?></td>
+    <td>
+        <?php if ($packQuantity !== null && $packSize > 1) { ?>
+            <?= (int) $packQuantity; ?> x <?= htmlspecialchars($p['pack_label'] ?: 'Pack', ENT_QUOTES, 'UTF-8'); ?>
+            <br><small class="text-muted"><?= $packSize; ?> each</small>
+        <?php } else { ?>
+            <span class="text-muted">—</span>
+        <?php } ?>
+    </td>
     <td>+<?= (int) $p['quantity']; ?></td>
     <td>RWF <?= number_format((float) $p['unit_cost'], 2); ?></td>
     <td>RWF <?= number_format((float) $p['quantity'] * (float) $p['unit_cost'], 2); ?></td>

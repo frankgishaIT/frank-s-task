@@ -2,6 +2,7 @@
 session_start();
 require '../../config/db.php';
 require '../../includes/notification_helper.php';
+require '../../includes/product_unit_helpers.php';
 
 // Admin-only action
 $isAdmin = isset($_SESSION['user_role']) && strtolower($_SESSION['user_role']) === 'admin';
@@ -9,6 +10,8 @@ if (!$isAdmin) {
     header('Location: index.php?success=' . urlencode('You do not have permission to add items or services.'));
     exit;
 }
+
+$unitCatalog = all_units($conn);
 
 function generate_product_code($conn, $itemType) {
     $prefix = $itemType === 'Service' ? 'SRV' : 'ITM';
@@ -36,6 +39,9 @@ if (isset($_POST['save'])) {
     $description = trim($_POST['description'] ?? '');
     $selling_price = filter_input(INPUT_POST, 'selling_price', FILTER_VALIDATE_FLOAT);
 
+    $unitNames = $_POST['unit_name'] ?? [];
+    $unitPackSizes = $_POST['unit_pack_size'] ?? [];
+
     if ($itemType === 'Item') {
         $buying_price = filter_input(INPUT_POST, 'buying_price', FILTER_VALIDATE_FLOAT);
         $quantity = filter_input(INPUT_POST, 'quantity', FILTER_VALIDATE_INT);
@@ -53,22 +59,35 @@ if (isset($_POST['save'])) {
     } else {
         $product_code = generate_product_code($conn, $itemType);
 
+        mysqli_begin_transaction($conn);
+
         $statement = mysqli_prepare($conn, "INSERT INTO products
             (item_type, product_name, product_code, description, buying_price, selling_price, quantity, unit)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
         mysqli_stmt_bind_param($statement, 'ssssddis', $itemType, $product_name, $product_code, $description, $buying_price, $selling_price, $quantity, $unit);
+        mysqli_stmt_execute($statement);
+        $newProductId = mysqli_insert_id($conn);
 
-        if (mysqli_stmt_execute($statement)) {
-            notify(
-    $conn,
-    'Product Added',
-    '"' . $product_name . '" (' . $product_code . ') has been added.'
-);
-            header("Location: index.php?success=" . $itemType . " added successfully with code " . $product_code . ".");
-            exit;
+        // Product Units — extra ways this item can be bought/sold (Carton,
+        // Box, etc.), drawn from the shared Units catalog with a fixed
+        // conversion rate to the base unit. Only applies to Items.
+        if ($itemType === 'Item') {
+            $unitsToSave = [];
+            foreach ($unitNames as $index => $name) {
+                $unitsToSave[] = ['unit_name' => $name, 'pack_size' => (int) ($unitPackSizes[$index] ?? 0)];
+            }
+            save_product_units($conn, $newProductId, $unitsToSave);
         }
 
-        $error = "Unable to add. Please try again.";
+        mysqli_commit($conn);
+
+        notify(
+            $conn,
+            'Product Added',
+            '"' . $product_name . '" (' . $product_code . ') has been added.'
+        );
+        header("Location: index.php?success=" . $itemType . " added successfully with code " . $product_code . ".");
+        exit;
     }
 }
 
@@ -78,6 +97,12 @@ $modal_subtitle = 'Add a new item or service to your catalog.';
 include '../../includes/header.php';
 include '../../includes/sidebar.php';
 ?>
+
+<datalist id="allUnitsList">
+    <?php foreach ($unitCatalog as $u) { ?>
+    <option value="<?= htmlspecialchars($u['name'], ENT_QUOTES, 'UTF-8'); ?>">
+    <?php } ?>
+</datalist>
 
 <div class="rm-modal-backdrop">
     <div class="rm-modal">
@@ -125,12 +150,28 @@ include '../../includes/sidebar.php';
                         <input type="number" step="1" min="0" name="quantity" class="form-control rm-input" value="0">
                     </div>
                     <div class="col-3 item-only-field">
-                        <label class="form-label small fw-semibold text-muted">Unit</label>
-                        <select name="unit" class="form-select rm-input">
+                        <label class="form-label small fw-semibold text-muted">Base Unit</label>
+                        <select name="unit" id="baseUnitSelect" class="form-select rm-input">
                             <option value="Pieces">Pieces</option>
                             <option value="Boxes">Boxes</option>
                         </select>
                     </div>
+                </div>
+
+                <div class="mb-4 item-only-field" id="unitsSection">
+                    <label class="form-label small fw-semibold text-muted">Product Units</label>
+                    <p class="small text-muted mb-2">Add extra ways this item can be bought or sold, e.g. <strong>1 Carton = 200 <span class="base-unit-label">Pieces</span></strong>. Pick from existing units below, or type a new name to add it to your Units catalog. The base unit above is always available too, with no extra setup.</p>
+                    <table class="table table-bordered bg-white align-middle" id="unitsTable">
+                        <thead>
+                            <tr>
+                                <th>Unit Name</th>
+                                <th style="width:180px;">1 Unit = How Many <span class="base-unit-label">Pieces</span>?</th>
+                                <th style="width:40px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                    <button type="button" id="addUnitRow" class="rm-btn rm-btn-outline-primary rm-btn-sm"><i class="bi bi-plus-circle me-1"></i>Add Product Unit</button>
                 </div>
 
                 <div class="d-grid gap-2 d-md-flex justify-content-end mt-4">
@@ -149,6 +190,9 @@ const itemTypeSelect = document.getElementById('itemTypeSelect');
 const itemOnlyFields = document.querySelectorAll('.item-only-field');
 const nameLabel = document.getElementById('nameLabel');
 const priceLabel = document.getElementById('priceLabel');
+const baseUnitSelect = document.getElementById('baseUnitSelect');
+const baseUnitLabels = document.querySelectorAll('.base-unit-label');
+const unitsBody = document.querySelector('#unitsTable tbody');
 
 function toggleFields() {
     const isService = itemTypeSelect.value === 'Service';
@@ -160,8 +204,28 @@ function toggleFields() {
     priceLabel.textContent = isService ? 'Price' : 'Selling Price';
 }
 
+function updateBaseUnitLabels() {
+    baseUnitLabels.forEach(function (el) { el.textContent = baseUnitSelect.value; });
+}
+
+function buildUnitRow() {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+        '<td><input type="text" class="form-control rm-input" name="unit_name[]" list="allUnitsList" placeholder="Pick or type a unit, e.g. Carton" autocomplete="off"></td>' +
+        '<td><input type="number" class="form-control rm-input" name="unit_pack_size[]" min="2" step="1" placeholder="e.g. 200"></td>' +
+        '<td><button type="button" class="btn btn-outline-danger btn-sm remove-unit-row">&times;</button></td>';
+    tr.querySelector('.remove-unit-row').addEventListener('click', function () { tr.remove(); });
+    return tr;
+}
+
+document.getElementById('addUnitRow').addEventListener('click', function () {
+    unitsBody.appendChild(buildUnitRow());
+});
+
 itemTypeSelect.addEventListener('change', toggleFields);
+baseUnitSelect.addEventListener('change', updateBaseUnitLabels);
 toggleFields();
+updateBaseUnitLabels();
 </script>
 
 <?php include '../../includes/footer.php'; ?>

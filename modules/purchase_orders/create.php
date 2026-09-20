@@ -2,11 +2,14 @@
 require '../../config/db.php';
 require '../../includes/purchase_order_helpers.php';
 require '../../includes/business_party_helpers.php';
+require '../../includes/product_unit_helpers.php';
 require_role(['Admin', 'Manager']);
 
 $catalog = mysqli_query($conn, "SELECT id, product_name, product_code, buying_price, quantity, unit FROM products WHERE item_type = 'Item' AND is_active = 1 ORDER BY product_name");
 $catalogList = [];
 while ($p = mysqli_fetch_assoc($catalog)) { $catalogList[] = $p; }
+
+$unitsMap = product_units_map($conn, array_map(function ($p) { return $p['id']; }, $catalogList));
 
 $supplierList = business_parties_of_type($conn, 'Supplier');
 $lowStockList = po_low_stock_products($conn);
@@ -22,6 +25,7 @@ if (isset($_POST['save'])) {
     $productIds = $_POST['product_id'] ?? [];
     $quantities = $_POST['quantity'] ?? [];
     $unitCosts = $_POST['unit_cost'] ?? [];
+    $unitChoices = $_POST['unit_choice'] ?? [];
 
     $validOrderDate = DateTime::createFromFormat('Y-m-d', $orderDate);
     $validExpectedDate = $expectedDelivery !== '' ? DateTime::createFromFormat('Y-m-d', $expectedDelivery) : true;
@@ -40,14 +44,28 @@ if (isset($_POST['save'])) {
         foreach ($catalogList as $p) { if ((int) $p['id'] === $productId) { $found = $p; break; } }
         if (!$found) { continue; }
 
+        // Re-validate the chosen unit server-side against this product's
+        // actual defined units — never trust a client-submitted pack size.
+        $productUnits = $unitsMap[$productId] ?? [];
+        $selectedUnitName = trim($unitChoices[$index] ?? '');
+        $matchedUnit = null;
+        foreach ($productUnits as $u) { if ($u['unit_name'] === $selectedUnitName) { $matchedUnit = $u; break; } }
+        if (!$matchedUnit) {
+            $lineError = 'Please select a valid unit for "' . $found['product_name'] . '".';
+            break;
+        }
+
         if ($unitCost < 0) {
-            $lineError = 'Unit cost cannot be negative for "' . $found['product_name'] . '".';
+            $lineError = 'Cost cannot be negative for "' . $found['product_name'] . '".';
             break;
         }
 
         $lineTotal = $qty * $unitCost;
         $total += $lineTotal;
-        $lineItems[] = ['product_id' => $productId, 'quantity' => $qty, 'unit_cost' => $unitCost, 'line_total' => $lineTotal];
+        $lineItems[] = [
+            'product_id' => $productId, 'quantity' => $qty, 'unit_cost' => $unitCost,
+            'line_total' => $lineTotal, 'pack_label' => $matchedUnit['unit_name'], 'pack_size' => $matchedUnit['pack_size'],
+        ];
     }
 
     if (!$validOrderDate || $validOrderDate->format('Y-m-d') !== $orderDate) {
@@ -84,8 +102,8 @@ if (isset($_POST['save'])) {
         $poId = mysqli_insert_id($conn);
 
         foreach ($lineItems as $item) {
-            $itemStatement = mysqli_prepare($conn, 'INSERT INTO purchase_order_items (purchase_order_id, product_id, quantity, unit_cost, line_total) VALUES (?, ?, ?, ?, ?)');
-            mysqli_stmt_bind_param($itemStatement, 'iiidd', $poId, $item['product_id'], $item['quantity'], $item['unit_cost'], $item['line_total']);
+            $itemStatement = mysqli_prepare($conn, 'INSERT INTO purchase_order_items (purchase_order_id, product_id, quantity, unit_cost, line_total, pack_label, pack_size) VALUES (?, ?, ?, ?, ?, ?, ?)');
+            mysqli_stmt_bind_param($itemStatement, 'iiiddsi', $poId, $item['product_id'], $item['quantity'], $item['unit_cost'], $item['line_total'], $item['pack_label'], $item['pack_size']);
             mysqli_stmt_execute($itemStatement);
         }
 
@@ -156,14 +174,16 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
             <?php } ?>
 
             <label class="form-label small fw-semibold text-muted">Products</label>
+            <p class="small text-muted mb-2">Pick how you're buying each product — units are set up per item in <a href="../products/index.php">RM Offerings</a>.</p>
             <table class="table table-bordered bg-white align-middle" id="itemsTable">
                 <thead>
                     <tr>
-                        <th>Product</th>
-                        <th style="width:100px;">In Stock</th>
-                        <th style="width:100px;">Qty to Order</th>
-                        <th style="width:140px;">Unit Cost (RWF)</th>
-                        <th style="width:140px;">Line Total</th>
+                        <th style="min-width:180px;">Product</th>
+                        <th style="width:90px;">In Stock</th>
+                        <th style="width:160px;">Buying As</th>
+                        <th style="width:80px;">Qty</th>
+                        <th style="width:130px;">Cost / Unit</th>
+                        <th style="width:110px;">Line Total</th>
                         <th style="width:40px;"></th>
                     </tr>
                 </thead>
@@ -197,6 +217,7 @@ const CATALOG = <?= json_encode(array_map(function ($p) {
 const LOW_STOCK = <?= json_encode(array_map(function ($p) {
     return ['id' => (int) $p['id'], 'name' => $p['product_name'], 'code' => $p['product_code'], 'cost' => (float) $p['buying_price'], 'stock' => (int) $p['quantity'], 'unit' => $p['unit']];
 }, $lowStockList)); ?>;
+const UNITS_MAP = <?= json_encode($unitsMap); ?>; // { productId: [ {unit_name, pack_size, is_base}, ... ] }
 const PREFILL_LOW_STOCK = <?= $prefillLowStock ? 'true' : 'false'; ?>;
 
 const itemsBody = document.querySelector('#itemsTable tbody');
@@ -262,6 +283,7 @@ function buildRow(prefill) {
     tr.innerHTML =
         '<td class="target-cell"><div class="rm-searchable catalog-field"></div></td>' +
         '<td class="stock-cell text-center">—</td>' +
+        '<td><select class="form-select rm-input unit-select" name="unit_choice[]"><option value="">Select product first</option></select></td>' +
         '<td><input type="number" class="form-control rm-input qty-input" name="quantity[]" min="1" value="' + (prefill && prefill.qty ? prefill.qty : 1) + '" required></td>' +
         '<td><input type="number" class="form-control rm-input cost-input" name="unit_cost[]" min="0" step="0.01" value="' + (prefill ? prefill.cost.toFixed(2) : '0.00') + '"></td>' +
         '<td><span class="line-total">0.00</span></td>' +
@@ -274,25 +296,36 @@ function bindRow(row, prefill) {
     const stockCell = row.querySelector('.stock-cell');
     const qty = row.querySelector('.qty-input');
     const costInput = row.querySelector('.cost-input');
+    const unitSelect = row.querySelector('.unit-select');
     const lineTotalEl = row.querySelector('.line-total');
     const removeBtn = row.querySelector('.remove-row');
     const productIdField = row.querySelector('.row-product-id');
+
+    function populateUnitSelect(productId) {
+        const units = UNITS_MAP[productId] || [{ unit_name: 'Piece', pack_size: 1, is_base: true }];
+        unitSelect.innerHTML = units.map(function (u) {
+            return '<option value="' + u.unit_name.replace(/"/g, '&quot;') + '">'
+                + u.unit_name + (u.pack_size > 1 ? ' (' + u.pack_size + ' each)' : '') + '</option>';
+        }).join('');
+    }
 
     function handleSelect(item) {
         if (item) {
             costInput.value = item.cost.toFixed(2);
             stockCell.textContent = item.stock;
             productIdField.value = item.id;
+            populateUnitSelect(item.id);
         } else {
             stockCell.textContent = '—';
             productIdField.value = '';
+            unitSelect.innerHTML = '<option value="">Select product first</option>';
         }
         updateTotal();
     }
 
     createSearchable(catalogFieldEl, {
         items: catalogOptions(),
-        hiddenName: '', // product id goes in the separate hidden field above, not here
+        hiddenName: '',
         placeholder: 'Select product',
         initialLabel: prefill ? prefill.name + ' (' + prefill.code + ')' : '',
         initialValue: '',
@@ -302,6 +335,7 @@ function bindRow(row, prefill) {
     if (prefill) {
         productIdField.value = prefill.id;
         stockCell.textContent = prefill.stock;
+        populateUnitSelect(prefill.id);
     }
 
     function updateTotal() {

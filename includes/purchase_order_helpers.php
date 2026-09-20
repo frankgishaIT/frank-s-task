@@ -26,11 +26,12 @@ function po_status_badge($status) {
 }
 
 /**
- * Receives a Purchase Order: for every line item, adds the stock and
- * records a `purchases` row exactly like restock.php does — so no product
- * data has to be re-entered manually. Posts ONE Expense transaction for the
- * whole PO (not one per line) so Transactions doesn't get flooded with
- * many rows for a single delivery.
+ * Receives a Purchase Order: for every line item, converts the ordered
+ * packs into base stock units (quantity × pack_size) and adds them to
+ * stock, and records a `purchases` row exactly like restock.php does — so
+ * no product data has to be re-entered manually. Posts ONE Expense
+ * transaction for the whole PO (not one per line) so Transactions doesn't
+ * get flooded with many rows for a single delivery.
  *
  * Only 'Ordered' Purchase Orders can be received.
  */
@@ -64,16 +65,22 @@ function po_receive($conn, $poId, $userId) {
     mysqli_begin_transaction($conn);
     try {
         while ($item = mysqli_fetch_assoc($items)) {
+            $packSize = max(1, (int) $item['pack_size']); // guard against 0/negative
+            $packQuantity = (int) $item['quantity']; // number of packs ordered
+            $baseQuantity = $packQuantity * $packSize; // actual stock units to add
+            $costPerBaseUnit = $item['unit_cost'] / $packSize; // unit_cost here = cost PER PACK
+
             $insertPurchase = mysqli_prepare($conn, 'INSERT INTO purchases
-                (product_id, quantity, unit_cost, supplier, purchase_date, notes, recorded_by, purchase_order_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+                (product_id, quantity, unit_cost, supplier, supplier_party_id, purchase_date, notes, recorded_by, purchase_order_id, pack_label, pack_size, pack_quantity)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
             $notes = 'Received via Purchase Order #' . $poId;
-            mysqli_stmt_bind_param($insertPurchase, 'iidsssii',
-                $item['product_id'], $item['quantity'], $item['unit_cost'], $po['supplier'], $today, $notes, $userId, $poId);
+            mysqli_stmt_bind_param($insertPurchase, 'iidsisssiisi',
+                $item['product_id'], $baseQuantity, $costPerBaseUnit, $po['supplier'], $po['supplier_party_id'],
+                $today, $notes, $userId, $poId, $item['pack_label'], $packSize, $packQuantity);
             mysqli_stmt_execute($insertPurchase);
 
             $updateStock = mysqli_prepare($conn, 'UPDATE products SET quantity = quantity + ? WHERE id = ?');
-            mysqli_stmt_bind_param($updateStock, 'ii', $item['quantity'], $item['product_id']);
+            mysqli_stmt_bind_param($updateStock, 'ii', $baseQuantity, $item['product_id']);
             mysqli_stmt_execute($updateStock);
 
             $itemCount++;

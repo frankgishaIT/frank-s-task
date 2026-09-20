@@ -40,9 +40,10 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
         <a href="index.php" class="text-decoration-none small text-muted"><i class="bi bi-arrow-left"></i> Back to Purchase Orders</a>
-        <h2 class="mt-1">Purchase Order #<?= str_pad($po['id'], 5, '0', STR_PAD_LEFT); ?> <?= po_status_badge($po['status']); ?></h2>
+        <h2 class="mt-1">Purchase Order RM<?= str_pad($po['id'], 5, '0', STR_PAD_LEFT); ?> <?= po_status_badge($po['status']); ?></h2>
     </div>
     <div class="d-flex gap-2">
+        <a href="invoice.php?id=<?= (int) $po['id']; ?>" target="_blank" class="rm-btn rm-btn-info">View / Print PDF</a>
         <?php if ($po['status'] === 'Draft') { ?>
             <a href="mark_ordered.php?id=<?= (int) $po['id']; ?>" class="rm-btn rm-btn-primary" onclick="return confirm('Mark this Purchase Order as Ordered?')">Mark as Ordered</a>
             <a href="cancel.php?id=<?= (int) $po['id']; ?>" class="rm-btn rm-btn-danger">Cancel PO</a>
@@ -100,12 +101,21 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
 <div class="card-body p-0">
 <div class="table-responsive">
 <table class="table table-bordered table-hover bg-white mb-0">
-<tr><th>Product</th><th>Code</th><th>Qty Ordered</th><th>Unit Cost</th><th>Line Total</th></tr>
-<?php while ($item = mysqli_fetch_assoc($items)) { ?>
+<tr><th>Product</th><th>Code</th><th>Bought As</th><th>Total Units</th><th>Cost / Unit</th><th>Line Total</th></tr>
+<?php while ($item = mysqli_fetch_assoc($items)) {
+    $packSize = max(1, (int) $item['pack_size']);
+    $totalUnits = (int) $item['quantity'] * $packSize;
+?>
 <tr>
     <td><?= htmlspecialchars($item['product_name'] ?? 'Deleted product', ENT_QUOTES, 'UTF-8'); ?></td>
     <td><?= htmlspecialchars($item['product_code'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></td>
-    <td><?= (int) $item['quantity']; ?> <?= htmlspecialchars($item['unit'] ?? '', ENT_QUOTES, 'UTF-8'); ?></td>
+    <td>
+        <?= (int) $item['quantity']; ?> x <?= htmlspecialchars($item['pack_label'], ENT_QUOTES, 'UTF-8'); ?>
+        <?php if ($packSize > 1) { ?>
+        <br><small class="text-muted"><?= $packSize; ?> <?= htmlspecialchars($item['unit'] ?? 'units', ENT_QUOTES, 'UTF-8'); ?> each</small>
+        <?php } ?>
+    </td>
+    <td><?= $totalUnits; ?> <?= htmlspecialchars($item['unit'] ?? '', ENT_QUOTES, 'UTF-8'); ?></td>
     <td>RWF <?= number_format((float) $item['unit_cost'], 2); ?></td>
     <td>RWF <?= number_format((float) $item['line_total'], 2); ?></td>
 </tr>

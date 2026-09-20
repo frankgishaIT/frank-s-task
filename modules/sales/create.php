@@ -2,6 +2,7 @@
 require '../../config/db.php';
 require '../../includes/notification_helper.php';
 require '../../includes/sales_helpers.php';
+require '../../includes/product_unit_helpers.php';
 require_role(['Admin', 'Manager', 'Employee']);
 
 $customers = mysqli_query($conn, 'SELECT id, name FROM customers WHERE is_active = 1 ORDER BY name');
@@ -11,6 +12,9 @@ while ($c = mysqli_fetch_assoc($customers)) { $customerList[] = $c; }
 $catalog = mysqli_query($conn, "SELECT id, item_type, product_name, product_code, selling_price, quantity, unit FROM products WHERE is_active = 1 ORDER BY item_type, product_name");
 $catalogList = [];
 while ($p = mysqli_fetch_assoc($catalog)) { $catalogList[] = $p; }
+
+$itemProductIds = array_map(function ($p) { return $p['id']; }, array_filter($catalogList, function ($p) { return $p['item_type'] === 'Item'; }));
+$unitsMap = product_units_map($conn, $itemProductIds);
 
 if (isset($_POST['save'])) {
     $customerId = filter_input(INPUT_POST, 'customer_id', FILTER_VALIDATE_INT) ?: null;
@@ -23,6 +27,8 @@ if (isset($_POST['save'])) {
 
     $catalogIds = $_POST['catalog_id'] ?? [];
     $quantities = $_POST['quantity'] ?? [];
+    $unitChoices = $_POST['unit_choice'] ?? [];
+    $unitPrices = $_POST['unit_price'] ?? [];
 
     $validDate = DateTime::createFromFormat('Y-m-d', $saleDate);
     $lineItems = [];
@@ -38,22 +44,45 @@ if (isset($_POST['save'])) {
         foreach ($catalogList as $p) { if ((int) $p['id'] === $catalogId) { $found = $p; break; } }
         if (!$found) { continue; }
 
-        if ($found['item_type'] === 'Item' && $qty > (int) $found['quantity']) {
-            $lineError = 'Not enough stock for "' . $found['product_name'] . '" (only ' . $found['quantity'] . ' available).';
-            break;
+        $isService = $found['item_type'] === 'Service';
+        $packLabel = 'Piece';
+        $packSize = 1;
+
+        if (!$isService) {
+            // Re-validate the chosen unit server-side against this product's
+            // actual defined units — never trust a client-submitted pack size.
+            $productUnits = $unitsMap[$catalogId] ?? [];
+            $selectedUnitName = trim($unitChoices[$index] ?? '');
+            $matchedUnit = null;
+            foreach ($productUnits as $u) { if ($u['unit_name'] === $selectedUnitName) { $matchedUnit = $u; break; } }
+            if (!$matchedUnit) {
+                $lineError = 'Please select a valid unit for "' . $found['product_name'] . '".';
+                break;
+            }
+            $packLabel = $matchedUnit['unit_name'];
+            $packSize = $matchedUnit['pack_size'];
+
+            $baseUnitsRequested = $qty * $packSize;
+            if ($baseUnitsRequested > (int) $found['quantity']) {
+                $lineError = 'Not enough stock for "' . $found['product_name'] . '" (only ' . $found['quantity'] . ' ' . ($found['unit'] ?: 'units') . ' available, this line needs ' . $baseUnitsRequested . ').';
+                break;
+            }
         }
 
-        $lineTotal = $qty * (float) $found['selling_price'];
+        $price = (float) ($unitPrices[$index] ?? 0);
+        $lineTotal = $qty * $price;
         $subtotal += $lineTotal;
+
         $lineItems[] = [
-            'item_type' => $found['item_type'] === 'Service' ? 'Service' : 'Product',
+            'item_type' => $isService ? 'Service' : 'Product',
             'product_id' => $catalogId,
             'service_name' => null,
-            'unit' => $found['item_type'] === 'Item' ? $found['unit'] : null,
+            'unit' => !$isService ? $found['unit'] : null,
             'quantity' => $qty,
-            'unit_price' => (float) $found['selling_price'],
+            'unit_price' => $price,
             'line_total' => $lineTotal,
-            'name' => $found['product_name'], // used for the customer receipt email
+            'pack_label' => $packLabel,
+            'pack_size' => $packSize,
         ];
     }
 
@@ -63,8 +92,6 @@ if (isset($_POST['save'])) {
         $error = 'Add at least one item or service with a valid quantity.';
     } elseif ($lineError) {
         $error = $lineError;
-    } elseif ($paymentMethod !== 'Credit' && $amountPaidInput <= 0) {
-        $error = 'Amount paid is required for this payment method.';
     } elseif ($discountAmount < 0 || $discountAmount > $subtotal) {
         $error = 'Discount cannot be negative or greater than the subtotal.';
     } else {
@@ -109,8 +136,8 @@ if (isset($_POST['save'])) {
             $saleId = mysqli_insert_id($conn);
 
             foreach ($lineItems as $item) {
-                $itemStatement = mysqli_prepare($conn, 'INSERT INTO sale_items (sale_id, item_type, product_id, service_name, quantity, unit, unit_price, line_total) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-                mysqli_stmt_bind_param($itemStatement, 'isisssdd', $saleId, $item['item_type'], $item['product_id'], $item['service_name'], $item['quantity'], $item['unit'], $item['unit_price'], $item['line_total']);
+                $itemStatement = mysqli_prepare($conn, 'INSERT INTO sale_items (sale_id, item_type, product_id, service_name, quantity, unit, unit_price, line_total, pack_label, pack_size) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+                mysqli_stmt_bind_param($itemStatement, 'isisssddsi', $saleId, $item['item_type'], $item['product_id'], $item['service_name'], $item['quantity'], $item['unit'], $item['unit_price'], $item['line_total'], $item['pack_label'], $item['pack_size']);
                 mysqli_stmt_execute($itemStatement);
             }
 
@@ -119,51 +146,6 @@ if (isset($_POST['save'])) {
             }
 
             mysqli_commit($conn);
-
-            // --- Notifications --------------------------------------------------
-            // Find the customer's display name (or fall back to "Walk-in customer")
-            // for use in the notification text.
-            $customerName = 'Walk-in customer';
-            foreach ($customerList as $c) {
-                if ((int) $c['id'] === (int) $customerId) {
-                    $customerName = $c['name'];
-                    break;
-                }
-            }
-
-            if ($needsApproval) {
-                $reason = $needsCreditApproval
-                    ? 'this customer has fewer than 500 Loyalty Points'
-                    : 'a discount was requested';
-                notify_admins_and_managers(
-                    $conn,
-                    'Sale awaiting approval',
-                    'A sale of RWF ' . number_format($totalAmount, 2) . ' for ' . $customerName . ' needs your approval (' . $reason . ').'
-                );
-            } elseif ($paymentMethod === 'Credit') {
-                notify_admins_and_managers(
-                    $conn,
-                    'New credit sale',
-                    'A credit sale of RWF ' . number_format($totalAmount, 2) . ' was recorded for ' . $customerName . '. Amount paid so far: RWF ' . number_format($amountPaidInput, 2) . '.'
-                );
-            }
-
-            // Email the customer their receipt — only once the sale is actually
-            // finalized (not while it's still pending discount/credit approval),
-            // and only if there's a real customer on file (not a walk-in).
-            if (!$needsApproval && $customerId) {
-                notify_customer_purchase(
-                    $conn,
-                    $customerId,
-                    $lineItems,
-                    $subtotal,
-                    $discountAmount,
-                    $totalAmount,
-                    $amountPaidInput,
-                    $paymentMethod
-                );
-            }
-            // ---------------------------------------------------------------------
 
             $successMessage = 'Sale recorded successfully.';
             if ($needsApproval) {
@@ -254,7 +236,7 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
                 </div>
                 <div class="col-md-4">
                     <label class="form-label small fw-semibold text-muted">Payment Method</label>
-                    <select name="payment_method" id="paymentMethodSelect" class="form-select rm-input" required>
+                    <select name="payment_method" class="form-select rm-input" required>
                         <option value="Cash">Cash</option>
                         <option value="Mobile Money">Mobile Money</option>
                         <option value="Bank Transfer">Bank Transfer</option>
@@ -267,12 +249,12 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
             <table class="table table-bordered bg-white align-middle" id="itemsTable">
                 <thead>
                     <tr>
-                        <th style="width:110px;">Type</th>
-                        <th>Item / Service</th>
-                        <th style="width:110px;">Unit</th>
-                        <th style="width:90px;">Qty</th>
-                        <th style="width:130px;">Unit Price</th>
-                        <th style="width:130px;">Line Total</th>
+                        <th style="width:100px;">Type</th>
+                        <th style="min-width:170px;">Item / Service</th>
+                        <th style="width:140px;">Sold As</th>
+                        <th style="width:80px;">Qty</th>
+                        <th style="width:120px;">Price / Unit Sold</th>
+                        <th style="width:110px;">Line Total</th>
                         <th style="width:40px;"></th>
                     </tr>
                 </thead>
@@ -315,24 +297,11 @@ const CUSTOMERS = <?= json_encode(array_map(function ($c) {
     return ['id' => (int) $c['id'], 'name' => $c['name']];
 }, $customerList)); ?>;
 
+const UNITS_MAP = <?= json_encode($unitsMap); ?>; // { productId: [ {unit_name, pack_size, is_base}, ... ] }, Items only
+
 const itemsBody = document.querySelector('#itemsTable tbody');
 const discountInput = document.getElementById('discountInput');
 const amountPaidInput = document.getElementById('amountPaidInput');
-const paymentMethodSelect = document.getElementById('paymentMethodSelect');
-
-function updateAmountPaidRequirement() {
-    if (paymentMethodSelect.value === 'Credit') {
-        amountPaidInput.required = false;
-    } else {
-        amountPaidInput.required = true;
-        if (parseFloat(amountPaidInput.value || 0) <= 0) {
-            amountPaidInput.value = '';
-        }
-    }
-}
-
-paymentMethodSelect.addEventListener('change', updateAmountPaidRequirement);
-updateAmountPaidRequirement();
 
 /**
  * Small reusable "type to filter" dropdown.
@@ -356,9 +325,6 @@ function createSearchable(wrapper, options) {
     const hidden = wrapper.querySelector('input[type=hidden]');
     let currentItems = items;
 
-    // The dropdown is attached to <body> (not to the wrapper) and positioned with
-    // "fixed" coordinates. This avoids it being clipped when the field sits inside
-    // a bordered table cell, which some browsers otherwise cut off.
     const dropdown = document.createElement('div');
     dropdown.className = 'rm-searchable-dropdown';
     dropdown.style.position = 'fixed';
@@ -398,7 +364,6 @@ function createSearchable(wrapper, options) {
     });
 
     dropdown.addEventListener('mousedown', function (e) {
-        // mousedown (not click) so it fires before the input's blur hides the dropdown
         const optEl = e.target.closest('.rm-searchable-option');
         if (!optEl) { return; }
         const id = optEl.getAttribute('data-id');
@@ -464,9 +429,9 @@ function buildRow() {
             '</select>' +
         '</td>' +
         '<td class="target-cell"><div class="rm-searchable catalog-field"></div></td>' +
-        '<td class="unit-cell"><span class="badge bg-light text-dark border unit-badge">—</span></td>' +
+        '<td class="unit-cell"><span class="text-muted small">N/A</span></td>' +
         '<td><input type="number" class="form-control rm-input qty-input" name="quantity[]" min="1" value="1" required></td>' +
-        '<td><input type="number" class="form-control rm-input price-input" readonly value="0.00"></td>' +
+        '<td><input type="number" class="form-control rm-input price-input" name="unit_price[]" min="0" step="0.01" value="0.00"></td>' +
         '<td><span class="line-total">0.00</span></td>' +
         '<td><button type="button" class="btn btn-outline-danger btn-sm remove-row">&times;</button></td>';
     return tr;
@@ -482,13 +447,39 @@ function bindRow(row) {
     const removeBtn = row.querySelector('.remove-row');
 
     let catalogWidget = null;
+    let basePrice = 0; // per-base-unit selling price for the currently selected Item
+
+    function populateUnitCell(productId) {
+        const units = UNITS_MAP[productId] || [{ unit_name: 'Piece', pack_size: 1, is_base: true }];
+        const select = document.createElement('select');
+        select.className = 'form-select rm-input';
+        select.name = 'unit_choice[]';
+        select.innerHTML = units.map(function (u) {
+            return '<option value="' + u.unit_name.replace(/"/g, '&quot;') + '" data-pack-size="' + u.pack_size + '">'
+                + u.unit_name + (u.pack_size > 1 ? ' (' + u.pack_size + ' each)' : '') + '</option>';
+        }).join('');
+        unitCell.innerHTML = '';
+        unitCell.appendChild(select);
+        select.addEventListener('change', function () {
+            const selected = select.options[select.selectedIndex];
+            const packSize = selected ? parseInt(selected.getAttribute('data-pack-size') || 1) : 1;
+            priceInput.value = (basePrice * packSize).toFixed(2);
+            updateTotal();
+        });
+        // Trigger the price prefill for the default (first) unit selected.
+        select.dispatchEvent(new Event('change'));
+    }
 
     function handleSelect(item) {
         const price = item ? item.price : 0;
-        priceInput.value = price.toFixed(2);
-        if (typeSelect.value === 'Item') {
-            const badge = unitCell.querySelector('.unit-badge');
-            if (badge) { badge.textContent = item ? (item.unit || '—') : '—'; }
+        basePrice = price;
+        if (typeSelect.value === 'Item' && item) {
+            populateUnitCell(item.id);
+        } else if (typeSelect.value === 'Service') {
+            priceInput.value = price.toFixed(2);
+        } else {
+            unitCell.innerHTML = '<span class="text-muted small">Select item</span>';
+            priceInput.value = '0.00';
         }
         updateTotal();
     }
@@ -506,7 +497,7 @@ function bindRow(row) {
         priceInput.value = '0.00';
         unitCell.innerHTML = typeSelect.value === 'Service'
             ? '<span class="text-muted small">N/A</span>'
-            : '<span class="badge bg-light text-dark border unit-badge">—</span>';
+            : '<span class="text-muted small">Select item</span>';
         updateTotal();
     }
 
@@ -519,6 +510,7 @@ function bindRow(row) {
 
     typeSelect.addEventListener('change', initCatalogField);
     qty.addEventListener('input', updateTotal);
+    priceInput.addEventListener('input', updateTotal);
     removeBtn.addEventListener('click', function () {
         if (itemsBody.querySelectorAll('.item-row').length > 1) {
             if (catalogWidget) { catalogWidget.destroy(); }

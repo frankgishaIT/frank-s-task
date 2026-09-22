@@ -100,7 +100,7 @@ if (isset($_POST['save'])) {
         $poStatement = mysqli_prepare($conn, 'INSERT INTO purchase_orders
             (supplier, supplier_party_id, order_date, expected_delivery_date, status, total_amount, notes, created_by, ordered_by, ordered_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-        mysqli_stmt_bind_param($poStatement, 'sissdssiis',
+        mysqli_stmt_bind_param($poStatement, 'sisssdsiis',
             $supplier, $supplierPartyId, $orderDate, $expectedDeliveryValue, $status, $total, $notes, $userId, $orderedBy, $orderedAt);
         mysqli_stmt_execute($poStatement);
         $poId = mysqli_insert_id($conn);

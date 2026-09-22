@@ -28,7 +28,9 @@ $productUnits = product_units_for($conn, $id); // this product's Base unit + any
 
 if (isset($_POST['save'])) {
     $packQuantity = filter_input(INPUT_POST, 'quantity', FILTER_VALIDATE_INT); // number of packs
-    $costPerPack = filter_input(INPUT_POST, 'unit_cost', FILTER_VALIDATE_FLOAT);
+    // "Cost per Unit" is always the price of ONE base unit (e.g. one piece),
+    // regardless of what's picked in "Buying As" — matches Purchase Orders.
+    $costPerBaseUnit = filter_input(INPUT_POST, 'unit_cost', FILTER_VALIDATE_FLOAT);
     $selectedUnitName = trim($_POST['unit_choice'] ?? '');
     $supplierPartyId = filter_input(INPUT_POST, 'supplier_party_id', FILTER_VALIDATE_INT) ?: null;
     $purchaseDate = $_POST['purchase_date'] ?? '';
@@ -43,7 +45,7 @@ if (isset($_POST['save'])) {
     $packLabel = $matchedUnit ? $matchedUnit['unit_name'] : ($product['unit'] ?: 'Piece');
     $packSize = $matchedUnit ? max(1, (int) $matchedUnit['pack_size']) : 1;
 
-    if (!$packQuantity || $packQuantity <= 0 || $costPerPack === false || $costPerPack < 0 || !$validDate || $validDate->format('Y-m-d') !== $purchaseDate) {
+    if (!$packQuantity || $packQuantity <= 0 || $costPerBaseUnit === false || $costPerBaseUnit < 0 || !$validDate || $validDate->format('Y-m-d') !== $purchaseDate) {
         $error = 'Please enter a valid quantity, cost, and date.';
     } elseif (!$supplierPartyId) {
         $error = 'Please select a Supplier.';
@@ -54,12 +56,11 @@ if (isset($_POST['save'])) {
         foreach ($supplierList as $s) { if ((int) $s['id'] === $supplierPartyId) { $selectedSupplier = $s; break; } }
         $supplier = $selectedSupplier ? $selectedSupplier['business_name'] : '';
 
-        // Convert what was actually bought (packs) into base stock units,
-        // and derive the cost per base unit so buying_price/profit math
-        // downstream stays consistent regardless of how it was packaged.
+        // Convert what was actually bought (packs) into base stock units.
+        // Cost per Unit is already priced per base unit, so the total just
+        // scales with however many base units actually arrived.
         $baseQuantity = $packQuantity * $packSize;
-        $costPerBaseUnit = $costPerPack / $packSize;
-        $totalCost = $packQuantity * $costPerPack;
+        $totalCost = $baseQuantity * $costPerBaseUnit;
 
         mysqli_begin_transaction($conn);
         try {
@@ -172,6 +173,7 @@ $modal_subtitle = 'Add new stock and record the purchase.';
                 <div class="mb-3">
                     <label class="form-label small fw-semibold text-muted">Cost per Unit (RWF)</label>
                     <input type="number" name="unit_cost" class="form-control rm-input" min="0" step="0.01" required>
+                    <small class="text-muted">Always the price of one <?= htmlspecialchars($product['unit'] ?: 'Piece', ENT_QUOTES, 'UTF-8'); ?>, not the whole pack. The total is calculated automatically.</small>
                 </div>
 
                 <div class="mb-3">

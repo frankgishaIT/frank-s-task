@@ -91,7 +91,8 @@ function award_loyalty_points($conn, $customerId, $profit) {
  *
  * Stock is deducted in BASE units (quantity of packs sold × pack_size),
  * even though the sale itself was rung up in whatever unit (Piece, Carton,
- * Box) the cashier picked at checkout.
+ * Box) the cashier picked at checkout. Units themselves (Carton, Box, etc.)
+ * are only ever created/managed via Add/Edit Item, not invented here.
  */
 function sales_finalize($conn, $saleId) {
     $saleStatement = mysqli_prepare($conn, 'SELECT * FROM sales WHERE id = ?');
@@ -119,11 +120,6 @@ function sales_finalize($conn, $saleId) {
         $update = mysqli_prepare($conn, 'UPDATE products SET quantity = quantity - ? WHERE id = ?');
         mysqli_stmt_bind_param($update, 'ii', $baseUnitsSold, $item['product_id']);
         mysqli_stmt_execute($update);
-
-        // Remember this unit + pack size for the product, so it shows up
-        // pre-filled next time it's sold or restocked.
-        require_once __DIR__ . '/product_unit_helpers.php';
-        remember_product_unit($conn, $item['product_id'], $item['pack_label'], $packSize);
     }
 
     // A sale can mix Product and Service line items, but a transaction only

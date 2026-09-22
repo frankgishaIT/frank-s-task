@@ -59,6 +59,7 @@ if (isset($_POST['save'])) {
         // downstream stays consistent regardless of how it was packaged.
         $baseQuantity = $packQuantity * $packSize;
         $costPerBaseUnit = $costPerPack / $packSize;
+        $totalCost = $packQuantity * $costPerPack;
 
         mysqli_begin_transaction($conn);
         try {
@@ -76,7 +77,6 @@ if (isset($_POST['save'])) {
             // Auto-post the restock cost to Transactions as an Expense.
             // No approval needed — mirrors how sales_finalize() posts income
             // for Sales, so it appears in Transactions immediately.
-            $totalCost = $packQuantity * $costPerPack;
             $packSummary = $packQuantity . ' x ' . $packLabel . ($packSize > 1 ? ' (' . $packSize . ' ' . ($product['unit'] ?: 'units') . ' each)' : '');
             $description = 'Restock: ' . $packSummary . ' of ' . $product['product_name']
                 . ($supplier !== '' ? ' from ' . $supplier : '');
@@ -86,8 +86,29 @@ if (isset($_POST['save'])) {
             mysqli_stmt_bind_param($insertTransaction, 'dssi', $totalCost, $purchaseDate, $description, $recordedBy);
             mysqli_stmt_execute($insertTransaction);
 
+            // Also record this restock as a Purchase Order (status: Received,
+            // since the stock has already landed) so it gets the same
+            // invoice-style PDF as a regular PO — no separate document type
+            // needed for restocks.
+            $poNotes = trim('Recorded via Restock.' . ($notes !== '' ? ' ' . $notes : ''));
+            $orderedAt = date('Y-m-d H:i:s');
+            $insertPO = mysqli_prepare($conn, "INSERT INTO purchase_orders
+                (supplier, supplier_party_id, order_date, expected_delivery_date, status, total_amount, notes, created_by, ordered_by, ordered_at)
+                VALUES (?, ?, ?, NULL, 'Received', ?, ?, ?, ?, ?)");
+            mysqli_stmt_bind_param($insertPO, 'sisdsiis',
+                $supplier, $supplierPartyId, $purchaseDate, $totalCost, $poNotes, $recordedBy, $recordedBy, $orderedAt);
+            mysqli_stmt_execute($insertPO);
+            $poId = mysqli_insert_id($conn);
+
+            $insertPOItem = mysqli_prepare($conn, 'INSERT INTO purchase_order_items
+                (purchase_order_id, product_id, quantity, unit_cost, line_total, pack_label, pack_size)
+                VALUES (?, ?, ?, ?, ?, ?, ?)');
+            mysqli_stmt_bind_param($insertPOItem, 'iiiddsi',
+                $poId, $id, $packQuantity, $costPerBaseUnit, $totalCost, $packLabel, $packSize);
+            mysqli_stmt_execute($insertPOItem);
+
             mysqli_commit($conn);
-            header('Location: index.php?success=' . urlencode($baseQuantity . ' ' . ($product['unit'] ?: 'units') . ' added to ' . $product['product_name'] . '.'));
+            header('Location: ../purchase_orders/view.php?id=' . $poId . '&success=' . urlencode($baseQuantity . ' ' . ($product['unit'] ?: 'units') . ' added to ' . $product['product_name'] . '.'));
             exit;
         } catch (Exception $e) {
             mysqli_rollback($conn);

@@ -60,11 +60,15 @@ if (isset($_POST['save'])) {
             break;
         }
 
-        $lineTotal = $qty * $unitCost;
+        // Cost / Unit is always entered as the price per base unit (e.g. per
+        // piece). When buying in a pack (e.g. a Box of 54), the line total
+        // must scale by the pack size, not just by the number of packs.
+        $packSize = max(1, (int) $matchedUnit['pack_size']);
+        $lineTotal = $qty * $packSize * $unitCost;
         $total += $lineTotal;
         $lineItems[] = [
             'product_id' => $productId, 'quantity' => $qty, 'unit_cost' => $unitCost,
-            'line_total' => $lineTotal, 'pack_label' => $matchedUnit['unit_name'], 'pack_size' => $matchedUnit['pack_size'],
+            'line_total' => $lineTotal, 'pack_label' => $matchedUnit['unit_name'], 'pack_size' => $packSize,
         ];
     }
 
@@ -174,7 +178,7 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
             <?php } ?>
 
             <label class="form-label small fw-semibold text-muted">Products</label>
-            <p class="small text-muted mb-2">Pick how you're buying each product — units are set up per item in <a href="../products/index.php">RM Offerings</a>.</p>
+            <p class="small text-muted mb-2">Pick how you're buying each product — units are set up per item in <a href="../products/index.php">RM Offerings</a>. Cost / Unit is always the price per single piece; the Line Total scales automatically for boxes/packs.</p>
             <table class="table table-bordered bg-white align-middle" id="itemsTable">
                 <thead>
                     <tr>
@@ -301,12 +305,24 @@ function bindRow(row, prefill) {
     const removeBtn = row.querySelector('.remove-row');
     const productIdField = row.querySelector('.row-product-id');
 
+    // Tracks the pack size (units per pack) of whichever "Buying As" option
+    // is currently selected, so the line total can scale correctly. Cost /
+    // Unit is always the price of ONE base unit (e.g. one piece).
+    let currentPackSize = 1;
+
+    function packSizeForSelectedUnit() {
+        const units = UNITS_MAP[productIdField.value] || [{ unit_name: 'Piece', pack_size: 1, is_base: true }];
+        const match = units.find(function (u) { return u.unit_name === unitSelect.value; });
+        return match ? Math.max(1, parseInt(match.pack_size) || 1) : 1;
+    }
+
     function populateUnitSelect(productId) {
         const units = UNITS_MAP[productId] || [{ unit_name: 'Piece', pack_size: 1, is_base: true }];
         unitSelect.innerHTML = units.map(function (u) {
             return '<option value="' + u.unit_name.replace(/"/g, '&quot;') + '">'
                 + u.unit_name + (u.pack_size > 1 ? ' (' + u.pack_size + ' each)' : '') + '</option>';
         }).join('');
+        currentPackSize = packSizeForSelectedUnit();
     }
 
     function handleSelect(item) {
@@ -319,6 +335,7 @@ function bindRow(row, prefill) {
             stockCell.textContent = '—';
             productIdField.value = '';
             unitSelect.innerHTML = '<option value="">Select product first</option>';
+            currentPackSize = 1;
         }
         updateTotal();
     }
@@ -341,9 +358,16 @@ function bindRow(row, prefill) {
     function updateTotal() {
         const cost = parseFloat(costInput.value || 0);
         const q = parseInt(qty.value || 0);
-        lineTotalEl.textContent = (cost * q).toFixed(2);
+        lineTotalEl.textContent = (cost * q * currentPackSize).toFixed(2);
         recalcTotals();
     }
+
+    // Switching "Buying As" (e.g. Piece -> Box of 54) must re-scale the
+    // line total, since Cost / Unit stays priced per single piece.
+    unitSelect.addEventListener('change', function () {
+        currentPackSize = packSizeForSelectedUnit();
+        updateTotal();
+    });
 
     qty.addEventListener('input', updateTotal);
     costInput.addEventListener('input', updateTotal);

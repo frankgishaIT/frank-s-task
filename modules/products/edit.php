@@ -28,6 +28,9 @@ if (isset($_POST['update'])) {
     // product_code is not editable — always keep the original generated code.
     $product_code = $product['product_code'];
     $description = trim($_POST['description'] ?? '');
+
+    // Always the per-BASE-UNIT price — the JS converts whatever unit the
+    // admin actually typed the number in before this form submits.
     $selling_price = filter_input(INPUT_POST, 'selling_price', FILTER_VALIDATE_FLOAT);
 
     $unitNames = $_POST['unit_name'] ?? [];
@@ -127,15 +130,7 @@ include '../../includes/sidebar.php';
                     <textarea name="description" class="form-control rm-input" rows="3" style="height:auto;"><?= htmlspecialchars($product['description'] ?? '', ENT_QUOTES, 'UTF-8'); ?></textarea>
                 </div>
 
-                <div class="row g-3 mb-4">
-                    <div class="col-3 item-only-field">
-                        <label class="form-label small fw-semibold text-muted">Buying Price</label>
-                        <input type="number" step="0.01" min="0" name="buying_price" class="form-control rm-input" value="<?= htmlspecialchars((string) $product['buying_price'], ENT_QUOTES, 'UTF-8'); ?>">
-                    </div>
-                    <div class="col-3">
-                        <label class="form-label small fw-semibold text-muted" id="priceLabel">Selling Price</label>
-                        <input type="number" step="0.01" min="0" name="selling_price" class="form-control rm-input" value="<?= htmlspecialchars((string) $product['selling_price'], ENT_QUOTES, 'UTF-8'); ?>" required>
-                    </div>
+                <div class="row g-3 mb-2">
                     <div class="col-3 item-only-field">
                         <label class="form-label small fw-semibold text-muted">Quantity</label>
                         <input type="number" step="1" min="0" name="quantity" class="form-control rm-input" value="<?= htmlspecialchars((string) ($product['quantity'] ?? 0), ENT_QUOTES, 'UTF-8'); ?>">
@@ -146,6 +141,28 @@ include '../../includes/sidebar.php';
                             <option value="Pieces" <?= ($product['unit'] ?? 'Pieces') === 'Pieces' ? 'selected' : ''; ?>>Pieces</option>
                             <option value="Boxes" <?= ($product['unit'] ?? '') === 'Boxes' ? 'selected' : ''; ?>>Boxes</option>
                         </select>
+                        <div class="form-text">Always your smallest sellable unit — e.g. one Piece, not a whole Box.</div>
+                    </div>
+                </div>
+
+                <div class="row g-3 mb-4">
+                    <div class="col-6 item-only-field">
+                        <label class="form-label small fw-semibold text-muted">Buying Price</label>
+                        <div class="input-group">
+                            <input type="number" step="0.01" min="0" id="buyingPriceInput" class="form-control rm-input" value="<?= htmlspecialchars((string) $product['buying_price'], ENT_QUOTES, 'UTF-8'); ?>">
+                            <select id="buyingPriceUnitSelect" class="form-select rm-input" style="max-width:130px;"></select>
+                        </div>
+                        <small class="text-muted" id="buyingPricePreview"></small>
+                        <input type="hidden" name="buying_price" id="buyingPriceHidden">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small fw-semibold text-muted" id="priceLabel">Selling Price</label>
+                        <div class="input-group">
+                            <input type="number" step="0.01" min="0" id="sellingPriceInput" class="form-control rm-input" value="<?= htmlspecialchars((string) $product['selling_price'], ENT_QUOTES, 'UTF-8'); ?>" required>
+                            <select id="sellingPriceUnitSelect" class="form-select rm-input item-only-field" style="max-width:130px;"></select>
+                        </div>
+                        <small class="text-muted" id="sellingPricePreview"></small>
+                        <input type="hidden" name="selling_price" id="sellingPriceHidden">
                     </div>
                 </div>
 
@@ -188,6 +205,15 @@ const EXISTING_UNITS = <?= json_encode(array_map(function ($u) {
     return ['unit_name' => $u['unit_name'], 'pack_size' => $u['pack_size']];
 }, $existingUnits)); ?>;
 
+const buyingPriceInput = document.getElementById('buyingPriceInput');
+const buyingPriceUnitSelect = document.getElementById('buyingPriceUnitSelect');
+const buyingPricePreview = document.getElementById('buyingPricePreview');
+const buyingPriceHidden = document.getElementById('buyingPriceHidden');
+const sellingPriceInput = document.getElementById('sellingPriceInput');
+const sellingPriceUnitSelect = document.getElementById('sellingPriceUnitSelect');
+const sellingPricePreview = document.getElementById('sellingPricePreview');
+const sellingPriceHidden = document.getElementById('sellingPriceHidden');
+
 function toggleFields() {
     const isService = itemTypeSelect.value === 'Service';
     itemOnlyFields.forEach(function (el) {
@@ -205,26 +231,82 @@ function updateBaseUnitLabels() {
 function buildUnitRow(unit) {
     const tr = document.createElement('tr');
     tr.innerHTML =
-        '<td><input type="text" class="form-control rm-input" name="unit_name[]" list="allUnitsList" autocomplete="off" placeholder="Pick or type a unit, e.g. Carton" value="' + (unit ? unit.unit_name.replace(/"/g, '&quot;') : '') + '"></td>' +
-        '<td><input type="number" class="form-control rm-input" name="unit_pack_size[]" min="2" step="1" placeholder="e.g. 200" value="' + (unit ? unit.pack_size : '') + '"></td>' +
+        '<td><input type="text" class="form-control rm-input unit-name-field" name="unit_name[]" list="allUnitsList" autocomplete="off" placeholder="Pick or type a unit, e.g. Carton" value="' + (unit ? unit.unit_name.replace(/"/g, '&quot;') : '') + '"></td>' +
+        '<td><input type="number" class="form-control rm-input unit-size-field" name="unit_pack_size[]" min="2" step="1" placeholder="e.g. 200" value="' + (unit ? unit.pack_size : '') + '"></td>' +
         '<td><button type="button" class="btn btn-outline-danger btn-sm remove-unit-row">&times;</button></td>';
-    tr.querySelector('.remove-unit-row').addEventListener('click', function () { tr.remove(); });
+    tr.querySelector('.remove-unit-row').addEventListener('click', function () { tr.remove(); refreshUnitSelectors(); });
+    tr.querySelector('.unit-name-field').addEventListener('input', refreshUnitSelectors);
+    tr.querySelector('.unit-size-field').addEventListener('input', refreshUnitSelectors);
     return tr;
 }
 
 document.getElementById('addUnitRow').addEventListener('click', function () {
     unitsBody.appendChild(buildUnitRow(null));
+    refreshUnitSelectors();
+});
+
+// ---- Price-entry-unit picker (see create.php for full explanation) ----
+function getCurrentUnits() {
+    const units = [{ name: baseUnitSelect.value, packSize: 1 }];
+    unitsBody.querySelectorAll('tr').forEach(function (row) {
+        const name = row.querySelector('.unit-name-field').value.trim();
+        const size = parseInt(row.querySelector('.unit-size-field').value || 0);
+        if (name && size > 1) { units.push({ name: name, packSize: size }); }
+    });
+    return units;
+}
+
+function refreshSelect(selectEl, units) {
+    const previousValue = selectEl.value;
+    selectEl.innerHTML = units.map(function (u) {
+        return '<option value="' + u.name.replace(/"/g, '&quot;') + '" data-pack-size="' + u.packSize + '">' + u.name + '</option>';
+    }).join('');
+    const stillExists = units.some(function (u) { return u.name === previousValue; });
+    if (stillExists) { selectEl.value = previousValue; } else { selectEl.value = units[0].name; }
+}
+
+function refreshUnitSelectors() {
+    const units = getCurrentUnits();
+    refreshSelect(buyingPriceUnitSelect, units);
+    refreshSelect(sellingPriceUnitSelect, units);
+    updatePreview(buyingPriceInput, buyingPriceUnitSelect, buyingPricePreview);
+    updatePreview(sellingPriceInput, sellingPriceUnitSelect, sellingPricePreview);
+}
+
+function selectedPackSize(selectEl) {
+    const opt = selectEl.options[selectEl.selectedIndex];
+    return opt ? parseInt(opt.getAttribute('data-pack-size') || 1) : 1;
+}
+
+function updatePreview(priceInput, unitSelect, previewEl) {
+    const packSize = selectedPackSize(unitSelect);
+    const entered = parseFloat(priceInput.value || 0);
+    const perBase = packSize > 0 ? entered / packSize : entered;
+    previewEl.textContent = packSize > 1 ? ('= RWF ' + perBase.toFixed(2) + ' per ' + baseUnitSelect.value) : '';
+}
+
+buyingPriceInput.addEventListener('input', function () { updatePreview(buyingPriceInput, buyingPriceUnitSelect, buyingPricePreview); });
+sellingPriceInput.addEventListener('input', function () { updatePreview(sellingPriceInput, sellingPriceUnitSelect, sellingPricePreview); });
+buyingPriceUnitSelect.addEventListener('change', function () { updatePreview(buyingPriceInput, buyingPriceUnitSelect, buyingPricePreview); });
+sellingPriceUnitSelect.addEventListener('change', function () { updatePreview(sellingPriceInput, sellingPriceUnitSelect, sellingPricePreview); });
+baseUnitSelect.addEventListener('change', function () { updateBaseUnitLabels(); refreshUnitSelectors(); });
+
+document.getElementById('productForm').addEventListener('submit', function () {
+    const buyingPackSize = selectedPackSize(buyingPriceUnitSelect);
+    const sellingPackSize = selectedPackSize(sellingPriceUnitSelect);
+    buyingPriceHidden.value = ((parseFloat(buyingPriceInput.value || 0)) / (buyingPackSize || 1)).toFixed(2);
+    sellingPriceHidden.value = ((parseFloat(sellingPriceInput.value || 0)) / (sellingPackSize || 1)).toFixed(2);
 });
 
 itemTypeSelect.addEventListener('change', toggleFields);
-baseUnitSelect.addEventListener('change', updateBaseUnitLabels);
 toggleFields();
 updateBaseUnitLabels();
 
-// Pre-fill existing units for this product
+// Pre-fill existing units for this product, then wire up the price pickers
 EXISTING_UNITS.forEach(function (u) {
     unitsBody.appendChild(buildUnitRow(u));
 });
+refreshUnitSelectors();
 </script>
 
 <?php include '../../includes/footer.php'; ?>

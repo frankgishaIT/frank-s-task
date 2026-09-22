@@ -56,7 +56,7 @@ $lowStockCount = count(po_low_stock_products($conn));
 <?php } ?>
 <?php while ($po = mysqli_fetch_assoc($purchaseOrders)) { ?>
 <tr>
-    <td>#<?= str_pad($po['id'], 5, '0', STR_PAD_LEFT); ?></td>
+    <td>RM<?= str_pad($po['id'], 5, '0', STR_PAD_LEFT); ?></td>
     <td><?= date('d M Y', strtotime($po['order_date'])); ?></td>
     <td><?= $po['expected_delivery_date'] ? date('d M Y', strtotime($po['expected_delivery_date'])) : '<span class="text-muted">—</span>'; ?></td>
     <td><?= htmlspecialchars($po['supplier'] ?: '—', ENT_QUOTES, 'UTF-8'); ?></td>

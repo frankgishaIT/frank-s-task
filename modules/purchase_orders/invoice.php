@@ -8,9 +8,10 @@ use Mpdf\Mpdf;
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
 if (!$id) { header('Location: index.php?error=Invalid purchase order requested.'); exit; }
 
-$statement = mysqli_prepare($conn, 'SELECT purchase_orders.*, created.names AS created_by_name, created.role AS created_by_role, created.phone AS created_by_phone
+$statement = mysqli_prepare($conn, 'SELECT purchase_orders.*, created.names AS created_by_name, created.role AS created_by_role, created.phone AS created_by_phone, roles.name AS created_by_position
     FROM purchase_orders
     LEFT JOIN users created ON purchase_orders.created_by = created.id
+    LEFT JOIN roles ON created.role_id = roles.id
     WHERE purchase_orders.id = ?');
 mysqli_stmt_bind_param($statement, 'i', $id);
 mysqli_stmt_execute($statement);
@@ -38,18 +39,22 @@ $statusLabel = htmlspecialchars($po['status'], ENT_QUOTES, 'UTF-8');
 $statusColor = $isDraft ? '#B8860B' : ($isCancelled ? '#8A90A3' : ($isReceived ? '#0FA968' : '#1E2FE0'));
 $statusBg    = $isDraft ? '#FDF3E3' : ($isCancelled ? '#F1F3F9' : ($isReceived ? '#E1F7EE' : '#E8EBFC'));
 
-$logoPath = __DIR__ . '/../../assets/images/logo.jpg';
+$logoPath = __DIR__ . '/../../assets/images/rise.jpg';
 
 // ---- Repeating header ----
 $headerHtml = '
 <table width="100%" style="border-bottom:2px solid #1E2333; padding-bottom:6px;">
   <tr>
     <td style="width:60%; vertical-align:top;">
-      <img src="' . $logoPath . '" style="height:46px; width:auto; display:block; margin-bottom:5px;">
-      <span style="font-size:16px; font-weight:800; color:#1E2333;">RISE MOTIVE</span><br>
-      <span style="font-size:8px; color:#8A90A3;">TIN Number:122923513</span><br>
-      <span style="font-size:8px; color:#8A90A3;">website: www.risemotive.rw</span><br>
-      <span style="font-size:9px; font-weight:700; color:#1E2333; margin-top:2px; display:inline-block;">Kicukiro District, Kigali, Rwanda</span>
+      <table cellpadding="0" cellspacing="0" width="100%">
+       <tr><td><img src="' . $logoPath . '" style="height:70px; width:auto;"></td></tr>
+         <tr><td style="padding-top:8px;">
+          <span style="font-size:24px; font-weight:900; color:#000000; letter-spacing:0.5px;">RISE MOTIVE</span><br>
+           <span style="font-size:10px; font-weight:700; color:#1E2333; margin-top:8px; display:inline-block;">TIN Number:122923513</span><br>
+           <span style="font-size:10px; font-weight:700; color:#1E2333; margin-top:8px; display:inline-block;">Website: www.risemotive.rw</span><br>
+           <span style="font-size:10px; font-weight:700; color:#1E2333; margin-top:8px; display:inline-block;">Kicukiro District, Kigali, Rwanda</span>
+           </td></tr>
+      </table>
     </td>
     <td style="width:40%; text-align:right; vertical-align:top;">
       <span style="font-size:14px; font-weight:700; color:#1E2333;">' . htmlspecialchars($docTitle, ENT_QUOTES, 'UTF-8') . '</span><br>
@@ -73,53 +78,45 @@ ob_start();
 ?>
 <style>
   body { font-family: sans-serif; color:#1E2333; font-size:11px; }
-  .watermark-wrap { text-align:center; margin: -10px 0 6px; }
-  .watermark-text { color:#E24B4A; font-size:26px; font-weight:800; opacity:0.35; }
   table.info-grid { width:100%; border:1px solid #E4E8F2; border-radius:6px; font-size:10px; margin-bottom:14px; }
   table.info-grid td { padding:5px 10px; }
-  table.info-grid .label { color:#8A90A3; width:110px; display:inline-block; }
+  table.info-grid .label { color:#8A90A3; width:110px; display:inline-block; margin-right:8px; }
   table.items { width:100%; border-collapse:collapse; font-size:10px; margin-bottom:10px; }
-  table.items thead td { font-size:9px; text-transform:uppercase; color:#8A90A3; border-bottom:1px solid #E4E8F2; padding:4px 0; font-weight:700; }
+  table.items thead td { font-size:9px; text-transform:uppercase; color:#000000; border-bottom:1px solid #E4E8F2; padding:4px 0; font-weight:800; }
   table.items tbody td { padding:5px 0; border-bottom:1px solid #E4E8F2; }
   table.items td.amount { text-align:right; }
-  table.totals { width:45%; margin-left:55%; font-size:10px; }
+  table.totals { width:45%; margin-left:55%; font-size:10px; page-break-inside: avoid; }
   table.totals td { padding:3px 0; }
   table.totals td.val { text-align:right; }
   table.totals tr.grand td { border-top:2px solid #1E2333; font-size:13px; font-weight:800; color:#1E2FE0; padding-top:6px; }
   .sig-block { margin-top:18px; padding-top:10px; border-top:1px solid #E4E8F2; font-size:10px; }
-  .sig-heading { font-weight:700; }
+  .sig-heading { font-weight:800; font-size:11px; }
   .sig-sub { color:#8A90A3; font-weight:600; margin-bottom:6px; }
   .sig-label { color:#8A90A3; display:inline-block; width:70px; }
   .footnote { margin-top:12px; font-size:9px; color:#8A90A3; }
 </style>
 
-<?php if ($isDraft) { ?>
-  <div class="watermark-wrap"><span class="watermark-text">DRAFT</span></div>
-<?php } elseif ($isCancelled) { ?>
-  <div class="watermark-wrap"><span class="watermark-text">CANCELLED</span></div>
-<?php } ?>
-
 <table class="info-grid">
   <tr>
-    <td width="50%"><span class="label">Supplier:</span><?= htmlspecialchars($po['supplier'] ?: '—', ENT_QUOTES, 'UTF-8'); ?></td>
-    <td width="50%"><span class="label">Order Date:</span><?= date('d M Y', strtotime($po['order_date'])); ?></td>
+    <td width="50%"><span class="label"><strong>Supplier:&nbsp;</strong></span><?= htmlspecialchars($po['supplier'] ?: '—', ENT_QUOTES, 'UTF-8'); ?></td>
+    <td width="50%"><span class="label"><strong>Order Date:&nbsp;</strong></span><?= date('d M Y', strtotime($po['order_date'])); ?></td>
   </tr>
   <?php if ($supplierParty) { ?>
   <tr>
-    <td><span class="label">TIN:</span><?= htmlspecialchars($supplierParty['tin'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></td>
-    <td><span class="label">Expected Delivery:</span><?= $po['expected_delivery_date'] ? date('d M Y', strtotime($po['expected_delivery_date'])) : '—'; ?></td>
+    <td><span class="label"><strong>TIN:&nbsp;</strong></span><?= htmlspecialchars($supplierParty['tin'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></td>
+    <td><span class="label"><strong>Expected Delivery:&nbsp;</strong></span><?= $po['expected_delivery_date'] ? date('d M Y', strtotime($po['expected_delivery_date'])) : '—'; ?></td>
   </tr>
   <tr>
-    <td><span class="label">Representative:</span><?= htmlspecialchars($supplierParty['representative_name'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></td>
-    <td><span class="label">Prepared By:</span><?= htmlspecialchars($po['created_by_name'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></td>
+    <td><span class="label"><strong>Representative:&nbsp;</strong></span><?= htmlspecialchars($supplierParty['representative_name'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></td>
+    <td><span class="label"><strong>Prepared By:&nbsp;</strong></span><?= htmlspecialchars($po['created_by_name'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></td>
   </tr>
   <tr>
-    <td><span class="label">Phone:</span><?= htmlspecialchars($supplierParty['phone'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></td>
-    <td><span class="label">Email:</span><?= htmlspecialchars($supplierParty['email'] ?: '—', ENT_QUOTES, 'UTF-8'); ?></td>
+    <td><span class="label"><strong>Phone:&nbsp;</strong></span><?= htmlspecialchars($supplierParty['phone'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></td>
+    <td><span class="label"><strong>Email:&nbsp;</strong></span><?= htmlspecialchars($supplierParty['email'] ?: '—', ENT_QUOTES, 'UTF-8'); ?></td>
   </tr>
   <?php } else { ?>
   <tr>
-    <td><span class="label">Prepared By:</span><?= htmlspecialchars($po['created_by_name'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></td>
+    <td><span class="label"><strong>Prepared By:&nbsp;</strong></span><?= htmlspecialchars($po['created_by_name'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></td>
     <td></td>
   </tr>
   <?php } ?>
@@ -163,10 +160,10 @@ ob_start();
 
 <?php if (!$isCancelled) { ?>
 <div class="sig-block">
-  <div class="sig-heading">For RISE MOTIVE</div>
+  <div class="sig-heading"><strong>For RISE MOTIVE</strong></div>
   <div class="sig-sub">Purchase Order Prepared By:</div>
   <div><span class="sig-label">Name:</span> <strong><?= htmlspecialchars($po['created_by_name'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></strong></div>
-  <div><span class="sig-label">Position:</span> <strong><?= htmlspecialchars(ucfirst($po['created_by_role'] ?? '—'), ENT_QUOTES, 'UTF-8'); ?></strong></div>
+  <div><span class="sig-label">Position:</span> <strong><?= htmlspecialchars($po['created_by_position'] ?? ucfirst($po['created_by_role'] ?? '—'), ENT_QUOTES, 'UTF-8'); ?></strong></div>
   <div><span class="sig-label">Contact:</span> <strong><?= htmlspecialchars($po['created_by_phone'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></strong></div>
 </div>
 <?php } ?>
@@ -188,13 +185,26 @@ $bodyHtml = ob_get_clean();
 // ---- Build the PDF ----
 $mpdf = new Mpdf([
     'format' => 'A4',
-    'margin_top' => 50,
+    'margin_top' => 55,
     'margin_bottom' => 18,
     'margin_header' => 10,
     'margin_footer' => 6,
     'margin_left' => 15,
     'margin_right' => 15,
 ]);
+
+// ---- Real, page-covering watermark ----
+if ($isDraft) {
+    $mpdf->SetWatermarkText('DRAFT');
+    $mpdf->showWatermarkText = true;
+    $mpdf->watermark_font = 'DejaVuSansCondensed';
+    $mpdf->watermarkTextAlpha = 0.15;
+} elseif ($isCancelled) {
+    $mpdf->SetWatermarkText('CANCELLED');
+    $mpdf->showWatermarkText = true;
+    $mpdf->watermark_font = 'DejaVuSansCondensed';
+    $mpdf->watermarkTextAlpha = 0.15;
+}
 
 $mpdf->SetHTMLHeader($headerHtml);
 $mpdf->SetHTMLFooter($footerHtml);

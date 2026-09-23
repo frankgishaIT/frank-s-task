@@ -112,7 +112,7 @@ ob_start();
   </tr>
   <tr>
     <td><span class="label"><strong>Phone:&nbsp;</strong></span><?= htmlspecialchars($supplierParty['phone'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></td>
-       <td><span class="label"><strong>Ordered Amount:&nbsp;</strong></span>RWF <?= money($po['total_amount']); ?></td>
+       <td><span class="label"><strong>PO Amount:&nbsp;</strong></span>RWF <?= money($po['total_amount']); ?></td>
   </tr>
   <?php } else { ?>
   <tr>

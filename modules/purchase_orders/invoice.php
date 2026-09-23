@@ -154,7 +154,7 @@ ob_start();
 
 <?php if ($po['notes']) { ?>
 <div style="margin-top:10px; font-size:10px;">
-  <strong>Notes:</strong> <?= nl2br(htmlspecialchars($po['notes'], ENT_QUOTES, 'UTF-8')); ?>
+  <strong>Notes:</strong><br><?= nl2br(htmlspecialchars($po['notes'], ENT_QUOTES, 'UTF-8')); ?>
 </div>
 <?php } ?>
 

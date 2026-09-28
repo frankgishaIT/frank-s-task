@@ -5,6 +5,20 @@ function navActive($segment, $currentPath) {
 }
 $userName = $_SESSION['user_name'] ?? 'Admin';
 $initials = strtoupper(substr($userName, 0, 1) . (strpos($userName, ' ') !== false ? substr($userName, strpos($userName, ' ') + 1, 1) : ''));
+// Profile photo (optional). Falls back to the icon when none is set.
+$userPhotoUrl = null;
+try {
+    $photoUserId = current_user_id();
+    $photoStmt = mysqli_prepare($conn, 'SELECT photo FROM users WHERE id = ?');
+    mysqli_stmt_bind_param($photoStmt, 'i', $photoUserId);
+    mysqli_stmt_execute($photoStmt);
+    $photoRow = mysqli_fetch_assoc(mysqli_stmt_get_result($photoStmt));
+    if (!empty($photoRow['photo'])) {
+        $userPhotoUrl = BASE_URL . '/assets/uploads/users/' . rawurlencode(basename($photoRow['photo']));
+    }
+} catch (Throwable $e) {
+    $userPhotoUrl = null; // photo column not added yet
+}
 ?>
 
 <div class="sidebar">
@@ -93,9 +107,13 @@ $initials = strtoupper(substr($userName, 0, 1) . (strpos($userName, ' ') !== fal
     <div style="border-top:1px solid rgba(255,255,255,.08); margin:14px 10px 10px; padding-top:14px;">
 
         <div style="display:flex; align-items:center; gap:10px; padding:0 22px 12px;">
-            <div style="width:34px; height:34px; border-radius:50%; background:var(--accent-blue); color:#fff; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:600; flex-shrink:0;">
-                <?= htmlspecialchars($initials ?: 'A', ENT_QUOTES, 'UTF-8'); ?>
-            </div>
+            <div style="width:34px; height:34px; border-radius:50%; background:var(--accent-blue); color:#fff; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:600; flex-shrink:0; overflow:hidden;">
+            <?php if ($userPhotoUrl) { ?>
+            <img src="<?= htmlspecialchars($userPhotoUrl, ENT_QUOTES, 'UTF-8'); ?>" alt="" style="width:100%; height:100%; object-fit:cover; display:block;">
+            <?php } else { ?>
+           <?= htmlspecialchars($initials ?: 'A', ENT_QUOTES, 'UTF-8'); ?>
+          <?php } ?>
+               </div>
             <div style="min-width:0;">
                 <div style="color:#fff; font-size:13px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                     <?= htmlspecialchars($userName, ENT_QUOTES, 'UTF-8'); ?>
@@ -164,9 +182,13 @@ $initials = strtoupper(substr($userName, 0, 1) . (strpos($userName, ' ') !== fal
                 </div>
             </div>
             <div class="dropdown">
-    <div class="topbar-org dropdown-toggle" role="button" data-bs-toggle="dropdown" aria-expanded="false" style="cursor:pointer;">
+        <div class="topbar-org dropdown-toggle" role="button" data-bs-toggle="dropdown" aria-expanded="false" style="cursor:pointer;">
         <div class="topbar-org-avatar">
-            <i class="bi bi-building"></i>
+       <?php if ($userPhotoUrl) { ?>
+       <img src="<?= htmlspecialchars($userPhotoUrl, ENT_QUOTES, 'UTF-8'); ?>" alt="" style="width:100%; height:100%; object-fit:cover; display:block;">
+        <?php } else { ?>
+        <i class="bi bi-building"></i>
+        <?php } ?>
         </div>
         <span class="d-none d-md-inline"><?= htmlspecialchars($_SESSION['user_name'] ?? 'Account', ENT_QUOTES, 'UTF-8'); ?></span>
     </div>

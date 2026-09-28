@@ -159,16 +159,25 @@
         }
 
         .topbar-org-avatar{
-            width:32px;
-            height:32px;
-            border-radius:50%;
-            background:var(--accent-blue-bg);
-            color:var(--accent-blue);
-            display:flex;
-            align-items:center;
-            justify-content:center;
-            font-size:14px;
-        }
+    width:32px;
+    height:32px;
+    border-radius:50%;
+    background:var(--accent-blue-bg);
+    color:var(--accent-blue);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:14px;
+    overflow:hidden;
+    flex-shrink:0;
+}
+
+.topbar-org-avatar img{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    display:block;
+}
 
         .header{
             display:flex;

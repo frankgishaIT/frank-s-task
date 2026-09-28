@@ -1,5 +1,6 @@
 <?php
 require '../../config/db.php';
+require '../../includes/user_photo_helpers.php';
 require_role(['Admin']);
 
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
@@ -32,10 +33,17 @@ if (isset($_POST['update'])) {
     $monthlySalary = filter_input(INPUT_POST, 'monthly_salary', FILTER_VALIDATE_FLOAT);
     $password = $_POST['password'] ?? '';
 
+    // Profile photo: validated up front (nothing is saved to disk until
+    // every other check has passed too).
+    $photoCheck = validate_user_photo($_FILES['photo'] ?? null);
+    $removePhoto = isset($_POST['remove_photo']);
+
     if ($names === '' || !filter_var($email, FILTER_VALIDATE_EMAIL) || !$departmentId || $monthlySalary === false || $monthlySalary < 0 || !in_array($role, ['Admin', 'Manager', 'Employee'], true)) {
         $error = 'Please provide valid employee details.';
     } elseif ($roleId && !role_belongs_to_department($conn, $roleId, $departmentId)) {
         $error = 'The selected department role does not belong to the chosen department.';
+    } elseif (isset($photoCheck['error'])) {
+        $error = $photoCheck['error'];
     } else {
         $emailStatement = mysqli_prepare($conn, 'SELECT id FROM users WHERE email = ? AND id != ?');
         mysqli_stmt_bind_param($emailStatement, 'si', $email, $id);
@@ -49,13 +57,17 @@ if (isset($_POST['update'])) {
             $updateStatement = mysqli_prepare($conn, 'UPDATE users SET names = ?, email = ?, phone = ?, password_hash = ?, role = ?, department_id = ?, role_id = ?, monthly_salary = ? WHERE id = ?');
             mysqli_stmt_bind_param($updateStatement, 'sssssiidi', $names, $email, $phone, $passwordHash, $role, $departmentId, $roleId, $monthlySalary, $id);
             mysqli_stmt_execute($updateStatement);
-            header('Location: index.php?success=Employee updated successfully.');
+            $photoSaved = save_user_photo($conn, $id, $photoCheck, $removePhoto, $user['photo'] ?? null);
+            $message = $photoSaved ? 'Employee updated successfully.' : 'Employee updated, but the photo could not be saved.';
+            header('Location: index.php?success=' . urlencode($message));
             exit;
         } else {
             $updateStatement = mysqli_prepare($conn, 'UPDATE users SET names = ?, email = ?, phone = ?, role = ?, department_id = ?, role_id = ?, monthly_salary = ? WHERE id = ?');
             mysqli_stmt_bind_param($updateStatement, 'ssssiidi', $names, $email, $phone, $role, $departmentId, $roleId, $monthlySalary, $id);
             mysqli_stmt_execute($updateStatement);
-            header('Location: index.php?success=Employee updated successfully.');
+            $photoSaved = save_user_photo($conn, $id, $photoCheck, $removePhoto, $user['photo'] ?? null);
+            $message = $photoSaved ? 'Employee updated successfully.' : 'Employee updated, but the photo could not be saved.';
+            header('Location: index.php?success=' . urlencode($message));
             exit;
         }
     }
@@ -107,7 +119,30 @@ $modal_subtitle = 'Update this employee\'s profile and account access.';
             </div>
             <?php } ?>
 
-            <form method="POST">
+            <form method="POST" enctype="multipart/form-data">
+                <?php $currentPhoto = !empty($user['photo']) ? BASE_URL . '/assets/uploads/users/' . rawurlencode(basename($user['photo'])) : null; ?>
+                <div class="d-flex align-items-center gap-3 mb-3">
+                    <div style="width:72px; height:72px; border-radius:50%; overflow:hidden; background:var(--accent-blue-bg); color:var(--accent-blue); display:flex; align-items:center; justify-content:center; font-size:28px; flex-shrink:0;">
+                        <?php if ($currentPhoto) { ?>
+                            <img id="photoPreview" src="<?= htmlspecialchars($currentPhoto, ENT_QUOTES, 'UTF-8'); ?>" alt="" style="width:100%; height:100%; object-fit:cover;">
+                        <?php } else { ?>
+                            <img id="photoPreview" src="" alt="" style="width:100%; height:100%; object-fit:cover; display:none;">
+                            <i class="bi bi-person-fill" id="photoPlaceholder"></i>
+                        <?php } ?>
+                    </div>
+                    <div class="flex-grow-1">
+                        <label class="form-label small fw-semibold text-muted">Profile photo</label>
+                        <input type="file" name="photo" id="photoInput" class="form-control rm-input" accept="image/jpeg,image/png,image/webp">
+                        <div class="form-text">JPG, PNG or WEBP, up to 2 MB.</div>
+                        <?php if ($currentPhoto) { ?>
+                        <div class="form-check mt-1">
+                            <input class="form-check-input" type="checkbox" name="remove_photo" id="removePhoto" value="1">
+                            <label class="form-check-label small" for="removePhoto">Remove current photo</label>
+                        </div>
+                        <?php } ?>
+                    </div>
+                </div>
+
                 <div class="mb-3">
                     <label class="form-label small fw-semibold text-muted">Full name</label>
                     <input type="text" name="name" class="form-control rm-input" value="<?= htmlspecialchars($user['names'], ENT_QUOTES, 'UTF-8'); ?>" required>
@@ -211,6 +246,20 @@ $modal_subtitle = 'Update this employee\'s profile and account access.';
     // if it belongs to their current department; otherwise fall back to None.
     roleSelect.value = initialRoleId;
     filterRoles(true);
+
+    // Live preview of the chosen photo before saving.
+    var photoInput = document.getElementById('photoInput');
+    var photoPreview = document.getElementById('photoPreview');
+    var photoPlaceholder = document.getElementById('photoPlaceholder');
+    if (photoInput && photoPreview) {
+        photoInput.addEventListener('change', function () {
+            var file = photoInput.files && photoInput.files[0];
+            if (!file) { return; }
+            photoPreview.src = URL.createObjectURL(file);
+            photoPreview.style.display = '';
+            if (photoPlaceholder) { photoPlaceholder.style.display = 'none'; }
+        });
+    }
 })();
 </script>
 

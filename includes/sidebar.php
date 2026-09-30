@@ -89,6 +89,9 @@ try {
     <a href="../sales/index.php" class="<?= navActive('sales', $currentPath) ?>">
         <i class="bi bi-cart-check-fill"></i> Sales
     </a>
+    <a href="../loans/index.php" class="<?= navActive('loans', $currentPath) ?>">
+    <i class="bi bi-bank"></i> Loans
+     </a>
 
     <?php if (current_user_role() === 'Admin') { ?>
     <a href="../payroll/index.php" class="<?= navActive('payroll', $currentPath) ?>">

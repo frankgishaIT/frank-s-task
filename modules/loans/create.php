@@ -1,10 +1,18 @@
 <?php
 require '../../config/db.php';
 require '../../includes/loan_helpers.php';
+require '../../includes/business_party_helpers.php';
 require_role(['Admin']);
 
+// Lenders are drawn from Business Parties of type 'Partner' — Partners
+// store their name in the 'name' column (not 'business_name', which is
+// Supplier-only), so that's what's used below.
+$lenderList = business_parties_of_type($conn, 'Partner');
+
 if (isset($_POST['save'])) {
-    $lender = trim($_POST['lender'] ?? '');
+    $lenderPartyId = filter_input(INPUT_POST, 'lender_party_id', FILTER_VALIDATE_INT) ?: null;
+    $lender = '';
+    foreach ($lenderList as $l) { if ((int) $l['id'] === $lenderPartyId) { $lender = $l['name']; break; } }
     $loanType = trim($_POST['loan_type'] ?? '');
     $loanAmount = filter_input(INPUT_POST, 'loan_amount', FILTER_VALIDATE_FLOAT);
     $interestRate = filter_input(INPUT_POST, 'interest_rate', FILTER_VALIDATE_FLOAT);
@@ -47,7 +55,7 @@ if (isset($_POST['save'])) {
                  installment_amount, maturity_date, loan_purpose, collateral, status, created_by)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
             $placeholderMaturity = $startDate; // updated below once the schedule is generated
-            mysqli_stmt_bind_param($insertLoan, 'ssddsisdssssi',
+            mysqli_stmt_bind_param($insertLoan, 'ssddsisdsssi',
                 $lender, $loanType, $loanAmount, $interestRate, $startDate, $repaymentPeriod, $repaymentFrequency,
                 $fixedInstallment, $placeholderMaturity, $loanPurpose, $collateral, $status, $userId);
             mysqli_stmt_execute($insertLoan);
@@ -94,7 +102,15 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
             <div class="row g-3 mb-3">
                 <div class="col-md-6">
                     <label class="form-label small fw-semibold text-muted">Lender</label>
-                    <input type="text" name="lender" class="form-control rm-input" placeholder="e.g. Equity Bank, John Doe" value="<?= htmlspecialchars($_POST['lender'] ?? '', ENT_QUOTES, 'UTF-8'); ?>" required>
+                    <select name="lender_party_id" class="form-select rm-input" required>
+                        <option value="">Select lender</option>
+                        <?php foreach ($lenderList as $l) { ?>
+                        <option value="<?= (int) $l['id']; ?>" <?= (int) ($_POST['lender_party_id'] ?? 0) === (int) $l['id'] ? 'selected' : ''; ?>><?= htmlspecialchars($l['name'], ENT_QUOTES, 'UTF-8'); ?></option>
+                        <?php } ?>
+                    </select>
+                    <?php if (empty($lenderList)) { ?>
+                    <small class="text-danger">No Partners found to use as lenders. <a href="../business_parties/create.php">Add one first</a> (select type "RM Partner").</small>
+                    <?php } ?>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label small fw-semibold text-muted">Loan Type</label>

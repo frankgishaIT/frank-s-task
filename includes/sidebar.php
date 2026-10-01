@@ -92,7 +92,11 @@ try {
     <a href="../loans/index.php" class="<?= navActive('loans', $currentPath) ?>">
     <i class="bi bi-bank"></i> Loans
      </a>
-
+     <?php if (current_user_role() === 'Admin') { ?>
+      <a href="../asset_management/index.php" class="<?= navActive('asset_management', $currentPath) ?>">
+      <i class="bi bi-building-gear"></i> Assets
+     </a>
+   <?php } ?>
     <?php if (current_user_role() === 'Admin') { ?>
     <a href="../payroll/index.php" class="<?= navActive('payroll', $currentPath) ?>">
         <i class="bi bi-wallet2"></i> Payroll

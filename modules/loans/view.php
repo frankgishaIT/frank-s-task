@@ -220,7 +220,10 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
                     <div class="text-muted">Principal: RWF <?= money($p['principal_portion']); ?> &middot; Interest: RWF <?= money($p['interest_portion']); ?></div>
                     <div class="text-muted">Balance after: RWF <?= money($p['remaining_balance']); ?></div>
                     <?php if ($p['notes']) { ?><div class="text-muted fst-italic"><?= htmlspecialchars($p['notes'], ENT_QUOTES, 'UTF-8'); ?></div><?php } ?>
-                    <div class="text-muted" style="font-size:11px;">Recorded by <?= htmlspecialchars($p['recorded_by_name'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></div>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="text-muted" style="font-size:11px;">Recorded by <?= htmlspecialchars($p['recorded_by_name'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></div>
+                        <a href="receipt.php?id=<?= (int) $p['id']; ?>" target="_blank" class="rm-btn rm-btn-light rm-btn-sm" style="font-size:11px; padding:3px 10px;"><i class="bi bi-receipt"></i> Receipt</a>
+                    </div>
                 </div>
                 <?php } ?>
                 </div>

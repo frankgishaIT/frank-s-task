@@ -160,7 +160,7 @@ ob_start();
 </div>
 
 <div class="footnote">
-  This report shows the value and depreciation history of <?= $h($asset['asset_name']); ?> as at <?= date('d M Y'); ?>. Rise Beyond Limits!
+  This report shows the value and depreciation history of <?= $h($asset['asset_name']); ?> as at <?= date('d M Y'); ?>.<br><br> Rise Beyond Limits!
 </div>
 <?php
 $bodyHtml = ob_get_clean();

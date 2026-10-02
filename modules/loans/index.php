@@ -61,8 +61,8 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
     <thead>
         <tr>
             <th>Lender</th>
-            <th>Type</th>
-            <th>Loan Amount</th>
+            <th>Lender Type</th>
+            <th>Lender Amount</th>
             <th>Outstanding Balance</th>
             <th>Next Due</th>
             <th>Status</th>

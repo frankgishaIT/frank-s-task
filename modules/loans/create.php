@@ -113,10 +113,10 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
                     <?php } ?>
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label small fw-semibold text-muted">Loan Type</label>
-                    <select name="loan_type" class="form-select rm-input" required>
-                        <?php foreach (['Bank Loan', 'Financial Institution Loan', 'Company Loan', 'Individual Loan'] as $t) { ?>
-                        <option value="<?= $t; ?>" <?= ($_POST['loan_type'] ?? '') === $t ? 'selected' : ''; ?>><?= $t; ?></option>
+                    <label class="form-label small fw-semibold text-muted">Lender Type</label>
+                    <select name="lender_type" class="form-select rm-input" required>
+                        <?php foreach (['Bank', 'Financial Institution', 'Company', 'Individual'] as $t) { ?>
+                        <option value="<?= $t; ?>" <?= ($_POST['lender_type'] ?? '') === $t ? 'selected' : ''; ?>><?= $t; ?></option>
                         <?php } ?>
                     </select>
                 </div>

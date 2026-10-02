@@ -55,9 +55,9 @@ if (isset($_POST['save'])) {
                  installment_amount, maturity_date, loan_purpose, collateral, status, created_by)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
             $placeholderMaturity = $startDate; // updated below once the schedule is generated
-            mysqli_stmt_bind_param($insertLoan, 'ssddsisdsssi',
-                $lender, $loanType, $loanAmount, $interestRate, $startDate, $repaymentPeriod, $repaymentFrequency,
-                $fixedInstallment, $placeholderMaturity, $loanPurpose, $collateral, $status, $userId);
+           mysqli_stmt_bind_param($insertLoan, 'ssddsisdssssi',
+            $lender, $loanType, $loanAmount, $interestRate, $startDate, $repaymentPeriod, $repaymentFrequency,
+            $fixedInstallment, $placeholderMaturity, $loanPurpose, $collateral, $status, $userId);
             mysqli_stmt_execute($insertLoan);
             $loanId = mysqli_insert_id($conn);
 

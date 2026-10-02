@@ -136,7 +136,7 @@ ob_start();
 </div>
 
 <div class="footnote">
-  This receipt confirms a loan repayment made to <?= htmlspecialchars($payment['lender'], ENT_QUOTES, 'UTF-8'); ?>. Rise Beyond Limits!
+  This receipt confirms a loan repayment made to <?= htmlspecialchars($payment['lender'], ENT_QUOTES, 'UTF-8'); ?>.<br><br>Rise Beyond Limits!
 </div>
 <?php
 $bodyHtml = ob_get_clean();

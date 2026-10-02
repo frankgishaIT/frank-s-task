@@ -149,7 +149,10 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
 
         <div class="card border-0 shadow-sm">
             <div class="card-body">
-                <h5 class="mb-3">Repayment Schedule</h5>
+                <div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="mb-0">Repayment Schedule</h5>
+    <a href="schedule_pdf.php?id=<?= (int) $loan['id']; ?>" target="_blank" class="rm-btn rm-btn-light rm-btn-sm"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
+</div>
                 <div style="max-height:340px; overflow-y:auto;">
                 <table>
                     <thead><tr><th>#</th><th>Due Date</th><th>Principal</th><th>Interest</th><th>Amount Due</th><th>Paid</th><th>Status</th></tr></thead>

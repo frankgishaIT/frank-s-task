@@ -95,8 +95,10 @@ if (isset($_POST['save'])) {
     } elseif ($discountAmount < 0 || $discountAmount > $subtotal) {
         $error = 'Discount cannot be negative or greater than the subtotal.';
     } else {
-        $totalAmount = $subtotal - $discountAmount;
-        if ($amountPaidInput < 0 || $amountPaidInput > $totalAmount + 0.01) {
+                $totalAmount = $subtotal - $discountAmount;
+     if ($paymentMethod !== 'Credit' && $totalAmount > 0 && $amountPaidInput <= 0) {
+            $error = 'Please enter the Amount Paid. It can only be zero when the payment method is Credit.';
+        } elseif ($amountPaidInput < 0 || $amountPaidInput > $totalAmount + 0.01) {
             $error = 'Amount paid cannot be negative or greater than the total.';
         } else {
             $userId = current_user_id();
@@ -269,7 +271,7 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
                 </div>
                 <div class="col-md-4">
                     <label class="form-label small fw-semibold text-muted">Amount Paid (RWF)</label>
-                    <input type="number" name="amount_paid" id="amountPaidInput" class="form-control rm-input" min="0" step="0.01" value="0" required>
+                   <input type="number" name="amount_paid" id="amountPaidInput" class="form-control rm-input" min="0.01" step="0.01" placeholder="Enter amount received" required>
                 </div>
             </div>
 
@@ -302,6 +304,18 @@ const UNITS_MAP = <?= json_encode($unitsMap); ?>; // { productId: [ {unit_name, 
 const itemsBody = document.querySelector('#itemsTable tbody');
 const discountInput = document.getElementById('discountInput');
 const amountPaidInput = document.getElementById('amountPaidInput');
+const paymentMethodSelect = document.querySelector('[name="payment_method"]');
+let currentTotal = 0;
+
+// Credit may be left empty; every other method needs an amount above zero.
+function syncAmountPaidRule() {
+    const isCredit = paymentMethodSelect.value === 'Credit';
+    const mustPay = !isCredit && currentTotal > 0;
+    amountPaidInput.required = mustPay;
+    amountPaidInput.min = mustPay ? '0.01' : '0';
+    amountPaidInput.placeholder = isCredit ? '0 (optional on credit)' : 'Enter amount received';
+}
+paymentMethodSelect.addEventListener('change', syncAmountPaidRule);
 
 /**
  * Small reusable "type to filter" dropdown.
@@ -531,7 +545,9 @@ function recalcTotals() {
     const total = Math.max(0, subtotal - discount);
     document.getElementById('subtotalDisplay').textContent = 'RWF ' + subtotal.toFixed(2);
     document.getElementById('totalDisplay').textContent = 'RWF ' + total.toFixed(2);
-    amountPaidInput.max = total;
+        amountPaidInput.max = total;
+    currentTotal = total;
+    syncAmountPaidRule();
 }
 
 document.getElementById('addRow').addEventListener('click', function () {

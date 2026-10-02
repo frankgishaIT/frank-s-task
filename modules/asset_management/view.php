@@ -64,7 +64,10 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
         <span class="text-muted fs-6 fw-normal"><?= htmlspecialchars($asset['asset_code'], ENT_QUOTES, 'UTF-8'); ?></span>
         <span style="font-size:11px; font-weight:700; color:<?= $badge[0]; ?>; background:<?= $badge[1]; ?>; padding:3px 10px; border-radius:8px; vertical-align:middle;"><?= htmlspecialchars($asset['status'], ENT_QUOTES, 'UTF-8'); ?></span>
     </h2>
+    <div class="d-flex gap-2">
+    <a href="edit.php?id=<?= (int) $asset['id']; ?>" class="rm-btn rm-btn-primary"><i class="bi bi-pencil-square me-2"></i>Edit Asset</a>
     <a href="index.php" class="rm-btn rm-btn-light">Back to Assets</a>
+</div>
 </div>
 
 <div class="row g-3 mb-4">

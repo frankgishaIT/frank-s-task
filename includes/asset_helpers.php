@@ -12,7 +12,7 @@
 
 // Generates the next asset code, e.g. AST-000001.
 function asset_generate_code($conn, $assetId) {
-    return 'AST-' . str_pad($assetId, 6, '0', STR_PAD_LEFT);
+    return 'RM-AST-' . str_pad($assetId, 6, '0', STR_PAD_LEFT);
 }
 
 // Straight-line only for now. Returns the constant daily depreciation
@@ -100,4 +100,51 @@ function asset_run_depreciation_catchup_all($conn) {
 function asset_total_current_value($conn) {
     $row = mysqli_fetch_assoc(mysqli_query($conn, "SELECT COALESCE(SUM(current_value), 0) AS total FROM assets WHERE status = 'Active'"));
     return (float) $row['total'];
+}
+// ---------------------------------------------------------------------
+// APPEND THIS TO THE END OF includes/asset_helpers.php
+// ---------------------------------------------------------------------
+
+// Wipes an asset's valuation history and rebuilds it from the given terms,
+// one row per day from the acquisition date up to $endDate (or until the
+// residual value is reached), then sets assets.current_value to match.
+// Used by the Edit page when depreciation inputs were corrected.
+// Returns the new current value.
+function asset_rebuild_history($conn, $assetId, $acquisitionDate, $acquisitionValue, $residualValue, $usefulLifeDays, $endDate) {
+    $del = mysqli_prepare($conn, 'DELETE FROM asset_valuation_history WHERE asset_id = ?');
+    mysqli_stmt_bind_param($del, 'i', $assetId);
+    mysqli_stmt_execute($del);
+
+    $dailyAmount = asset_daily_depreciation_amount((float) $acquisitionValue, (float) $residualValue, (int) $usefulLifeDays);
+    $residual = (float) $residualValue;
+    $currentValue = (float) $acquisitionValue;
+
+    $cursor = new DateTime($acquisitionDate);
+    $end = new DateTime($endDate);
+
+    // Prepared once, re-executed for every day.
+    $dayStr = $cursor->format('Y-m-d');
+    $depreciationToday = 0.0;
+    $insert = mysqli_prepare($conn, 'INSERT INTO asset_valuation_history (asset_id, valuation_date, daily_depreciation, value) VALUES (?, ?, ?, ?)');
+    mysqli_stmt_bind_param($insert, 'isdd', $assetId, $dayStr, $depreciationToday, $currentValue);
+
+    // Day zero: no depreciation applied yet.
+    mysqli_stmt_execute($insert);
+
+    while ($cursor < $end && $currentValue > $residual + 0.001) {
+        $cursor->modify('+1 day');
+        $depreciationToday = min($dailyAmount, max(0, round($currentValue - $residual, 2)));
+        $currentValue = round($currentValue - $depreciationToday, 2);
+        if ($currentValue < $residual) { $currentValue = $residual; }
+        $dayStr = $cursor->format('Y-m-d');
+        mysqli_stmt_execute($insert);
+    }
+    mysqli_stmt_close($insert);
+
+    $update = mysqli_prepare($conn, 'UPDATE assets SET current_value = ? WHERE id = ?');
+    mysqli_stmt_bind_param($update, 'di', $currentValue, $assetId);
+    mysqli_stmt_execute($update);
+    mysqli_stmt_close($update);
+
+    return $currentValue;
 }

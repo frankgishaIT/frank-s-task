@@ -75,7 +75,10 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
             <td>RWF <?= money($asset['acquisition_value']); ?></td>
             <td>RWF <?= money($asset['current_value']); ?></td>
             <td><span style="font-size:11px; font-weight:700; color:<?= $badge[0]; ?>; background:<?= $badge[1]; ?>; padding:3px 10px; border-radius:8px;"><?= htmlspecialchars($asset['status'], ENT_QUOTES, 'UTF-8'); ?></span></td>
-            <td><a href="view.php?id=<?= (int) $asset['id']; ?>" class="rm-btn rm-btn-light rm-btn-sm">View</a></td>
+            <td>
+             <a href="view.php?id=<?= (int) $asset['id']; ?>" class="rm-btn rm-btn-light rm-btn-sm">View</a>
+              <a href="edit.php?id=<?= (int) $asset['id']; ?>" class="rm-btn rm-btn-light rm-btn-sm">Edit</a>
+            </td>
         </tr>
         <?php } ?>
     </tbody>

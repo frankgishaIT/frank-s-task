@@ -90,7 +90,10 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
                 <?php } ?>
             </td>
             <td><span style="font-size:11px; font-weight:700; color:<?= $badge[0]; ?>; background:<?= $badge[1]; ?>; padding:3px 10px; border-radius:8px;"><?= htmlspecialchars($loan['status'], ENT_QUOTES, 'UTF-8'); ?></span></td>
-            <td><a href="view.php?id=<?= (int) $loan['id']; ?>" class="rm-btn rm-btn-light rm-btn-sm">View</a></td>
+           <td>
+        <a href="view.php?id=<?= (int) $loan['id']; ?>" class="rm-btn rm-btn-light rm-btn-sm">View</a>
+        <a href="edit.php?id=<?= (int) $loan['id']; ?>" class="rm-btn rm-btn-light rm-btn-sm">Edit</a>
+         </td>
         </tr>
         <?php } ?>
     </tbody>

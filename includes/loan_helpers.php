@@ -208,3 +208,75 @@ function loan_report_totals($conn) {
         FROM loans WHERE status != 'Cancelled'"));
     return $row;
 }
+// ---------------------------------------------------------------------
+// APPEND THIS TO THE END OF includes/loan_helpers.php
+// ---------------------------------------------------------------------
+
+// Applies an amount against the oldest unpaid/partial schedule rows
+// (interest first, then principal, within each installment). Same rules as
+// loan_record_payment(), but it ONLY touches loan_schedule: no loan_payments
+// row, no Transactions row, no loan totals. Returns the principal/interest split.
+function loan_apply_to_schedule($conn, $loanId, $amount) {
+    $scheduleResult = mysqli_query($conn, 'SELECT * FROM loan_schedule WHERE loan_id = ' . (int) $loanId . " AND status != 'Paid' ORDER BY installment_no ASC");
+
+    $remaining = round((float) $amount, 2);
+    $principalApplied = 0;
+    $interestApplied = 0;
+
+    while ($remaining > 0.001 && ($row = mysqli_fetch_assoc($scheduleResult))) {
+        $outstandingOnRow = round((float) $row['amount_due'] - (float) $row['paid_amount'], 2);
+        if ($outstandingOnRow <= 0.001) { continue; }
+
+        $applyToRow = min($remaining, $outstandingOnRow);
+
+        $interestAlreadyCovered = min((float) $row['paid_amount'], (float) $row['interest_due']);
+        $interestRemainingOnRow = round((float) $row['interest_due'] - $interestAlreadyCovered, 2);
+        $interestPortionHere = min($applyToRow, $interestRemainingOnRow);
+        $principalPortionHere = round($applyToRow - $interestPortionHere, 2);
+
+        $newPaidAmount = round((float) $row['paid_amount'] + $applyToRow, 2);
+        $newStatus = ($newPaidAmount >= (float) $row['amount_due'] - 0.01) ? 'Paid' : 'Partial';
+
+        $updateRow = mysqli_prepare($conn, 'UPDATE loan_schedule SET paid_amount = ?, status = ? WHERE id = ?');
+        mysqli_stmt_bind_param($updateRow, 'dsi', $newPaidAmount, $newStatus, $row['id']);
+        mysqli_stmt_execute($updateRow);
+
+        $principalApplied = round($principalApplied + $principalPortionHere, 2);
+        $interestApplied = round($interestApplied + $interestPortionHere, 2);
+        $remaining = round($remaining - $applyToRow, 2);
+    }
+
+    return ['principal' => $principalApplied, 'interest' => $interestApplied];
+}
+
+// After a loan's schedule has been regenerated (fresh, nothing paid), replays
+// every recorded payment in date order against it, and rewrites each payment's
+// principal_portion / interest_portion / remaining_balance. The payment
+// amounts and dates themselves never change, and Transactions are not touched.
+// Returns the recomputed running totals.
+function loan_replay_payments($conn, $loanId, $totalPayable) {
+    $payments = mysqli_query($conn, 'SELECT id, amount FROM loan_payments WHERE loan_id = ' . (int) $loanId . ' ORDER BY payment_date ASC, id ASC');
+
+    $totalPaid = 0;
+    $principalRepaid = 0;
+    $interestPaid = 0;
+
+    while ($p = mysqli_fetch_assoc($payments)) {
+        $applied = loan_apply_to_schedule($conn, $loanId, (float) $p['amount']);
+
+        $totalPaid = round($totalPaid + (float) $p['amount'], 2);
+        $principalRepaid = round($principalRepaid + $applied['principal'], 2);
+        $interestPaid = round($interestPaid + $applied['interest'], 2);
+        $remainingBalance = max(0, round($totalPayable - $totalPaid, 2));
+
+        $upd = mysqli_prepare($conn, 'UPDATE loan_payments SET principal_portion = ?, interest_portion = ?, remaining_balance = ? WHERE id = ?');
+        mysqli_stmt_bind_param($upd, 'dddi', $applied['principal'], $applied['interest'], $remainingBalance, $p['id']);
+        mysqli_stmt_execute($upd);
+    }
+
+    return [
+        'total_paid' => $totalPaid,
+        'principal_repaid' => $principalRepaid,
+        'interest_paid' => $interestPaid,
+    ];
+}

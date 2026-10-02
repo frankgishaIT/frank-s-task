@@ -189,7 +189,7 @@ $statusColor = ['Paid' => '#0FA968', 'Partial' => '#E68A1C'];
 </div>
 
 <div class="footnote">
-  This schedule shows the repayment plan for the loan from <?= $h($loan['lender']); ?>, with payments recorded up to <?= date('d M Y'); ?>. Rise Beyond Limits!
+  This schedule shows the repayment plan for the loan from <?= $h($loan['lender']); ?>, with payments recorded up to <?= date('d M Y'); ?>.<br><br>Rise Beyond Limits!
 </div>
 <?php
 $bodyHtml = ob_get_clean();

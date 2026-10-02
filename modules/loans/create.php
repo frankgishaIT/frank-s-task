@@ -9,11 +9,14 @@ require_role(['Admin']);
 // Supplier-only), so that's what's used below.
 $lenderList = business_parties_of_type($conn, 'Partner');
 
+$lenderTypes = ['Bank', 'Financial Institution', 'Company', 'Individual'];
+
 if (isset($_POST['save'])) {
     $lenderPartyId = filter_input(INPUT_POST, 'lender_party_id', FILTER_VALIDATE_INT) ?: null;
     $lender = '';
     foreach ($lenderList as $l) { if ((int) $l['id'] === $lenderPartyId) { $lender = $l['name']; break; } }
-    $loanType = trim($_POST['loan_type'] ?? '');
+    // Stored in the existing loans.loan_type column.
+    $loanType = trim($_POST['lender_type'] ?? '');
     $loanAmount = filter_input(INPUT_POST, 'loan_amount', FILTER_VALIDATE_FLOAT);
     $interestRate = filter_input(INPUT_POST, 'interest_rate', FILTER_VALIDATE_FLOAT);
     $startDate = $_POST['loan_start_date'] ?? '';
@@ -28,11 +31,11 @@ if (isset($_POST['save'])) {
     $validFrequencies = ['Weekly', 'Monthly', 'Quarterly', 'Annually'];
     $validStatuses = ['Active', 'Fully Paid', 'Defaulted', 'Cancelled'];
 
-    if ($lender === '' || $loanType === '') {
-        $error = 'Please provide the Lender and Loan Type.';
-    } elseif ($loanAmount === false || $loanAmount <= 0) {
+    if ($lender === '' || !in_array($loanType, $lenderTypes, true)) {
+        $error = 'Please provide the Lender and Lender Type.';
+    } elseif ($loanAmount === false || $loanAmount === null || $loanAmount <= 0) {
         $error = 'Please provide a valid Loan Amount.';
-    } elseif ($interestRate === false || $interestRate < 0) {
+    } elseif ($interestRate === false || $interestRate === null || $interestRate < 0) {
         $error = 'Please provide a valid Interest Rate (0 or more).';
     } elseif (!$validStartDate || $validStartDate->format('Y-m-d') !== $startDate) {
         $error = 'Please provide a valid Loan Start Date.';
@@ -55,9 +58,9 @@ if (isset($_POST['save'])) {
                  installment_amount, maturity_date, loan_purpose, collateral, status, created_by)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
             $placeholderMaturity = $startDate; // updated below once the schedule is generated
-           mysqli_stmt_bind_param($insertLoan, 'ssddsisdssssi',
-            $lender, $loanType, $loanAmount, $interestRate, $startDate, $repaymentPeriod, $repaymentFrequency,
-            $fixedInstallment, $placeholderMaturity, $loanPurpose, $collateral, $status, $userId);
+            mysqli_stmt_bind_param($insertLoan, 'ssddsisdssssi',
+                $lender, $loanType, $loanAmount, $interestRate, $startDate, $repaymentPeriod, $repaymentFrequency,
+                $fixedInstallment, $placeholderMaturity, $loanPurpose, $collateral, $status, $userId);
             mysqli_stmt_execute($insertLoan);
             $loanId = mysqli_insert_id($conn);
 
@@ -71,10 +74,23 @@ if (isset($_POST['save'])) {
                 $schedule['installment_amount'], $schedule['maturity_date'], $loanId);
             mysqli_stmt_execute($updateLoan);
 
+            // The money received is Income; each repayment is posted later as an Expense.
+            $receivedDescription = 'Loan received from ' . $lender . ' (' . $loanType . ') — Principal RWF ' . number_format($loanAmount, 2);
+            $insertIncome = mysqli_prepare($conn, "INSERT INTO transactions
+                (category, transaction_type, amount, transaction_date, description, recorded_by, status)
+                VALUES ('Loan Received', 'Income', ?, ?, ?, ?, 'approved')");
+            mysqli_stmt_bind_param($insertIncome, 'dssi', $loanAmount, $startDate, $receivedDescription, $userId);
+            mysqli_stmt_execute($insertIncome);
+            $receivedTxId = mysqli_insert_id($conn);
+
+            $linkTx = mysqli_prepare($conn, 'UPDATE loans SET received_transaction_id = ? WHERE id = ?');
+            mysqli_stmt_bind_param($linkTx, 'ii', $receivedTxId, $loanId);
+            mysqli_stmt_execute($linkTx);
+
             mysqli_commit($conn);
             header('Location: view.php?id=' . $loanId . '&success=' . urlencode('Loan created and repayment schedule generated.'));
             exit;
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             mysqli_rollback($conn);
             $error = 'Unable to save the loan. Please try again.';
         }
@@ -115,7 +131,7 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
                 <div class="col-md-6">
                     <label class="form-label small fw-semibold text-muted">Lender Type</label>
                     <select name="lender_type" class="form-select rm-input" required>
-                        <?php foreach (['Bank', 'Financial Institution', 'Company', 'Individual'] as $t) { ?>
+                        <?php foreach ($lenderTypes as $t) { ?>
                         <option value="<?= $t; ?>" <?= ($_POST['lender_type'] ?? '') === $t ? 'selected' : ''; ?>><?= $t; ?></option>
                         <?php } ?>
                     </select>

@@ -17,6 +17,10 @@ $paymentCount = (int) mysqli_fetch_row(mysqli_query($conn, 'SELECT COUNT(*) FROM
 
 $lenderList = business_parties_of_type($conn, 'Partner');
 
+$lenderTypes = ['Bank', 'Financial Institution', 'Company', 'Individual'];
+// Older loans may still hold the previous wording ("Bank Loan"); map it to the new value.
+$currentLenderType = preg_replace('/ Loan$/', '', (string) $loan['loan_type']);
+
 // Form value helper: posted value after a failed save, otherwise the stored value.
 $val = function ($key, $default = '') { return $_POST[$key] ?? $default; };
 
@@ -26,7 +30,8 @@ if (isset($_POST['save'])) {
     if ($lenderPartyId !== null) {
         foreach ($lenderList as $l) { if ((int) $l['id'] === $lenderPartyId) { $lender = $l['name']; break; } }
     }
-    $loanType = trim($_POST['loan_type'] ?? '');
+    // Stored in the existing loans.loan_type column.
+    $loanType = trim($_POST['lender_type'] ?? '');
     $loanAmount = filter_input(INPUT_POST, 'loan_amount', FILTER_VALIDATE_FLOAT);
     $interestRate = filter_input(INPUT_POST, 'interest_rate', FILTER_VALIDATE_FLOAT);
     $startDate = $_POST['loan_start_date'] ?? '';
@@ -41,8 +46,8 @@ if (isset($_POST['save'])) {
     $validFrequencies = ['Weekly', 'Monthly', 'Quarterly', 'Annually'];
     $validStatuses = ['Active', 'Fully Paid', 'Defaulted', 'Cancelled'];
 
-    if ($lender === '' || $loanType === '') {
-        $error = 'Please provide the Lender and Loan Type.';
+    if ($lender === '' || !in_array($loanType, $lenderTypes, true)) {
+        $error = 'Please provide the Lender and Lender Type.';
     } elseif ($loanAmount === false || $loanAmount === null || $loanAmount <= 0) {
         $error = 'Please provide a valid Loan Amount.';
     } elseif ($interestRate === false || $interestRate === null || $interestRate < 0) {
@@ -63,11 +68,11 @@ if (isset($_POST['save'])) {
         mysqli_begin_transaction($conn);
         try {
             // Lock the loan row so a payment can't be recorded mid-edit.
-           $lock = mysqli_prepare($conn, 'SELECT id FROM loans WHERE id = ? FOR UPDATE');
-           mysqli_stmt_bind_param($lock, 'i', $loanId);
-           mysqli_stmt_execute($lock);
-           mysqli_stmt_get_result($lock); // read the result so the connection is free for the next command
-           mysqli_stmt_close($lock);
+            $lock = mysqli_prepare($conn, 'SELECT id FROM loans WHERE id = ? FOR UPDATE');
+            mysqli_stmt_bind_param($lock, 'i', $loanId);
+            mysqli_stmt_execute($lock);
+            mysqli_stmt_get_result($lock); // read the result so the connection is free for the next command
+            mysqli_stmt_close($lock);
 
             // 1. Rebuild the schedule from the corrected terms (nothing paid yet).
             $del = mysqli_prepare($conn, 'DELETE FROM loan_schedule WHERE loan_id = ?');
@@ -115,6 +120,28 @@ if (isset($_POST['save'])) {
                 $schedule['installment_amount'], $schedule['maturity_date'],
                 $replay['total_paid'], $replay['principal_repaid'], $replay['interest_paid'], $loanId);
             mysqli_stmt_execute($updTotals);
+
+            // 6. Keep the 'Loan Received' income entry in step with the corrected loan.
+            $receivedDescription = 'Loan received from ' . $lender . ' (' . $loanType . ') — Principal RWF ' . number_format($loanAmount, 2);
+            if (!empty($loan['received_transaction_id'])) {
+                $receivedTxId = (int) $loan['received_transaction_id'];
+                $updIncome = mysqli_prepare($conn, 'UPDATE transactions SET amount = ?, transaction_date = ?, description = ? WHERE id = ?');
+                mysqli_stmt_bind_param($updIncome, 'dssi', $loanAmount, $startDate, $receivedDescription, $receivedTxId);
+                mysqli_stmt_execute($updIncome);
+            } else {
+                // Older loan created before this feature: post its income now.
+                $editorId = current_user_id();
+                $insIncome = mysqli_prepare($conn, "INSERT INTO transactions
+                    (category, transaction_type, amount, transaction_date, description, recorded_by, status)
+                    VALUES ('Loan Received', 'Income', ?, ?, ?, ?, 'approved')");
+                mysqli_stmt_bind_param($insIncome, 'dssi', $loanAmount, $startDate, $receivedDescription, $editorId);
+                mysqli_stmt_execute($insIncome);
+                $newTxId = mysqli_insert_id($conn);
+
+                $linkTx = mysqli_prepare($conn, 'UPDATE loans SET received_transaction_id = ? WHERE id = ?');
+                mysqli_stmt_bind_param($linkTx, 'ii', $newTxId, $loanId);
+                mysqli_stmt_execute($linkTx);
+            }
 
             mysqli_commit($conn);
             header('Location: view.php?id=' . $loanId . '&success=' . urlencode('Loan updated and repayment schedule recalculated.'));
@@ -165,10 +192,10 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
                     </select>
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label small fw-semibold text-muted">Loan Type</label>
-                    <select name="loan_type" class="form-select rm-input" required>
-                        <?php foreach (['Bank Loan', 'Financial Institution Loan', 'Company Loan', 'Individual Loan'] as $t) { ?>
-                        <option value="<?= $t; ?>" <?= $val('loan_type', $loan['loan_type']) === $t ? 'selected' : ''; ?>><?= $t; ?></option>
+                    <label class="form-label small fw-semibold text-muted">Lender Type</label>
+                    <select name="lender_type" class="form-select rm-input" required>
+                        <?php foreach ($lenderTypes as $t) { ?>
+                        <option value="<?= $t; ?>" <?= $val('lender_type', $currentLenderType) === $t ? 'selected' : ''; ?>><?= $t; ?></option>
                         <?php } ?>
                     </select>
                 </div>

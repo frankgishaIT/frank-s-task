@@ -135,7 +135,10 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
     <div class="col-lg-7">
         <div class="card border-0 shadow-sm">
             <div class="card-body">
-                <h5 class="mb-3">Value &amp; Depreciation History</h5>
+               <div class="d-flex justify-content-between align-items-center mb-3">
+               <h5 class="mb-0">Value &amp; Depreciation History</h5>
+              <a href="depreciation_pdf.php?id=<?= (int) $asset['id']; ?>" target="_blank" class="rm-btn rm-btn-light rm-btn-sm"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
+                 </div>
                 <div style="max-height:460px; overflow-y:auto;">
                 <table>
                     <thead><tr><th>Date</th><th>Daily Depreciation</th><th>Value</th></tr></thead>

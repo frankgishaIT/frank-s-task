@@ -75,7 +75,12 @@ function sale_pending_reason_badges($row) {
 
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2>Sales</h2>
-    <a href="create.php" class="btn btn-primary">+ New Sale</a>
+    <div class="d-flex gap-2">
+        <?php if (in_array($role, ['Admin', 'Manager'], true)) { ?>
+            <a href="reports.php" class="btn btn-outline-primary">Reports</a>
+        <?php } ?>
+        <a href="create.php" class="btn btn-primary">+ New Sale</a>
+    </div>
 </div>
 
 <?php if ($pending && mysqli_num_rows($pending) > 0) { ?>

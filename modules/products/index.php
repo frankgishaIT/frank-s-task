@@ -43,6 +43,9 @@ $totalStockValue = (float) $stockValueRow['stock_value'];
         <a href="../purchase_orders/index.php" class="rm-btn rm-btn-secondary"><i class="bi bi-clipboard-check me-1"></i>Purchase Orders</a>
         <?php } ?>
         <?php if ($isAdmin) { ?>
+        <?php if (in_array(current_user_role(), ['Admin', 'Manager'], true)) { ?>
+    <a href="reports.php" class="btn btn-outline-primary">Reports</a>
+<?php } ?>
         <a href="create.php" class="rm-btn rm-btn-primary">+ Add Item or Service</a>
         <?php } ?>
     </div>

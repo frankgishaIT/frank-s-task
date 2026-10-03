@@ -51,11 +51,16 @@ if (isset($_POST['save'])) {
         $quantity = filter_input(INPUT_POST, 'quantity', FILTER_VALIDATE_INT);
         $quantity = $quantity === false || $quantity === null ? 0 : $quantity;
         $unit = in_array($_POST['unit'] ?? '', ['Pieces', 'Boxes'], true) ? $_POST['unit'] : 'Pieces';
+        // Reorder level: the Low Stock Items report flags this item once its
+        // quantity reaches or falls below this number. 0 = not monitored.
+        $reorderLevel = filter_input(INPUT_POST, 'reorder_level', FILTER_VALIDATE_INT);
+        $reorderLevel = ($reorderLevel === false || $reorderLevel === null || $reorderLevel < 0) ? 0 : $reorderLevel;
     } else {
         // Services carry no cost price, stock, or unit of measure.
         $buying_price = 0.00;
         $quantity = 0;
         $unit = 'Pieces';
+        $reorderLevel = 0;
     }
 
     if ($product_name === '' || $selling_price === false || ($itemType === 'Item' && $buying_price === false)) {
@@ -66,9 +71,9 @@ if (isset($_POST['save'])) {
         mysqli_begin_transaction($conn);
 
         $statement = mysqli_prepare($conn, "INSERT INTO products
-            (item_type, product_name, product_code, description, buying_price, selling_price, quantity, unit)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-        mysqli_stmt_bind_param($statement, 'ssssddis', $itemType, $product_name, $product_code, $description, $buying_price, $selling_price, $quantity, $unit);
+            (item_type, product_name, product_code, description, buying_price, selling_price, quantity, unit, reorder_level)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        mysqli_stmt_bind_param($statement, 'ssssddisi', $itemType, $product_name, $product_code, $description, $buying_price, $selling_price, $quantity, $unit, $reorderLevel);
         mysqli_stmt_execute($statement);
         $newProductId = mysqli_insert_id($conn);
 
@@ -152,6 +157,11 @@ include '../../includes/sidebar.php';
                             <option value="Boxes">Boxes</option>
                         </select>
                         <div class="form-text">Always your smallest sellable unit — e.g. one Piece, not a whole Box.</div>
+                    </div>
+                    <div class="col-3 item-only-field">
+                        <label class="form-label small fw-semibold text-muted">Reorder Level</label>
+                        <input type="number" step="1" min="0" name="reorder_level" class="form-control rm-input" value="0">
+                        <div class="form-text">Low-stock alert at or below this quantity. 0 = no alert.</div>
                     </div>
                 </div>
 

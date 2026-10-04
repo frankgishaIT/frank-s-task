@@ -1,12 +1,12 @@
 <?php
 session_start();
 require '../../config/db.php';
+require '../../includes/stock_rules.php'; // one shared low-stock rule (per-product reorder level, else the default)
 $pageSearchScope = 'products'; // tells the topbar search what module we're in
 require '../../includes/pagination.php';
 include '../../includes/header.php';
 include '../../includes/sidebar.php';
 
-const LOW_STOCK_THRESHOLD = 5;
 const PER_PAGE = 10;
 
 $isAdmin = isset($_SESSION['user_role']) && strtolower($_SESSION['user_role']) === 'admin';
@@ -19,7 +19,7 @@ $currentPage = min($currentPage, $totalPages);
 $offset = ($currentPage - 1) * PER_PAGE;
 
 $result = mysqli_query($conn, "SELECT * FROM products ORDER BY item_type, product_name ASC LIMIT " . PER_PAGE . " OFFSET " . $offset);
-$lowStockCount = mysqli_fetch_assoc(mysqli_query($conn, "SELECT COUNT(*) AS c FROM products WHERE item_type = 'Item' AND quantity <= " . LOW_STOCK_THRESHOLD . " AND is_active = 1"))['c'];
+$lowStockCount = mysqli_fetch_assoc(mysqli_query($conn, "SELECT COUNT(*) AS c FROM products WHERE item_type = 'Item' AND quantity <= " . stock_reorder_level_sql() . " AND is_active = 1"))['c'];
 
 // Total value of current stock, based on Buying Price. Only active, physical
 // Items carry stock — Services are excluded since they have no quantity.
@@ -41,11 +41,9 @@ $totalStockValue = (float) $stockValueRow['stock_value'];
         <a href="../purchases/index.php" class="rm-btn rm-btn-secondary"><i class="bi bi-clock-history me-1"></i>Purchase History</a>
         <?php if ($canManagePurchaseOrders) { ?>
         <a href="../purchase_orders/index.php" class="rm-btn rm-btn-secondary"><i class="bi bi-clipboard-check me-1"></i>Purchase Orders</a>
+        <a href="reports.php" class="rm-btn rm-btn-secondary"><i class="bi bi-bar-chart-fill me-1"></i>Reports</a>
         <?php } ?>
         <?php if ($isAdmin) { ?>
-        <?php if (in_array(current_user_role(), ['Admin', 'Manager'], true)) { ?>
-    <a href="reports.php" class="btn btn-outline-primary">Reports</a>
-<?php } ?>
         <a href="create.php" class="rm-btn rm-btn-primary">+ Add Item or Service</a>
         <?php } ?>
     </div>
@@ -65,7 +63,7 @@ $totalStockValue = (float) $stockValueRow['stock_value'];
 
 <?php if ($lowStockCount > 0) { ?>
 <div class="alert alert-warning d-flex align-items-center justify-content-between gap-2 mb-4" style="border-radius:10px;">
-    <span><i class="bi bi-exclamation-triangle-fill"></i> <?= (int) $lowStockCount; ?> item<?= $lowStockCount == 1 ? '' : 's'; ?> at or below <?= LOW_STOCK_THRESHOLD; ?> units in stock.</span>
+    <span><i class="bi bi-exclamation-triangle-fill"></i> <?= (int) $lowStockCount; ?> item<?= $lowStockCount == 1 ? '' : 's'; ?> at or below <?= $lowStockCount == 1 ? 'its' : 'their'; ?> reorder level.</span>
     <?php if ($canManagePurchaseOrders) { ?>
     <a href="../purchase_orders/create.php?from_low_stock=1" class="rm-btn rm-btn-warning rm-btn-sm">Create Purchase Order</a>
     <?php } ?>
@@ -96,7 +94,8 @@ $totalStockValue = (float) $stockValueRow['stock_value'];
             <span class="text-muted">—</span>
         <?php } else { ?>
             <?= (int) $row['quantity']; ?>
-            <?php if ($row['quantity'] <= LOW_STOCK_THRESHOLD) { ?>
+            <?php $rowLevel = (int) ($row['reorder_level'] ?? 0) > 0 ? (int) $row['reorder_level'] : STOCK_DEFAULT_REORDER_LEVEL; ?>
+            <?php if ($row['quantity'] <= $rowLevel) { ?>
                 <span class="badge bg-warning text-dark ms-1">Low Stock</span>
             <?php } ?>
         <?php } ?>

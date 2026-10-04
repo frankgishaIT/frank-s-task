@@ -52,7 +52,7 @@ if (isset($_POST['save'])) {
         $quantity = $quantity === false || $quantity === null ? 0 : $quantity;
         $unit = in_array($_POST['unit'] ?? '', ['Pieces', 'Boxes'], true) ? $_POST['unit'] : 'Pieces';
         // Reorder level: the Low Stock Items report flags this item once its
-        // quantity reaches or falls below this number. 0 = not monitored.
+        // quantity reaches or falls below this number. 0 = use the system default (see includes/stock_rules.php).
         $reorderLevel = filter_input(INPUT_POST, 'reorder_level', FILTER_VALIDATE_INT);
         $reorderLevel = ($reorderLevel === false || $reorderLevel === null || $reorderLevel < 0) ? 0 : $reorderLevel;
     } else {
@@ -161,7 +161,7 @@ include '../../includes/sidebar.php';
                     <div class="col-3 item-only-field">
                         <label class="form-label small fw-semibold text-muted">Reorder Level</label>
                         <input type="number" step="1" min="0" name="reorder_level" class="form-control rm-input" value="0">
-                        <div class="form-text">Low-stock alert at or below this quantity. 0 = no alert.</div>
+                        <div class="form-text">Low-stock alert at or below this quantity. Leave 0 to use the default.</div>
                     </div>
                 </div>
 

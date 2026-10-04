@@ -7,25 +7,15 @@
  * Rules used throughout:
  *  - A "recorded sale" has status Paid, Partially Paid or Credit.
  *    Pending Discount Approval and Cancelled sales are not counted as sales.
- *  - Cost = quantity x pack_size x products.buying_price (buying_price is per base unit).
+ *  - Product cost = quantity x pack_size x products.buying_price (buying_price is per base unit).
+ *  - Service cost = (1 - SALES_SERVICE_PROFIT_RATE) of the service's net amount, i.e. services earn 80% profit.
  *  - Profit = net sales amount - cost. Discounts are spread across lines pro rata.
  *  - Employee = the user in sales.recorded_by.
  */
 require_once __DIR__ . '/report_helpers.php';
+require_once __DIR__ . '/profit_rules.php'; // service profit rate and line profit/cost SQL
 
 const SALES_REPORT_VALID_STATUS = "('Paid','Partially Paid','Credit')";
-
-function sales_report_types(): array
-{
-    return [
-        'product'       => 'Sales by Product/Service',
-        'customer'      => 'Sales by Customer',
-        'employee'      => 'Sales by Employee',
-        'payment'       => 'Sales by Payment Method',
-        'cancellations' => 'Sales Cancellations',
-        'summary'       => 'Sales Summary',
-    ];
-}
 
 /** Prepared-statement helper: returns all rows as associative arrays. */
 function sales_report_fetch(mysqli $conn, string $sql, string $types = '', array $params = []): array
@@ -74,7 +64,7 @@ function sales_report_sale_rows(mysqli $conn, string $where, string $types, arra
                             ORDER BY si.id SEPARATOR '; ')
                       FROM sale_items si LEFT JOIN products p ON p.id = si.product_id
                      WHERE si.sale_id = s.id) AS items,
-                   (SELECT COALESCE(SUM(si.quantity * COALESCE(NULLIF(si.pack_size, 0), 1) * COALESCE(p.buying_price, 0)), 0)
+                   (SELECT COALESCE(SUM(" . sales_report_line_cost_sql('s', 'si', 'p') . "), 0)
                       FROM sale_items si LEFT JOIN products p ON p.id = si.product_id
                      WHERE si.sale_id = s.id) AS cost
               FROM sales s
@@ -128,7 +118,7 @@ function sales_report_build(mysqli $conn, string $type, array $req): array
         'error' => null, 'type' => $type, 'title' => $types[$type], 'filters' => [],
         'summary' => [], 'columns' => [], 'rows' => [], 'totals' => [], 'totals_label' => 'TOTAL',
         'footer_summary' => [],
-        'notes' => ['Amounts are net of discounts. Profit = net sales amount minus purchase cost (buying price x quantity).'],
+        'notes' => ['Amounts are net of discounts. Product profit = net amount minus purchase cost (buying price x quantity). Service profit = ' . round(SALES_SERVICE_PROFIT_RATE * 100) . '% of the net service amount.'],
     ];
 
     switch ($type) {
@@ -148,9 +138,8 @@ function sales_report_build(mysqli $conn, string $type, array $req): array
                 "SELECT s.id AS sale_id, s.sale_date, c.name AS customer, u.names AS employee,
                         si.quantity, si.pack_label,
                         si.quantity * COALESCE(NULLIF(si.pack_size, 0), 1) AS base_qty,
-                        si.line_total - IF(s.subtotal > 0, s.discount_amount * si.line_total / s.subtotal, 0) AS amount,
-                        si.line_total - IF(s.subtotal > 0, s.discount_amount * si.line_total / s.subtotal, 0)
-                          - si.quantity * COALESCE(NULLIF(si.pack_size, 0), 1) * COALESCE(p.buying_price, 0) AS profit
+                        " . sales_report_line_net_sql() . " AS amount,
+                        " . sales_report_line_net_sql() . " - " . sales_report_line_cost_sql() . " AS profit
                    FROM sale_items si
                    JOIN sales s ON s.id = si.sale_id
                    JOIN products p ON p.id = si.product_id

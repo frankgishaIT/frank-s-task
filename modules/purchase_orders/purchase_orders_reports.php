@@ -2,26 +2,26 @@
 require '../../config/db.php';
 require '../../includes/report_helpers.php';
 require '../../includes/report_screen.php';
-require '../../includes/stock_report_queries.php';
+require '../../includes/purchase_report_queries.php';
 require_role(['Admin', 'Manager']);
 
-$types   = stock_report_types();
-$lookups = stock_report_lookups($conn);
+$types   = purchase_report_types();
+$lookups = purchase_report_lookups($conn);
 $sel     = (string) ($_GET['report'] ?? '');
-$report  = $sel !== '' ? stock_report_build($conn, $sel, $_GET) : null;
+$report  = $sel !== '' ? purchase_report_build($conn, $sel, $_GET) : null;
 $period  = (string) ($_GET['period'] ?? 'this_month');
+$status  = (string) ($_GET['status'] ?? 'default');
 $query   = http_build_query(array_filter([
-    'report' => $sel, 'status' => $_GET['status'] ?? '', 'level' => $_GET['level'] ?? '',
-    'period' => $_GET['period'] ?? '', 'from' => $_GET['from'] ?? '', 'to' => $_GET['to'] ?? '',
-    'supplier' => $_GET['supplier'] ?? '', 'product_id' => $_GET['product_id'] ?? '',
+    'report' => $sel, 'period' => $period, 'from' => $_GET['from'] ?? '', 'to' => $_GET['to'] ?? '',
+    'supplier' => $_GET['supplier'] ?? '', 'status' => $_GET['status'] ?? '',
 ], function ($v) { return $v !== ''; }));
 
 include '../../includes/header.php'; include '../../includes/sidebar.php';
 ?>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h2>Stock &amp; Inventory Reports</h2>
-    <a href="index.php" class="rm-btn rm-btn-light">Back to Offerings</a>
+    <h2>Purchase Order Reports</h2>
+    <a href="index.php" class="rm-btn rm-btn-light">Back to Purchase Orders</a>
 </div>
 
 <div class="card border-0 shadow-sm mb-4">
@@ -37,25 +37,7 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
                         <?php } ?>
                     </select>
                 </div>
-
-                <div class="col-md-3 filter-box" data-for="current low_stock">
-                    <label class="form-label small fw-semibold text-muted">Products</label>
-                    <select name="status" class="form-select rm-input">
-                        <?php foreach (['active' => 'Active only', 'inactive' => 'Inactive only', 'all' => 'Active and inactive'] as $k => $l) { ?>
-                            <option value="<?= $k; ?>" <?= ($_GET['status'] ?? 'active') === $k ? 'selected' : ''; ?>><?= $l; ?></option>
-                        <?php } ?>
-                    </select>
-                </div>
-                <div class="col-md-3 filter-box" data-for="current">
-                    <label class="form-label small fw-semibold text-muted">Stock Level</label>
-                    <select name="level" class="form-select rm-input">
-                        <?php foreach (['all' => 'All', 'in_stock' => 'In stock only', 'out_of_stock' => 'Out of stock only'] as $k => $l) { ?>
-                            <option value="<?= $k; ?>" <?= ($_GET['level'] ?? 'all') === $k ? 'selected' : ''; ?>><?= $l; ?></option>
-                        <?php } ?>
-                    </select>
-                </div>
-
-                <div class="col-md-3 filter-box" data-for="purchasing">
+                <div class="col-md-3">
                     <label class="form-label small fw-semibold text-muted">Period</label>
                     <select name="period" id="periodSelect" class="form-select rm-input">
                         <?php foreach (report_period_options() as $k => $label) { ?>
@@ -63,15 +45,16 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
                         <?php } ?>
                     </select>
                 </div>
-                <div class="col-md-2 filter-box custom-dates" data-for="purchasing">
+                <div class="col-md-2 custom-dates">
                     <label class="form-label small fw-semibold text-muted">From</label>
                     <input type="date" name="from" class="form-control rm-input" value="<?= report_e($_GET['from'] ?? ''); ?>">
                 </div>
-                <div class="col-md-2 filter-box custom-dates" data-for="purchasing">
+                <div class="col-md-2 custom-dates">
                     <label class="form-label small fw-semibold text-muted">To</label>
                     <input type="date" name="to" class="form-control rm-input" value="<?= report_e($_GET['to'] ?? ''); ?>">
                 </div>
-                <div class="col-md-3 filter-box" data-for="purchasing">
+
+                <div class="col-md-4 filter-box" data-for="summary ordered cancelled supplier">
                     <label class="form-label small fw-semibold text-muted">Supplier</label>
                     <select name="supplier" class="form-select rm-input">
                         <option value="">All suppliers</option>
@@ -80,14 +63,17 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
                         <?php } ?>
                     </select>
                 </div>
-                <div class="col-md-3 filter-box" data-for="purchasing">
-                    <label class="form-label small fw-semibold text-muted">Product</label>
-                    <select name="product_id" class="form-select rm-input">
-                        <option value="">All products</option>
-                        <?php foreach ($lookups['products'] as $pr) { ?>
-                            <option value="<?= (int) $pr['id']; ?>" <?= (string) ($_GET['product_id'] ?? '') === (string) $pr['id'] ? 'selected' : ''; ?>><?= report_e($pr['product_name'] . ' (' . $pr['product_code'] . ')'); ?></option>
+                <div class="col-md-3 filter-box" data-for="summary supplier">
+                    <label class="form-label small fw-semibold text-muted">Status</label>
+                    <select name="status" class="form-select rm-input">
+                        <option value="">Default</option>
+                        <option value="all" <?= $status === 'all' ? 'selected' : ''; ?>>All statuses</option>
+                        <option value="active" <?= $status === 'active' ? 'selected' : ''; ?>>Ordered and Received</option>
+                        <?php foreach ($lookups['statuses'] as $s) { ?>
+                            <option value="<?= report_e($s); ?>" <?= $status === $s ? 'selected' : ''; ?>><?= report_e($s); ?></option>
                         <?php } ?>
                     </select>
+                    <div class="form-text">Default: all for Summary, Ordered and Received for Purchase by Supplier.</div>
                 </div>
             </div>
             <div class="mt-4">
@@ -97,16 +83,17 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
     </div>
 </div>
 
-<?php if ($report) { report_screen_result($report, 'report_pdf.php', $query); } ?>
+<?php if ($report) { report_screen_result($report, 'purchase_orders_report_pdf.php', $query); } ?>
 
 <script>
 const reportSelect = document.getElementById('reportSelect');
 const periodSelect = document.getElementById('periodSelect');
 function syncFilters() {
     document.querySelectorAll('.filter-box').forEach(function (el) {
-        var show = el.getAttribute('data-for').split(' ').indexOf(reportSelect.value) !== -1;
-        if (show && el.classList.contains('custom-dates')) { show = periodSelect.value === 'custom'; }
-        el.style.display = show ? '' : 'none';
+        el.style.display = el.getAttribute('data-for').split(' ').indexOf(reportSelect.value) !== -1 ? '' : 'none';
+    });
+    document.querySelectorAll('.custom-dates').forEach(function (el) {
+        el.style.display = periodSelect.value === 'custom' ? '' : 'none';
     });
 }
 reportSelect.addEventListener('change', syncFilters);

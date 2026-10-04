@@ -41,10 +41,15 @@ if (isset($_POST['update'])) {
         $quantity = filter_input(INPUT_POST, 'quantity', FILTER_VALIDATE_INT);
         $quantity = $quantity === false || $quantity === null ? 0 : $quantity;
         $unit = in_array($_POST['unit'] ?? '', ['Pieces', 'Boxes'], true) ? $_POST['unit'] : 'Pieces';
+        // Reorder level: the item counts as low stock once its quantity reaches or falls
+        // below this number. 0 = use the system default (see includes/stock_rules.php).
+        $reorderLevel = filter_input(INPUT_POST, 'reorder_level', FILTER_VALIDATE_INT);
+        $reorderLevel = ($reorderLevel === false || $reorderLevel === null || $reorderLevel < 0) ? 0 : $reorderLevel;
     } else {
         $buying_price = 0.00;
         $quantity = 0;
         $unit = 'Pieces';
+        $reorderLevel = 0;
     }
 
     if ($product_name === '' || $selling_price === false || ($itemType === 'Item' && $buying_price === false)) {
@@ -54,8 +59,8 @@ if (isset($_POST['update'])) {
 
         $statement = mysqli_prepare($conn, "UPDATE products SET
             item_type = ?, product_name = ?, description = ?,
-            buying_price = ?, selling_price = ?, quantity = ?, unit = ? WHERE id = ?");
-        mysqli_stmt_bind_param($statement, 'sssddisi', $itemType, $product_name, $description, $buying_price, $selling_price, $quantity, $unit, $id);
+            buying_price = ?, selling_price = ?, quantity = ?, unit = ?, reorder_level = ? WHERE id = ?");
+        mysqli_stmt_bind_param($statement, 'sssddisii', $itemType, $product_name, $description, $buying_price, $selling_price, $quantity, $unit, $reorderLevel, $id);
         mysqli_stmt_execute($statement);
 
         // Product Units — replace the full set with whatever was submitted,
@@ -76,7 +81,7 @@ if (isset($_POST['update'])) {
         header("Location: index.php?success=" . $itemType . " updated successfully.");
         exit;
     }
-    $product = array_merge($product, ['item_type' => $itemType, 'product_name' => $product_name, 'product_code' => $product_code, 'description' => $description, 'buying_price' => $buying_price, 'selling_price' => $selling_price, 'quantity' => $quantity, 'unit' => $unit]);
+    $product = array_merge($product, ['item_type' => $itemType, 'product_name' => $product_name, 'product_code' => $product_code, 'description' => $description, 'buying_price' => $buying_price, 'selling_price' => $selling_price, 'quantity' => $quantity, 'unit' => $unit, 'reorder_level' => $reorderLevel]);
 }
 
 $modal_icon = 'bi-box-seam';
@@ -142,6 +147,11 @@ include '../../includes/sidebar.php';
                             <option value="Boxes" <?= ($product['unit'] ?? '') === 'Boxes' ? 'selected' : ''; ?>>Boxes</option>
                         </select>
                         <div class="form-text">Always your smallest sellable unit — e.g. one Piece, not a whole Box.</div>
+                    </div>
+                    <div class="col-3 item-only-field">
+                        <label class="form-label small fw-semibold text-muted">Reorder Level</label>
+                        <input type="number" step="1" min="0" name="reorder_level" class="form-control rm-input" value="<?= htmlspecialchars((string) ($product['reorder_level'] ?? 0), ENT_QUOTES, 'UTF-8'); ?>">
+                        <div class="form-text">Low-stock alert at or below this quantity. Leave 0 to use the default.</div>
                     </div>
                 </div>
 

@@ -3,12 +3,13 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 require '../../config/db.php';
+require '../../includes/profit_rules.php'; // shared profit rules (same as the Sales reports)
 $pageSearchScope = 'transactions'; // tells the topbar search what module we're in
 require '../../includes/pagination.php';
 include '../../includes/header.php'; include '../../includes/sidebar.php';
 const PER_PAGE = 10;
 $isAdmin = isset($_SESSION['user_role']) && strtolower($_SESSION['user_role']) === 'admin';
-$currentUserId = $_SESSION['user_id'] ?? 0;
+$currentUserId = (int) ($_SESSION['user_id'] ?? 0);
 
 // Visibility: admin sees every transaction. Non-admin sees approved ones
 // plus their own pending/rejected submissions.
@@ -26,12 +27,16 @@ $offset = ($currentPage - 1) * PER_PAGE;
 $summary = mysqli_query($conn, "SELECT COALESCE(SUM(CASE WHEN transaction_type = 'Income' THEN amount ELSE 0 END), 0) AS income, COALESCE(SUM(CASE WHEN transaction_type = 'Expense' THEN amount ELSE 0 END), 0) AS expense FROM transactions WHERE status = 'approved'");
 $totals = mysqli_fetch_assoc($summary);
 
-// Profit Overview: Product profit = Selling - Buying price per unit sold;
-// Service profit = 80% of amount paid. Only counts sales that actually
-// completed (excludes still-pending and cancelled sales).
+// Profit Overview — uses the shared rules in includes/profit_rules.php so it
+// always agrees with the Sales reports:
+//   Product profit = net amount (after discount) - buying price x base units sold
+//   Service profit = SALES_SERVICE_PROFIT_RATE (80%) of the net amount
+// Only counts sales that actually completed (excludes pending and cancelled).
+$lineNet  = sales_report_line_net_sql('sales', 'sale_items');
+$lineCost = sales_report_line_cost_sql('sales', 'sale_items', 'products');
 $profitSummary = mysqli_query($conn, "SELECT
-        COALESCE(SUM(CASE WHEN sale_items.item_type = 'Product' THEN (sale_items.unit_price - COALESCE(products.buying_price, 0)) * sale_items.quantity ELSE 0 END), 0) AS product_profit,
-        COALESCE(SUM(CASE WHEN sale_items.item_type = 'Service' THEN 0.8 * sale_items.line_total ELSE 0 END), 0) AS service_profit
+        COALESCE(SUM(CASE WHEN sale_items.item_type = 'Product' THEN $lineNet - $lineCost ELSE 0 END), 0) AS product_profit,
+        COALESCE(SUM(CASE WHEN sale_items.item_type = 'Service' THEN $lineNet - $lineCost ELSE 0 END), 0) AS service_profit
     FROM sale_items
     JOIN sales ON sale_items.sale_id = sales.id
     LEFT JOIN products ON sale_items.product_id = products.id
@@ -60,7 +65,11 @@ $statusBadge = [
     <button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><?php } ?>
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2>Transactions Management</h2>
-    <div class="d-flex gap-2"><a href="create.php" class="rm-btn rm-btn-primary">+ Add Transaction</a></div></div>
+    <div class="d-flex gap-2">
+        <?php if (in_array(current_user_role(), ['Admin', 'Manager'], true)) { ?>
+            <a href="transactions_reports.php" class="btn btn-outline-primary">Reports</a>
+        <?php } ?>
+        <a href="create.php" class="rm-btn rm-btn-primary">+ Add Transaction</a></div></div>
 <div class="row mb-4">
     <div class="col-md-4">
         <div class="card border-success">
@@ -104,7 +113,7 @@ $statusBadge = [
             <div class="card-body">
                 <small class="text-muted">Service Profit</small>
                 <h4 class="text-warning mb-0">RWF <?= number_format($serviceProfit, 2); ?></h4>
-                <small class="text-muted">80% of amount paid for services</small>
+                <small class="text-muted"><?= (int) round(SALES_SERVICE_PROFIT_RATE * 100); ?>% of the service amount (after discount)</small>
             </div>
         </div>
     </div>

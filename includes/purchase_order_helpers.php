@@ -3,6 +3,7 @@
  * Shared helpers for the Purchase Order sub-module (under RM Offerings).
  */
 require_once __DIR__ . '/stock_rules.php'; // single "low stock" rule (per-product reorder level, else the default)
+require_once __DIR__ . '/fund_helpers.php'; // RM Funds: purchases are paid from the RM Capital Fund
 
 const PO_LOW_STOCK_THRESHOLD = STOCK_DEFAULT_REORDER_LEVEL; // default level, used when a product has none of its own
 
@@ -36,6 +37,10 @@ function po_status_badge($status) {
  * no product data has to be re-entered manually. Posts ONE Expense
  * transaction for the whole PO (not one per line) so Transactions doesn't
  * get flooded with many rows for a single delivery.
+ *
+ * RM Funds: that Expense is paid from the RM Capital Fund. If the fund does
+ * not have enough money the whole receipt is cancelled (stock is not added)
+ * and the user is told why.
  *
  * Only 'Ordered' Purchase Orders can be received.
  */
@@ -93,15 +98,18 @@ function po_receive($conn, $poId, $userId) {
             $itemCount++;
         }
 
-        // Single Expense transaction for the whole PO — mirrors restock.php's
-        // pattern (status = 'approved', posted immediately, no approval needed).
-        $description = 'Purchase Order #' . $poId . ' received (' . $itemCount . ' item' . ($itemCount === 1 ? '' : 's') . ')'
-            . ($po['supplier'] ? ' from ' . $po['supplier'] : '');
-        $insertTransaction = mysqli_prepare($conn, "INSERT INTO transactions
-            (category, transaction_type, amount, transaction_date, description, recorded_by, status)
-            VALUES ('Purchase (Re-stock)', 'Expense', ?, ?, ?, ?, 'approved')");
-        mysqli_stmt_bind_param($insertTransaction, 'dssi', $po['total_amount'], $today, $description, $userId);
-        mysqli_stmt_execute($insertTransaction);
+        // Single Expense transaction for the whole PO, paid from the RM Capital Fund
+        // (posted immediately, no approval needed). fund_post_automatic_expense()
+        // checks the fund balance first and throws InsufficientFundException if
+        // there is not enough money, which cancels this whole receipt below.
+        if ((float) $po['total_amount'] > 0) {
+            $description = 'Purchase Order #' . $poId . ' received (' . $itemCount . ' item' . ($itemCount === 1 ? '' : 's') . ')'
+                . ($po['supplier'] ? ' from ' . $po['supplier'] : '');
+            fund_post_automatic_expense(
+                $conn, 'CAPITAL', 'Purchase (Re-stock)', (float) $po['total_amount'],
+                $today, $description, $userId ? (int) $userId : null
+            );
+        }
 
         $updatePo = mysqli_prepare($conn, "UPDATE purchase_orders SET status = 'Received', received_by = ?, received_at = NOW() WHERE id = ?");
         mysqli_stmt_bind_param($updatePo, 'ii', $userId, $poId);
@@ -109,6 +117,9 @@ function po_receive($conn, $poId, $userId) {
 
         mysqli_commit($conn);
         return ['ok' => true];
+    } catch (InsufficientFundException $e) {
+        mysqli_rollback($conn);
+        return ['ok' => false, 'error' => $e->getMessage()];
     } catch (Exception $e) {
         mysqli_rollback($conn);
         return ['ok' => false, 'error' => 'Unable to receive Purchase Order. Please try again.'];

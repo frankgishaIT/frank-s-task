@@ -1,6 +1,7 @@
 <?php
 require '../../config/db.php';
 require '../../includes/loan_helpers.php';
+require_once '../../includes/fund_helpers.php';
 require '../../includes/business_party_helpers.php';
 require_role(['Admin']);
 
@@ -74,21 +75,18 @@ if (isset($_POST['save'])) {
                 $schedule['installment_amount'], $schedule['maturity_date'], $loanId);
             mysqli_stmt_execute($updateLoan);
 
-            // The money received is Income; each repayment is posted later as an Expense.
-            $receivedDescription = 'Loan received from ' . $lender . ' (' . $loanType . ') — Principal RWF ' . number_format($loanAmount, 2);
-            $insertIncome = mysqli_prepare($conn, "INSERT INTO transactions
-                (category, transaction_type, amount, transaction_date, description, recorded_by, status)
-                VALUES ('Loan Received', 'Income', ?, ?, ?, ?, 'approved')");
-            mysqli_stmt_bind_param($insertIncome, 'dssi', $loanAmount, $startDate, $receivedDescription, $userId);
-            mysqli_stmt_execute($insertIncome);
-            $receivedTxId = mysqli_insert_id($conn);
-
-            $linkTx = mysqli_prepare($conn, 'UPDATE loans SET received_transaction_id = ? WHERE id = ?');
-            mysqli_stmt_bind_param($linkTx, 'ii', $receivedTxId, $loanId);
-            mysqli_stmt_execute($linkTx);
+            // RM Funds: borrowed money is NOT income and must not raise Net Profit.
+            // It goes into the RM Capital Fund as a "Business Loan" inflow, linked to
+            // this loan. Each repayment is posted later: interest from the Operating
+            // Fund, principal from the Capital Fund.
+            $receivedDescription = 'Loan #' . $loanId . ' received from ' . $lender . ' (' . $loanType . ') — Principal RWF ' . number_format($loanAmount, 2);
+            fund_record_capital_inflow(
+                $conn, (float) $loanAmount, $startDate, 'Business Loan',
+                $receivedDescription, $userId ? (int) $userId : null, 'loan', (int) $loanId
+            );
 
             mysqli_commit($conn);
-            header('Location: view.php?id=' . $loanId . '&success=' . urlencode('Loan created and repayment schedule generated.'));
+            header('Location: view.php?id=' . $loanId . '&success=' . urlencode('Loan created and repayment schedule generated. The money was added to the RM Capital Fund.'));
             exit;
         } catch (Throwable $e) {
             mysqli_rollback($conn);
@@ -142,6 +140,7 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
                 <div class="col-md-4">
                     <label class="form-label small fw-semibold text-muted">Loan Amount (RWF)</label>
                     <input type="number" name="loan_amount" class="form-control rm-input" min="0" step="0.01" value="<?= htmlspecialchars($_POST['loan_amount'] ?? '', ENT_QUOTES, 'UTF-8'); ?>" required>
+                    <div class="form-text">The money received is added to the RM Capital Fund (not counted as income).</div>
                 </div>
                 <div class="col-md-4">
                     <label class="form-label small fw-semibold text-muted">Interest Rate (% per year)</label>

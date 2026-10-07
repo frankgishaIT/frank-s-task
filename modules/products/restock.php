@@ -5,6 +5,7 @@ if (session_status() === PHP_SESSION_NONE) {
 require '../../config/db.php';
 require '../../includes/business_party_helpers.php';
 require '../../includes/product_unit_helpers.php';
+require_once '../../includes/fund_helpers.php';
 
 // Admin-only action
 $isAdmin = isset($_SESSION['user_role']) && strtolower($_SESSION['user_role']) === 'admin';
@@ -75,17 +76,20 @@ if (isset($_POST['save'])) {
             mysqli_stmt_bind_param($updateStock, 'ii', $baseQuantity, $id);
             mysqli_stmt_execute($updateStock);
 
-            // Auto-post the restock cost to Transactions as an Expense.
-            // No approval needed — mirrors how sales_finalize() posts income
-            // for Sales, so it appears in Transactions immediately.
+            // Auto-post the restock cost to Transactions as an Expense, paid from the
+            // RM Capital Fund (posted immediately, no approval needed).
+            // fund_post_automatic_expense() checks the fund balance first. If the
+            // Capital Fund cannot cover it, it throws and this whole restock is
+            // cancelled below (no stock is added).
             $packSummary = $packQuantity . ' x ' . $packLabel . ($packSize > 1 ? ' (' . $packSize . ' ' . ($product['unit'] ?: 'units') . ' each)' : '');
             $description = 'Restock: ' . $packSummary . ' of ' . $product['product_name']
                 . ($supplier !== '' ? ' from ' . $supplier : '');
-            $insertTransaction = mysqli_prepare($conn, "INSERT INTO transactions
-                (category, transaction_type, amount, transaction_date, description, recorded_by, status)
-                VALUES ('Purchase (Re-stock)', 'Expense', ?, ?, ?, ?, 'approved')");
-            mysqli_stmt_bind_param($insertTransaction, 'dssi', $totalCost, $purchaseDate, $description, $recordedBy);
-            mysqli_stmt_execute($insertTransaction);
+            if ($totalCost > 0) {
+                fund_post_automatic_expense(
+                    $conn, 'CAPITAL', 'Purchase (Re-stock)', (float) $totalCost,
+                    $purchaseDate, $description, $recordedBy ? (int) $recordedBy : null
+                );
+            }
 
             // Also record this restock as a Purchase Order (status: Received,
             // since the stock has already landed) so it gets the same
@@ -111,12 +115,19 @@ if (isset($_POST['save'])) {
             mysqli_commit($conn);
             header('Location: ../purchase_orders/view.php?id=' . $poId . '&success=' . urlencode($baseQuantity . ' ' . ($product['unit'] ?: 'units') . ' added to ' . $product['product_name'] . '.'));
             exit;
+        } catch (InsufficientFundException $e) {
+            mysqli_rollback($conn);
+            $error = $e->getMessage();
         } catch (Exception $e) {
             mysqli_rollback($conn);
             $error = 'Unable to record restock. Please try again.';
         }
     }
 }
+
+// Shown on the form so the admin can see if the purchase will be blocked.
+$capitalFund = fund_by_code($conn, 'CAPITAL');
+$capitalAvailable = $capitalFund ? fund_available($conn, (int) $capitalFund['id']) : null;
 
 include '../../includes/header.php';
 include '../../includes/sidebar.php';
@@ -146,6 +157,13 @@ $modal_subtitle = 'Add new stock and record the purchase.';
             <div class="alert alert-danger d-flex align-items-center gap-2 mb-3" style="border-radius:10px; border:none; background:var(--accent-red-bg); color:var(--accent-red); font-size:13px; padding:10px 14px;">
                 <i class="bi bi-exclamation-circle-fill"></i>
                 <?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?>
+            </div>
+            <?php } ?>
+
+            <?php if ($capitalAvailable !== null) { ?>
+            <div class="alert alert-info mb-3" style="border-radius:10px; border:none; font-size:13px; padding:10px 14px;">
+                <i class="bi bi-wallet2 me-1"></i>
+                Stock purchases are paid from the RM Capital Fund. Available now: <strong>RWF <?= number_format($capitalAvailable, 2); ?></strong>.
             </div>
             <?php } ?>
 

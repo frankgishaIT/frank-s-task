@@ -27,7 +27,7 @@ $transaction = mysqli_stmt_get_result($statement)->fetch_assoc();
 if ($transaction) {
     $adminId = $_SESSION['user_id'] ?? null;
 
-    $update = mysqli_prepare($conn, "UPDATE transactions SET status = 'rejected', approved_by = ?, approved_at = NOW(), rejection_reason = ? WHERE id = ?");
+   $update = mysqli_prepare($conn, "UPDATE transactions SET status = 'rejected', approved_by = ?, approved_at = NOW(), rejection_reason = ? WHERE id = ? AND status = 'pending'");
     mysqli_stmt_bind_param($update, 'isi', $adminId, $reason, $id);
     mysqli_stmt_execute($update);
 

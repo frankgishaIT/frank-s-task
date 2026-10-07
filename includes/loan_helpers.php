@@ -9,6 +9,11 @@
 // this keeps the module predictable (the schedule doesn't silently
 // reshuffle itself if a payment is late, early, or partial).
 
+// RM Funds: loan repayments are paid from two different funds.
+if (!function_exists('fund_post_automatic_expense')) {
+    require_once __DIR__ . '/fund_helpers.php';
+}
+
 function loan_periods_per_year($frequency) {
     switch ($frequency) {
         case 'Weekly': return 52;
@@ -101,6 +106,11 @@ function loan_generate_schedule($conn, $loanId, $principal, $annualRatePercent, 
 // to loan_payments (never edits/deletes earlier ones), and refreshes the
 // loan's running totals. Returns ['error' => '...'] on failure, or the
 // applied ['principal', 'interest', 'remaining_balance'] on success.
+//
+// RM Funds: the INTEREST part is paid from the RM Business Operating Fund and
+// the PRINCIPAL part from the RM Capital Fund. Both balances are checked
+// BEFORE anything is saved, so a repayment that the funds cannot cover
+// returns an error and changes nothing.
 function loan_record_payment($conn, $loanId, $paymentDate, $amount, $notes, $recordedBy) {
     if ($amount <= 0) {
         return ['error' => 'Payment amount must be greater than zero.'];
@@ -122,11 +132,13 @@ function loan_record_payment($conn, $loanId, $paymentDate, $amount, $notes, $rec
         return ['error' => 'Payment (' . number_format($amount, 2) . ') exceeds the outstanding balance (' . number_format($remainingOwed, 2) . ').'];
     }
 
+    // ---- Step 1: work out the split WITHOUT saving anything yet ----
     $scheduleResult = mysqli_query($conn, 'SELECT * FROM loan_schedule WHERE loan_id = ' . (int) $loanId . " AND status != 'Paid' ORDER BY installment_no ASC");
 
     $remaining = $amount;
     $principalApplied = 0;
     $interestApplied = 0;
+    $rowUpdates = [];
 
     while ($remaining > 0.001 && ($row = mysqli_fetch_assoc($scheduleResult))) {
         $outstandingOnRow = round((float) $row['amount_due'] - (float) $row['paid_amount'], 2);
@@ -135,8 +147,6 @@ function loan_record_payment($conn, $loanId, $paymentDate, $amount, $notes, $rec
         $applyToRow = min($remaining, $outstandingOnRow);
 
         // Within this installment, satisfy remaining interest first, then principal.
-        $interestRemainingOnRow = max(0, round((float) $row['interest_due'] - max(0, (float) $row['paid_amount'] - (float) $row['principal_due']), 2));
-        // Simpler and equally correct: interest already covered = min(paid_amount, interest_due)
         $interestAlreadyCovered = min((float) $row['paid_amount'], (float) $row['interest_due']);
         $interestRemainingOnRow = round((float) $row['interest_due'] - $interestAlreadyCovered, 2);
 
@@ -146,13 +156,32 @@ function loan_record_payment($conn, $loanId, $paymentDate, $amount, $notes, $rec
         $newPaidAmount = round((float) $row['paid_amount'] + $applyToRow, 2);
         $newStatus = ($newPaidAmount >= (float) $row['amount_due'] - 0.01) ? 'Paid' : 'Partial';
 
-        $updateRow = mysqli_prepare($conn, 'UPDATE loan_schedule SET paid_amount = ?, status = ? WHERE id = ?');
-        mysqli_stmt_bind_param($updateRow, 'dsi', $newPaidAmount, $newStatus, $row['id']);
-        mysqli_stmt_execute($updateRow);
+        $rowUpdates[] = [$newPaidAmount, $newStatus, (int) $row['id']];
 
         $principalApplied = round($principalApplied + $principalPortionHere, 2);
         $interestApplied = round($interestApplied + $interestPortionHere, 2);
         $remaining = round($remaining - $applyToRow, 2);
+    }
+
+    // ---- Step 2: check the funds BEFORE saving anything ----
+    // Interest -> RM Business Operating Fund. Principal -> RM Capital Fund.
+    $operatingFund = fund_by_code($conn, 'OPERATING');
+    $capitalFund = fund_by_code($conn, 'CAPITAL');
+    if (!$operatingFund || !$capitalFund) {
+        return ['error' => 'RM Funds are not set up. Please run the Fund migration first.'];
+    }
+    if ($interestApplied > 0.001 && $interestApplied > fund_available($conn, (int) $operatingFund['id']) + 0.001) {
+        return ['error' => fund_insufficient_message($operatingFund['name']) . ' (Loan interest: RWF ' . number_format($interestApplied, 2) . ')'];
+    }
+    if ($principalApplied > 0.001 && $principalApplied > fund_available($conn, (int) $capitalFund['id']) + 0.001) {
+        return ['error' => fund_insufficient_message($capitalFund['name']) . ' (Loan principal: RWF ' . number_format($principalApplied, 2) . ')'];
+    }
+
+    // ---- Step 3: save everything ----
+    foreach ($rowUpdates as $u) {
+        $updateRow = mysqli_prepare($conn, 'UPDATE loan_schedule SET paid_amount = ?, status = ? WHERE id = ?');
+        mysqli_stmt_bind_param($updateRow, 'dsi', $u[0], $u[1], $u[2]);
+        mysqli_stmt_execute($updateRow);
     }
 
     $newTotalPaid = round((float) $loan['total_paid'] + $amount, 2);
@@ -172,15 +201,31 @@ function loan_record_payment($conn, $loanId, $paymentDate, $amount, $notes, $rec
     mysqli_stmt_bind_param($insertPayment, 'isdddssi', $loanId, $paymentDate, $amount, $principalApplied, $interestApplied, $newOutstanding, $notes, $recordedBy);
     mysqli_stmt_execute($insertPayment);
 
-    // Auto-post to Transactions as an Expense — no approval needed, mirrors
-    // how Restock posts its cost immediately.
+    // Auto-post to Transactions as Expenses — no approval needed, mirrors
+    // how Restock posts its cost immediately. The repayment is posted as up to
+    // two Expenses: the interest part from the Operating Fund and the
+    // principal part from the Capital Fund. Each one is checked again under a
+    // lock and written to the fund ledger by fund_post_automatic_expense().
     $lenderLabel = $loan['lender'] . ' (' . $loan['loan_type'] . ')';
-    $description = 'Loan repayment to ' . $lenderLabel . ' — Principal RWF ' . number_format($principalApplied, 2) . ', Interest RWF ' . number_format($interestApplied, 2);
-    $insertTransaction = mysqli_prepare($conn, "INSERT INTO transactions
-        (category, transaction_type, amount, transaction_date, description, recorded_by, status)
-        VALUES ('Loan Repayment', 'Expense', ?, ?, ?, ?, 'approved')");
-    mysqli_stmt_bind_param($insertTransaction, 'dssi', $amount, $paymentDate, $description, $recordedBy);
-    mysqli_stmt_execute($insertTransaction);
+    $userId = $recordedBy ? (int) $recordedBy : null;
+
+    try {
+        if ($interestApplied > 0.001) {
+            fund_post_automatic_expense(
+                $conn, 'OPERATING', 'Loan Repayment', (float) $interestApplied, $paymentDate,
+                'Loan interest paid to ' . $lenderLabel . ' — RWF ' . number_format($interestApplied, 2), $userId
+            );
+        }
+        if ($principalApplied > 0.001) {
+            fund_post_automatic_expense(
+                $conn, 'CAPITAL', 'Loan Repayment', (float) $principalApplied, $paymentDate,
+                'Loan principal repaid to ' . $lenderLabel . ' — RWF ' . number_format($principalApplied, 2), $userId
+            );
+        }
+    } catch (InsufficientFundException $e) {
+        // Only reached if another user spent the money in the last moment.
+        return ['error' => $e->getMessage()];
+    }
 
     return [
         'principal' => $principalApplied,

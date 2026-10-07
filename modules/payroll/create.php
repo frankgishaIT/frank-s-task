@@ -1,6 +1,7 @@
 <?php
 require '../../config/db.php';
 require '../../includes/notification_helper.php';
+require '../../includes/fund_helpers.php';
 require_role(['Admin']);
 
 const WORKING_HOURS_PER_DAY = 8;
@@ -156,20 +157,20 @@ if (isset($_POST['save'])) {
                 );
                 mysqli_stmt_execute($statement);
 
-                // Auto-post the payment to Transactions as an Expense — only for
-                // 'Paid' runs, since a Draft hasn't actually paid anyone yet.
-                // No approval needed — mirrors how sales_finalize() posts income
-                // for Sales, so it appears in Transactions immediately.
-                if ($status === 'Paid') {
+                // Paid payroll is an automatic Expense paid from the RM Business
+                // Operating Fund. The helper checks the fund balance first and
+                // throws InsufficientFundException if there is not enough money,
+                // which cancels the whole payroll run below.
+                // A Draft hasn't paid anyone yet, so it does not touch the fund.
+                if ($status === 'Paid' && $netSalary > 0) {
                     $adminId = $_SESSION['user_id'] ?? null;
                     $paidDate = date('Y-m-d');
                     $description = 'Payroll: ' . $employeeName . ' (' . date('F Y', strtotime($periodDate)) . ')';
 
-                    $insertTransaction = mysqli_prepare($conn, "INSERT INTO transactions
-                        (category, transaction_type, amount, transaction_date, description, recorded_by, status)
-                        VALUES ('Payroll', 'Expense', ?, ?, ?, ?, 'approved')");
-                    mysqli_stmt_bind_param($insertTransaction, 'dssi', $netSalary, $paidDate, $description, $adminId);
-                    mysqli_stmt_execute($insertTransaction);
+                    fund_post_automatic_expense(
+                        $conn, 'OPERATING', 'Payroll', (float) $netSalary,
+                        $paidDate, $description, $adminId ? (int) $adminId : null
+                    );
                 }
 
                 mysqli_commit($conn);
@@ -187,6 +188,9 @@ if (isset($_POST['save'])) {
 
                 header('Location: index.php?success=Payroll generated successfully.');
                 exit;
+            } catch (InsufficientFundException $e) {
+                mysqli_rollback($conn);
+                $error = $e->getMessage() . ' You can save this payroll as a Draft instead.';
             } catch (Exception $e) {
                 mysqli_rollback($conn);
                 $error = 'Unable to generate payroll. Please try again.';
@@ -195,6 +199,10 @@ if (isset($_POST['save'])) {
         }
     }
 }
+
+// Shown on the form so the admin can see if a Paid run will be blocked.
+$operatingFund = fund_by_code($conn, 'OPERATING');
+$operatingAvailable = $operatingFund ? fund_available($conn, (int) $operatingFund['id']) : null;
 
 include '../../includes/header.php';
 include '../../includes/sidebar.php';
@@ -276,6 +284,9 @@ $modal_subtitle = 'Basic salary, attendance, and task performance are calculated
                         <option value="Draft">Draft</option>
                         <option value="Paid">Paid</option>
                     </select>
+                    <?php if ($operatingAvailable !== null) { ?>
+                    <small class="text-muted">"Paid" is taken from the RM Business Operating Fund. Available now: <strong>RWF <?= number_format($operatingAvailable, 2); ?></strong>.</small>
+                    <?php } ?>
                 </div>
 
                 <p class="text-muted mb-4">

@@ -1,6 +1,7 @@
 <?php
 require '../../config/db.php';
 require '../../includes/loan_helpers.php';
+require_once '../../includes/fund_helpers.php';
 require '../../includes/business_party_helpers.php';
 require_role(['Admin']);
 
@@ -121,32 +122,64 @@ if (isset($_POST['save'])) {
                 $replay['total_paid'], $replay['principal_repaid'], $replay['interest_paid'], $loanId);
             mysqli_stmt_execute($updTotals);
 
-            // 6. Keep the 'Loan Received' income entry in step with the corrected loan.
-            $receivedDescription = 'Loan received from ' . $lender . ' (' . $loanType . ') — Principal RWF ' . number_format($loanAmount, 2);
-            if (!empty($loan['received_transaction_id'])) {
+            // 6. RM Funds: keep the money recorded in the RM Capital Fund in step with
+            // the corrected loan amount. (Borrowed money is a Capital Fund inflow, not income.)
+            $editorId = current_user_id();
+            $editorId = $editorId ? (int) $editorId : null;
+
+            $refStmt = mysqli_prepare($conn, "SELECT COUNT(*) AS n,
+                    COALESCE(SUM(CASE WHEN direction = 'IN' THEN amount ELSE -amount END), 0) AS recorded
+                FROM fund_movements
+                WHERE ref_type = 'loan' AND ref_id = ? AND movement_type IN ('CAPITAL_INFLOW', 'ADJUSTMENT')");
+            mysqli_stmt_bind_param($refStmt, 'i', $loanId);
+            mysqli_stmt_execute($refStmt);
+            $ref = mysqli_fetch_assoc(mysqli_stmt_get_result($refStmt));
+
+            if ((int) $ref['n'] > 0) {
+                // Loan whose money went into the Capital Fund: add or take back the difference.
+                $diff = round($loanAmount - (float) $ref['recorded'], 2);
+                if ($diff > 0.001) {
+                    fund_record_capital_inflow(
+                        $conn, $diff, $startDate, 'Business Loan',
+                        'Loan #' . $loanId . ' amount increased to RWF ' . number_format($loanAmount, 2) . ' — ' . $lender,
+                        $editorId, 'loan', (int) $loanId
+                    );
+                } elseif ($diff < -0.001) {
+                    $takeBack = round(-$diff, 2);
+                    $capitalFund = fund_by_code($conn, 'CAPITAL');
+                    if (!$capitalFund) {
+                        throw new RuntimeException('RM Capital Fund was not found.');
+                    }
+                    fund_lock($conn, (int) $capitalFund['id']);
+                    $capitalAvailable = fund_available($conn, (int) $capitalFund['id']);
+                    if ($takeBack > $capitalAvailable + 0.001) {
+                        throw new InsufficientFundException(
+                            'The loan amount cannot be reduced by RWF ' . number_format($takeBack, 2)
+                            . ' because the RM Capital Fund only has RWF ' . number_format($capitalAvailable, 2) . ' available.'
+                        );
+                    }
+                    fund_record_capital_adjustment_out(
+                        $conn, $takeBack, $startDate, 'Business Loan',
+                        'Loan #' . $loanId . ' amount reduced to RWF ' . number_format($loanAmount, 2) . ' — ' . $lender,
+                        $editorId, 'loan', (int) $loanId
+                    );
+                }
+            } elseif (!empty($loan['received_transaction_id'])) {
+                // Older loan created before RM Funds: its original "Loan Received" entry
+                // is kept in step as before. It never went into the Capital Fund.
+                $receivedDescription = 'Loan received from ' . $lender . ' (' . $loanType . ') — Principal RWF ' . number_format($loanAmount, 2);
                 $receivedTxId = (int) $loan['received_transaction_id'];
                 $updIncome = mysqli_prepare($conn, 'UPDATE transactions SET amount = ?, transaction_date = ?, description = ? WHERE id = ?');
                 mysqli_stmt_bind_param($updIncome, 'dssi', $loanAmount, $startDate, $receivedDescription, $receivedTxId);
                 mysqli_stmt_execute($updIncome);
-            } else {
-                // Older loan created before this feature: post its income now.
-                $editorId = current_user_id();
-                $insIncome = mysqli_prepare($conn, "INSERT INTO transactions
-                    (category, transaction_type, amount, transaction_date, description, recorded_by, status)
-                    VALUES ('Loan Received', 'Income', ?, ?, ?, ?, 'approved')");
-                mysqli_stmt_bind_param($insIncome, 'dssi', $loanAmount, $startDate, $receivedDescription, $editorId);
-                mysqli_stmt_execute($insIncome);
-                $newTxId = mysqli_insert_id($conn);
-
-                $linkTx = mysqli_prepare($conn, 'UPDATE loans SET received_transaction_id = ? WHERE id = ?');
-                mysqli_stmt_bind_param($linkTx, 'ii', $newTxId, $loanId);
-                mysqli_stmt_execute($linkTx);
             }
+            // (An older loan with neither is left alone: nothing was ever recorded for it.)
 
             mysqli_commit($conn);
             header('Location: view.php?id=' . $loanId . '&success=' . urlencode('Loan updated and repayment schedule recalculated.'));
             exit;
         } catch (RuntimeException $e) {
+            // Also catches InsufficientFundException, which extends RuntimeException.
             mysqli_rollback($conn);
             $error = $e->getMessage();
         } catch (Throwable $e) {
@@ -205,6 +238,7 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
                 <div class="col-md-4">
                     <label class="form-label small fw-semibold text-muted">Loan Amount (RWF)</label>
                     <input type="number" name="loan_amount" class="form-control rm-input" min="0" step="0.01" value="<?= htmlspecialchars((string) $val('loan_amount', $loan['loan_amount']), ENT_QUOTES, 'UTF-8'); ?>" required>
+                    <div class="form-text">Changing the amount also adjusts the money recorded in the RM Capital Fund.</div>
                 </div>
                 <div class="col-md-4">
                     <label class="form-label small fw-semibold text-muted">Interest Rate (% per year)</label>

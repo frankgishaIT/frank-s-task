@@ -5,10 +5,13 @@ if (session_status() === PHP_SESSION_NONE) {
 require '../../config/db.php';
 require '../../includes/notification_helper.php';
 require '../../includes/business_party_helpers.php';
+require '../../includes/fund_helpers.php';
 
 $isAdmin = isset($_SESSION['user_role']) && strtolower($_SESSION['user_role']) === 'admin';
 $payeeList = business_parties_of_type($conn, 'Payee');
 $partnerList = business_parties_of_type($conn, 'Partner');
+$fundList = funds_all($conn);
+$categoryList = fund_expense_categories();
 
 if (isset($_POST['save'])) {
     $category = $_POST['category'] ?? '';
@@ -17,39 +20,75 @@ if (isset($_POST['save'])) {
     $transactionDate = $_POST['transaction_date'] ?? '';
     $description = trim($_POST['description'] ?? '');
     $partyId = filter_input(INPUT_POST, 'party_id', FILTER_VALIDATE_INT) ?: null;
+    $fundId = filter_input(INPUT_POST, 'fund_id', FILTER_VALIDATE_INT) ?: null;
+    $expenseCategory = trim($_POST['expense_category'] ?? '');
     $recordedBy = $_SESSION['user_id'] ?? null;
     $validDate = DateTime::createFromFormat('Y-m-d', $transactionDate);
 
     if (!in_array($category, ['Product', 'Service'], true) || !in_array($type, ['Income', 'Expense'], true) || $amount === false || $amount <= 0 || !$validDate || $validDate->format('Y-m-d') !== $transactionDate) {
         $error = 'Please provide a valid category, type, amount, and date.';
+    } elseif ($type === 'Expense' && (!$fundId || !fund_get($conn, $fundId))) {
+        $error = 'Please select the Fund this expense will be paid from.';
+    } elseif ($type === 'Expense' && $expenseCategory !== '' && !in_array($expenseCategory, $categoryList, true)) {
+        $error = 'Invalid expense category.';
     } else {
+        if ($type === 'Income') { $fundId = null; $expenseCategory = null; }
+        if ($expenseCategory === '') { $expenseCategory = null; }
+
         // Income is always auto-approved. Expenses need admin approval
-// unless the person recording it is already an admin.
-$status = ($isAdmin || $type === 'Income') ? 'approved' : 'pending';
+        // unless the person recording it is already an admin.
+        $status = ($isAdmin || $type === 'Income') ? 'approved' : 'pending';
 
-        $statement = mysqli_prepare($conn, 'INSERT INTO transactions (category, transaction_type, amount, transaction_date, description, recorded_by, status, party_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-        mysqli_stmt_bind_param($statement, 'ssdssisi', $category, $type, $amount, $transactionDate, $description, $recordedBy, $status, $partyId);
+        try {
+            mysqli_begin_transaction($conn);
 
-        if (mysqli_stmt_execute($statement)) {
-    if ($status === 'pending') {
-        $newId = mysqli_insert_id($conn);
-        $admins = mysqli_query($conn, "SELECT id FROM users WHERE role = 'admin' AND is_active = 1");
-        while ($admin = mysqli_fetch_assoc($admins)) {
-            notifyUser(
-                $conn,
-                $admin['id'],
-                'Transaction Approval Needed',
-                'A new ' . strtolower($type) . ' of RWF ' . number_format($amount, 2) . ' is awaiting your approval (#' . $newId . ').'
-            );
+            if ($type === 'Expense') {
+                fund_lock($conn, $fundId);
+                $fund = fund_get($conn, $fundId);
+                if ($amount > fund_available($conn, $fundId)) {
+                    throw new InsufficientFundException('No Available Money in ' . $fund['name'] . '.');
+                }
+            }
+
+            $statement = mysqli_prepare($conn, 'INSERT INTO transactions (category, transaction_type, amount, transaction_date, description, recorded_by, status, party_id, fund_id, expense_category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+            mysqli_stmt_bind_param($statement, 'ssdssisiis', $category, $type, $amount, $transactionDate, $description, $recordedBy, $status, $partyId, $fundId, $expenseCategory);
+            mysqli_stmt_execute($statement);
+            $newId = mysqli_insert_id($conn);
+
+            // Approved expense = money leaves the fund now.
+            // Pending expense = only reserved; the ledger entry is written on approval.
+            if ($type === 'Expense' && $status === 'approved') {
+                fund_record_movement(
+                    $conn, $fundId, 'EXPENSE', 'OUT', $amount,
+                    substr($transactionDate, 0, 7), $newId, $recordedBy,
+                    $expenseCategory ?: ($description ?: 'Expense')
+                );
+            }
+
+            mysqli_commit($conn);
+
+            if ($status === 'pending') {
+                $admins = mysqli_query($conn, "SELECT id FROM users WHERE role = 'admin' AND is_active = 1");
+                while ($admin = mysqli_fetch_assoc($admins)) {
+                    notifyUser(
+                        $conn,
+                        $admin['id'],
+                        'Transaction Approval Needed',
+                        'A new ' . strtolower($type) . ' of RWF ' . number_format($amount, 2) . ' is awaiting your approval (#' . $newId . ').'
+                    );
+                }
+                header('Location: index.php?success=Transaction submitted for admin approval.');
+            } else {
+                header('Location: index.php?success=Transaction recorded successfully.');
+            }
+            exit;
+        } catch (InsufficientFundException $e) {
+            mysqli_rollback($conn);
+            $error = $e->getMessage();
+        } catch (Throwable $e) {
+            mysqli_rollback($conn);
+            $error = 'Unable to save the transaction.';
         }
-        header('Location: index.php?success=Transaction submitted for admin approval.');
-    } else {
-        header('Location: index.php?success=Transaction recorded successfully.');
-    }
-    exit;
-
-        }
-        $error = 'Unable to save the transaction.';
     }
 }
 
@@ -101,6 +140,30 @@ $modal_subtitle = $isAdmin ? 'Record a new income or expense entry.' : 'Submit a
                     <div class="col-6">
                         <label class="form-label small fw-semibold text-muted">Amount (RWF)</label>
                         <input type="number" name="amount" class="form-control rm-input" min="0.01" step="0.01" value="<?= htmlspecialchars(isset($amount) && $amount !== false ? (string) $amount : '', ENT_QUOTES, 'UTF-8'); ?>" required>
+                    </div>
+                </div>
+
+                <!-- FUND SELECTION + EXPENSE CATEGORY (Expense only) -->
+                <div id="expenseFields">
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-muted">Select Fund</label>
+                        <select name="fund_id" id="fundSelect" class="form-select rm-input">
+                            <option value="">Select fund</option>
+                            <?php foreach ($fundList as $f) { ?>
+                            <option value="<?= (int) $f['id']; ?>" <?= (isset($fundId) && $fundId == $f['id']) ? 'selected' : ''; ?>><?= htmlspecialchars($f['name'], ENT_QUOTES, 'UTF-8'); ?></option>
+                            <?php } ?>
+                        </select>
+                        <div id="fundBalance" class="small fw-semibold mt-1"></div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-muted">Expense Category</label>
+                        <select name="expense_category" class="form-select rm-input">
+                            <option value="">Select category (optional)</option>
+                            <?php foreach ($categoryList as $c) { ?>
+                            <option value="<?= htmlspecialchars($c, ENT_QUOTES, 'UTF-8'); ?>" <?= (($expenseCategory ?? '') === $c) ? 'selected' : ''; ?>><?= htmlspecialchars($c, ENT_QUOTES, 'UTF-8'); ?></option>
+                            <?php } ?>
+                        </select>
                     </div>
                 </div>
 
@@ -160,6 +223,46 @@ $modal_subtitle = $isAdmin ? 'Record a new income or expense entry.' : 'Submit a
 
     typeSelect.addEventListener('change', filterParties);
     filterParties();
+
+    // ---- Fund selection ----
+    var expenseFields = document.getElementById('expenseFields');
+    var fundSelect = document.getElementById('fundSelect');
+    var fundBalance = document.getElementById('fundBalance');
+    var amountInput = document.querySelector('input[name="amount"]');
+    var currentBalance = null;
+
+    function toggleExpenseFields() {
+        var isExpense = typeSelect.value === 'Expense';
+        expenseFields.style.display = isExpense ? '' : 'none';
+        fundSelect.required = isExpense;
+        if (!isExpense) { fundSelect.value = ''; fundBalance.textContent = ''; currentBalance = null; }
+    }
+
+    function checkAmount() {
+        if (currentBalance === null || typeSelect.value !== 'Expense') { return; }
+        var amt = parseFloat(amountInput.value) || 0;
+        if (amt > currentBalance) {
+            fundBalance.style.color = 'var(--accent-red)';
+            fundBalance.textContent = 'No Available Money. Available Balance: ' + currentBalance.toLocaleString() + ' Frw';
+        } else {
+            fundBalance.style.color = '';
+            fundBalance.textContent = 'Available Balance: ' + currentBalance.toLocaleString() + ' Frw';
+        }
+    }
+
+    function loadFundBalance() {
+        if (!fundSelect.value) { fundBalance.textContent = ''; currentBalance = null; return; }
+        fetch('get_fund_balance.php?fund_id=' + encodeURIComponent(fundSelect.value))
+            .then(function (r) { return r.json(); })
+            .then(function (d) { currentBalance = d.balance; checkAmount(); })
+            .catch(function () { fundBalance.textContent = 'Could not load balance.'; });
+    }
+
+    typeSelect.addEventListener('change', toggleExpenseFields);
+    fundSelect.addEventListener('change', loadFundBalance);
+    amountInput.addEventListener('input', checkAmount);
+    toggleExpenseFields();
+    loadFundBalance();
 })();
 </script>
 

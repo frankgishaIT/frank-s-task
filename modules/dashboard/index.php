@@ -1,6 +1,7 @@
 <?php
 require '../../config/db.php';
 require '../../includes/notification_helper.php';
+require '../../includes/fund_helpers.php';
 include '../../includes/header.php';
 include '../../includes/sidebar.php';
 
@@ -20,6 +21,21 @@ $monthlyExpense = scalarQuery($conn, "SELECT COALESCE(SUM(amount), 0) FROM trans
 $totalProjects = scalarQuery($conn, "SELECT COUNT(*) FROM projects");
 $totalProducts = scalarQuery($conn, "SELECT COUNT(*) FROM products");
 $lowStockCount = scalarQuery($conn, "SELECT COUNT(*) FROM products WHERE item_type = 'Item' AND quantity <= 5 AND is_active = 1");
+
+// RM Business Operating Fund: shown to admins and managers only
+// (change this list if other roles should see it too).
+$canSeeFunds = in_array(strtolower($_SESSION['user_role'] ?? ''), ['admin', 'manager'], true);
+$operatingFund = null;
+$operatingAvailable = 0.0;
+$operatingPending = 0.0;
+if ($canSeeFunds) {
+    $fundRes = mysqli_query($conn, "SELECT id, name FROM funds WHERE code = 'OPERATING' AND is_active = 1 LIMIT 1");
+    $operatingFund = mysqli_fetch_assoc($fundRes) ?: null;
+    if ($operatingFund) {
+        $operatingAvailable = fund_available($conn, (int) $operatingFund['id']);
+        $operatingPending = fund_pending_total($conn, (int) $operatingFund['id']);
+    }
+}
 
 $topCategoriesResult = mysqli_query($conn, "SELECT transactions.category AS category_name, SUM(transactions.amount) AS total
     FROM transactions
@@ -80,6 +96,9 @@ $activityFeed = array_slice($activityFeed, 0, 6);
 .stat-icon{ width:44px; height:44px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; }
 .stat-label{ font-size:12px; color:var(--muted); margin-bottom:4px; }
 .stat-value{ font-size:22px; font-weight:700; color:var(--ink); margin:0; line-height:1.1; }
+.fund-card{ border-top:4px solid var(--accent-teal); }
+.fund-card .stat-value{ font-size:28px; }
+.fund-note{ font-size:12px; color:var(--muted); margin:4px 0 0; }
 .date-pill{ background:#fff; border:1px solid var(--border-soft); border-radius:12px; padding:8px 16px; font-size:13px; color:var(--ink); box-shadow:0 1px 2px rgba(16,24,40,.04); }
 .summary-figure h6{ font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; margin-bottom:2px; }
 .summary-figure .amt{ font-size:24px; font-weight:700; color:var(--ink); }
@@ -107,6 +126,31 @@ $activityFeed = array_slice($activityFeed, 0, 6);
         Today: <strong><?= date('d M Y'); ?></strong>
     </div>
 </div>
+
+<?php if ($operatingFund) { ?>
+<!-- RM Business Operating Fund -->
+<div class="row g-3 mb-3">
+    <div class="col-12">
+        <a href="../transactions/index.php" class="text-decoration-none">
+            <div class="rm-card stat-card fund-card">
+                <div>
+                    <p class="stat-label">RM Business Operating Fund</p>
+                    <p class="stat-value">RWF <?= number_format($operatingAvailable, 2); ?></p>
+                    <p class="fund-note">
+                        Available for normal business expenses
+                        <?php if ($operatingPending > 0) { ?>
+                        &middot; includes RWF <?= number_format($operatingPending, 2); ?> reserved for pending approval
+                        <?php } ?>
+                    </p>
+                </div>
+                <div class="stat-icon" style="background:var(--accent-teal-bg); color:var(--accent-teal)">
+                    <i class="bi bi-wallet2"></i>
+                </div>
+            </div>
+        </a>
+    </div>
+</div>
+<?php } ?>
 
 <div class="row g-3 mb-4">
     <div class="col-6 col-xl-4">

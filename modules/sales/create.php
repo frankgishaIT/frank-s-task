@@ -1,7 +1,7 @@
 <?php
 require '../../config/db.php';
 require '../../includes/notification_helper.php';
-require '../../includes/sales_helpers.php';
+require '../../includes/sales_helpers.php';   // also loads fund_helpers.php and profit_rules.php (require_once)
 require '../../includes/product_unit_helpers.php';
 require_role(['Admin', 'Manager', 'Employee']);
 
@@ -70,6 +70,11 @@ if (isset($_POST['save'])) {
         }
 
         $price = (float) ($unitPrices[$index] ?? 0);
+        // NEW: a negative price would create negative revenue and fake profit.
+        if ($price < 0) {
+            $lineError = 'The price of "' . $found['product_name'] . '" cannot be negative.';
+            break;
+        }
         $lineTotal = $qty * $price;
         $subtotal += $lineTotal;
 
@@ -95,8 +100,8 @@ if (isset($_POST['save'])) {
     } elseif ($discountAmount < 0 || $discountAmount > $subtotal) {
         $error = 'Discount cannot be negative or greater than the subtotal.';
     } else {
-                $totalAmount = $subtotal - $discountAmount;
-     if ($paymentMethod !== 'Credit' && $totalAmount > 0 && $amountPaidInput <= 0) {
+        $totalAmount = $subtotal - $discountAmount;
+        if ($paymentMethod !== 'Credit' && $totalAmount > 0 && $amountPaidInput <= 0) {
             $error = 'Please enter the Amount Paid. It can only be zero when the payment method is Credit.';
         } elseif ($amountPaidInput < 0 || $amountPaidInput > $totalAmount + 0.01) {
             $error = 'Amount paid cannot be negative or greater than the total.';
@@ -126,42 +131,62 @@ if (isset($_POST['save'])) {
             $discountApprovedAt = ($discountAmount > 0 && !$needsApproval) ? date('Y-m-d H:i:s') : null;
             $needsCreditApprovalInt = (int) $needsCreditApproval;
 
+            // CHANGED: the sale, its lines, the stock deduction, the income record and the fund
+            // allocation are saved together. If any step fails, NOTHING is saved and the user
+            // sees a clear message instead of a half-recorded sale.
+            $saved = false;
             mysqli_begin_transaction($conn);
+            try {
+                $saleStatement = mysqli_prepare($conn, 'INSERT INTO sales
+                    (customer_id, sale_date, subtotal, discount_amount, total_amount, amount_paid, payment_method, status, discount_requested_by, discount_approved_by, discount_approved_at, recorded_by, needs_credit_approval)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+                mysqli_stmt_bind_param($saleStatement, 'isddddssiisii',
+                    $customerId, $saleDate, $subtotal, $discountAmount, $totalAmount, $amountPaidInput, $paymentMethod, $status,
+                    $discountRequestedBy, $discountApprovedBy, $discountApprovedAt, $userId, $needsCreditApprovalInt);
+                mysqli_stmt_execute($saleStatement);
+                $saleId = mysqli_insert_id($conn);
 
-            $saleStatement = mysqli_prepare($conn, 'INSERT INTO sales
-                (customer_id, sale_date, subtotal, discount_amount, total_amount, amount_paid, payment_method, status, discount_requested_by, discount_approved_by, discount_approved_at, recorded_by, needs_credit_approval)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-            mysqli_stmt_bind_param($saleStatement, 'isddddssiisii',
-                $customerId, $saleDate, $subtotal, $discountAmount, $totalAmount, $amountPaidInput, $paymentMethod, $status,
-                $discountRequestedBy, $discountApprovedBy, $discountApprovedAt, $userId, $needsCreditApprovalInt);
-            mysqli_stmt_execute($saleStatement);
-            $saleId = mysqli_insert_id($conn);
-
-            foreach ($lineItems as $item) {
-                $itemStatement = mysqli_prepare($conn, 'INSERT INTO sale_items (sale_id, item_type, product_id, service_name, quantity, unit, unit_price, line_total, pack_label, pack_size) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-                mysqli_stmt_bind_param($itemStatement, 'isisssddsi', $saleId, $item['item_type'], $item['product_id'], $item['service_name'], $item['quantity'], $item['unit'], $item['unit_price'], $item['line_total'], $item['pack_label'], $item['pack_size']);
-                mysqli_stmt_execute($itemStatement);
-            }
-
-            if (!$needsApproval) {
-                sales_finalize($conn, $saleId);
-            }
-
-            mysqli_commit($conn);
-
-            $successMessage = 'Sale recorded successfully.';
-            if ($needsApproval) {
-                if ($needsDiscountApproval && $needsCreditApproval) {
-                    $successMessage = 'Sale saved. Waiting for manager approval — this customer has fewer than 500 Loyalty Points and a discount was requested.';
-                } elseif ($needsCreditApproval) {
-                    $successMessage = 'Sale saved. This customer has fewer than 500 Loyalty Points, so the Credit sale needs manager approval before it is completed.';
-                } else {
-                    $successMessage = 'Sale saved. Waiting for manager approval of the discount before invoicing.';
+                foreach ($lineItems as $item) {
+                    $itemStatement = mysqli_prepare($conn, 'INSERT INTO sale_items (sale_id, item_type, product_id, service_name, quantity, unit, unit_price, line_total, pack_label, pack_size) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+                    mysqli_stmt_bind_param($itemStatement, 'isisssddsi', $saleId, $item['item_type'], $item['product_id'], $item['service_name'], $item['quantity'], $item['unit'], $item['unit_price'], $item['line_total'], $item['pack_label'], $item['pack_size']);
+                    mysqli_stmt_execute($itemStatement);
                 }
+
+                if (!$needsApproval) {
+                    // CHANGED: passes the user. A fully paid sale allocates its profit to the Funds here.
+                    sales_finalize($conn, $saleId, $userId ? (int) $userId : null);
+                }
+
+                mysqli_commit($conn);
+                $saved = true;
+            } catch (mysqli_sql_exception $e) {
+                mysqli_rollback($conn);
+                error_log('new_sale failed: ' . $e->getMessage());
+                $error = 'Unable to record the sale. Nothing was saved. Please try again.';
+            } catch (RuntimeException $e) {
+                mysqli_rollback($conn);
+                $error = $e->getMessage() . ' Nothing was saved.';
+            } catch (Throwable $e) {
+                mysqli_rollback($conn);
+                error_log('new_sale failed: ' . $e->getMessage());
+                $error = 'Unable to record the sale. Nothing was saved. Please try again.';
             }
 
-            header('Location: invoice.php?id=' . $saleId . '&success=' . urlencode($successMessage));
-            exit;
+            if ($saved) {
+                $successMessage = 'Sale recorded successfully.';
+                if ($needsApproval) {
+                    if ($needsDiscountApproval && $needsCreditApproval) {
+                        $successMessage = 'Sale saved. Waiting for manager approval — this customer has fewer than 500 Loyalty Points and a discount was requested.';
+                    } elseif ($needsCreditApproval) {
+                        $successMessage = 'Sale saved. This customer has fewer than 500 Loyalty Points, so the Credit sale needs manager approval before it is completed.';
+                    } else {
+                        $successMessage = 'Sale saved. Waiting for manager approval of the discount before invoicing.';
+                    }
+                }
+
+                header('Location: invoice.php?id=' . $saleId . '&success=' . urlencode($successMessage));
+                exit;
+            }
         }
     }
 }

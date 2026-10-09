@@ -1,0 +1,2 @@
+ALTER TABLE sale_items
+  ADD COLUMN unit_cost DECIMAL(15,4) NULL;

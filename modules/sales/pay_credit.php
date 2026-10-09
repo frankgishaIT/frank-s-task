@@ -1,5 +1,6 @@
 <?php
 require '../../config/db.php';
+require_once '../../includes/sales_helpers.php';   // NEW: also loads fund_helpers.php and profit_rules.php
 
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
 if (!$id) { header('Location: index.php?success=Invalid sale requested.'); exit; }
@@ -10,41 +11,71 @@ mysqli_stmt_execute($statement);
 $sale = mysqli_fetch_assoc(mysqli_stmt_get_result($statement));
 if (!$sale) { header('Location: index.php?success=Sale not found.'); exit; }
 
-$balance = (float) $sale['total_amount'] - (float) $sale['amount_paid'];
+$balance = round((float) $sale['total_amount'] - (float) $sale['amount_paid'], 2);
+// NEW: only Credit and Partially Paid sales can receive a payment
+// (never Cancelled, Pending Discount Approval or already Paid).
+$canPay = in_array($sale['status'], ['Credit', 'Partially Paid'], true);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $payAmount = filter_input(INPUT_POST, 'amount', FILTER_VALIDATE_FLOAT);
+    $payAmount = $payAmount ? round($payAmount, 2) : $payAmount;
 
-    if (!$payAmount || $payAmount <= 0) {
+    if (!$canPay) {
+        $error = 'Payments can only be recorded on Credit or Partially Paid sales.';
+    } elseif (!$payAmount || $payAmount <= 0) {
         $error = 'Enter a valid payment amount.';
     } elseif ($payAmount > $balance) {
         $error = 'Payment cannot exceed the remaining balance of RWF ' . number_format($balance, 2) . '.';
     } else {
         mysqli_begin_transaction($conn);
         try {
+            // CHANGED: re-read the sale under a lock, so two payments at the same moment
+            // cannot both use the same old amount_paid or overpay the sale.
+            $lock = mysqli_prepare($conn, 'SELECT * FROM sales WHERE id = ? FOR UPDATE');
+            mysqli_stmt_bind_param($lock, 'i', $id);
+            mysqli_stmt_execute($lock);
+            $fresh = mysqli_fetch_assoc(mysqli_stmt_get_result($lock));
+
+            if (!$fresh || !in_array($fresh['status'], ['Credit', 'Partially Paid'], true)) {
+                throw new RuntimeException('This sale can no longer receive payments. Its status is now ' . ($fresh['status'] ?? 'unknown') . '.');
+            }
+            $freshBalance = round((float) $fresh['total_amount'] - (float) $fresh['amount_paid'], 2);
+            if ($payAmount > $freshBalance) {
+                throw new RuntimeException('Payment cannot exceed the remaining balance of RWF ' . number_format($freshBalance, 2) . '.');
+            }
+
             $insert = mysqli_prepare($conn, 'INSERT INTO sale_payments (sale_id, amount, recorded_by) VALUES (?, ?, ?)');
             $recordedBy = current_user_id();
             mysqli_stmt_bind_param($insert, 'idi', $id, $payAmount, $recordedBy);
             mysqli_stmt_execute($insert);
 
-            $newAmountPaid = (float) $sale['amount_paid'] + $payAmount;
-            if ($newAmountPaid >= (float) $sale['total_amount']) {
-                $newStatus = 'Paid';
-            } elseif ($newAmountPaid > 0) {
-                $newStatus = 'Partially Paid';
-            } else {
-                $newStatus = 'Credit';
-            }
+            $newAmountPaid = round((float) $fresh['amount_paid'] + $payAmount, 2);
+            // CHANGED: same status rule as the rest of the sales module.
+            $newStatus = sales_compute_status($newAmountPaid, (float) $fresh['total_amount']);
 
             $update = mysqli_prepare($conn, 'UPDATE sales SET amount_paid = ?, status = ? WHERE id = ?');
             mysqli_stmt_bind_param($update, 'dsi', $newAmountPaid, $newStatus, $id);
             mysqli_stmt_execute($update);
 
+            // NEW (spec section 1): the payment that completes the sale puts its profit
+            // into the four Funds immediately. Safe if called twice.
+            if ($newStatus === 'Paid') {
+                allocate_sale_profit($conn, $id, $recordedBy ? (int) $recordedBy : null);
+            }
+
             mysqli_commit($conn);
             header('Location: invoice.php?id=' . $id . '&success=Payment recorded successfully.');
             exit;
-        } catch (Exception $e) {
+        } catch (mysqli_sql_exception $e) {
             mysqli_rollback($conn);
+            error_log('record_payment failed for sale #' . $id . ': ' . $e->getMessage());
+            $error = 'Something went wrong. Please try again.';
+        } catch (RuntimeException $e) {
+            mysqli_rollback($conn);
+            $error = $e->getMessage();
+        } catch (Throwable $e) {
+            mysqli_rollback($conn);
+            error_log('record_payment failed for sale #' . $id . ': ' . $e->getMessage());
             $error = 'Something went wrong. Please try again.';
         }
     }
@@ -71,7 +102,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <div class="alert alert-danger"><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?></div>
             <?php } ?>
 
-            <?php if ($balance <= 0) { ?>
+            <?php if (!$canPay && $sale['status'] !== 'Paid') { ?>
+                <div class="alert alert-warning">Payments can only be recorded on Credit or Partially Paid sales. This sale is <strong><?= htmlspecialchars($sale['status'], ENT_QUOTES, 'UTF-8'); ?></strong>.</div>
+            <?php } elseif ($balance <= 0 || !$canPay) { ?>
                 <div class="alert alert-success">This sale is already fully paid.</div>
             <?php } else { ?>
             <form method="POST">

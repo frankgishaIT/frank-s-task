@@ -127,8 +127,7 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
 
 <?php if ($po['status'] === 'Received') { ?>
 <div class="alert alert-success mt-4" style="border-radius:10px;">
-    <i class="bi bi-check-circle-fill"></i> This Purchase Order has been received. Stock levels were updated automatically and an Expense transaction was posted to Transactions.
-</div>
+    <i class="bi bi-check-circle-fill"></i>This Purchase Order has been received. Stock levels were updated automatically and the amount was returned to the RM Capital Fund as stock value.
 <?php } ?>
 
 <?php include '../../includes/footer.php'; ?>

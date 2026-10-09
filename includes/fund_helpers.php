@@ -59,10 +59,16 @@ function fund_lock(mysqli $conn, int $fundId): void {
     }
 }
 
+// CHANGED: two optional parameters ($refType, $refId) link the movement to the record
+// that caused it (for example 'SALE' + sale id). Old callers keep working unchanged.
 function fund_record_movement(mysqli $conn, int $fundId, string $type, string $direction,
-        float $amount, string $period, ?int $txId, ?int $userId, string $desc, ?string $source = null): void {
-    $s = mysqli_prepare($conn, 'INSERT INTO fund_movements (fund_id, period, movement_type, direction, amount, transaction_id, source_type, description, created_by) VALUES (?,?,?,?,?,?,?,?,?)');
-    mysqli_stmt_bind_param($s, 'isssdissi', $fundId, $period, $type, $direction, $amount, $txId, $source, $desc, $userId);
+        float $amount, string $period, ?int $txId, ?int $userId, string $desc,
+        ?string $source = null, ?string $refType = null, ?int $refId = null): void {
+    if ($amount < 0) {
+        throw new InvalidArgumentException('A fund movement amount cannot be negative. Use the direction instead.');
+    }
+    $s = mysqli_prepare($conn, 'INSERT INTO fund_movements (fund_id, period, movement_type, direction, amount, transaction_id, source_type, description, created_by, ref_type, ref_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)');
+    mysqli_stmt_bind_param($s, 'isssdissisi', $fundId, $period, $type, $direction, $amount, $txId, $source, $desc, $userId, $refType, $refId);
     mysqli_stmt_execute($s);
 }
 
@@ -79,9 +85,13 @@ function fund_insufficient_message(string $fundName): string {
  * MUST be called inside mysqli_begin_transaction(). Throws InsufficientFundException
  * when the fund cannot cover the amount, so the caller can roll everything back.
  * Returns the new transaction id.
+ *
+ * CHANGED: optional $refType / $refId link the ledger entry to the source record
+ * (for example 'PO' + purchase order id) so it can be reversed later.
  */
 function fund_post_automatic_expense(mysqli $conn, string $fundCode, string $category, float $amount,
-        string $date, string $description, ?int $userId, ?string $expenseCategory = null): int {
+        string $date, string $description, ?int $userId, ?string $expenseCategory = null,
+        ?string $refType = null, ?int $refId = null): int {
     $fund = fund_by_code($conn, $fundCode);
     if (!$fund) {
         throw new RuntimeException('Fund ' . $fundCode . ' was not found.');
@@ -100,7 +110,7 @@ function fund_post_automatic_expense(mysqli $conn, string $fundCode, string $cat
     mysqli_stmt_execute($s);
     $txId = (int) mysqli_insert_id($conn);
 
-    fund_record_movement($conn, $fundId, 'EXPENSE', 'OUT', $amount, substr($date, 0, 7), $txId, $userId, $description);
+    fund_record_movement($conn, $fundId, 'EXPENSE', 'OUT', $amount, substr($date, 0, 7), $txId, $userId, $description, null, $refType, $refId);
     return $txId;
 }
 
@@ -146,4 +156,130 @@ function fund_record_capital_adjustment_out(mysqli $conn, float $amount, string 
         VALUES (?, ?, 'ADJUSTMENT', 'OUT', ?, ?, ?, ?, ?, ?)");
     mysqli_stmt_bind_param($s, 'isdssisi', $fundId, $period, $amount, $source, $description, $userId, $refType, $refId);
     mysqli_stmt_execute($s);
+}
+
+/* =====================================================================
+ * NEW: automatic profit allocation (spec sections 1 and 2)
+ * Requires the column fund_movements.reverses_movement_id (see migration).
+ * ===================================================================== */
+
+// Splits an amount by the fund percentages. Operating gets the remainder,
+// so the four parts always add up to exactly the amount (works for losses too).
+// Moved here from allocate_profit.php so every module uses the same rule.
+function build_allocation(array $funds, float $net): array {
+    $order = ['FUTURE_PLANS', 'EMERGENCY', 'TEAM_GROWTH', 'OPERATING'];
+    $byCode = [];
+    foreach ($funds as $f) {
+        if ($f['allocation_percent'] !== null) { $byCode[$f['code']] = $f; }
+    }
+    if (!isset($byCode['OPERATING'])) {
+        throw new RuntimeException('RM Business Operating Fund is missing or has no allocation percentage.');
+    }
+    $rows = [];
+    $sum = 0.0;
+    foreach ($order as $code) {
+        if ($code === 'OPERATING' || !isset($byCode[$code])) { continue; }
+        $amt = round($net * (float) $byCode[$code]['allocation_percent'] / 100, 2);
+        $rows[$code] = ['fund' => $byCode[$code], 'amount' => $amt];
+        $sum += $amt;
+    }
+    $rows['OPERATING'] = ['fund' => $byCode['OPERATING'], 'amount' => round($net - $sum, 2)];
+
+    $ordered = [];
+    foreach ($order as $code) {
+        if (isset($rows[$code])) { $ordered[] = $rows[$code]; }
+    }
+    return $ordered;
+}
+
+// Real profit of ONE sale, using the same rules as the monthly profit page.
+function sale_profit(mysqli $conn, int $saleId): float {
+    if (!function_exists('sales_report_line_net_sql') || !function_exists('sales_report_line_cost_sql')) {
+        throw new RuntimeException('includes/profit_rules.php must be loaded before calculating sale profit.');
+    }
+    $lineNet  = sales_report_line_net_sql('sales', 'sale_items');
+    $lineCost = sales_report_line_cost_sql('sales', 'sale_items', 'products');
+    $s = mysqli_prepare($conn, "SELECT COALESCE(SUM($lineNet - $lineCost), 0) AS profit
+        FROM sale_items
+        JOIN sales ON sale_items.sale_id = sales.id
+        LEFT JOIN products ON sale_items.product_id = products.id
+        WHERE sales.id = ?");
+    mysqli_stmt_bind_param($s, 'i', $saleId);
+    mysqli_stmt_execute($s);
+    return round((float) mysqli_fetch_assoc(mysqli_stmt_get_result($s))['profit'], 2);
+}
+
+// Section 1: call when a sale becomes paid/completed. Safe to call twice.
+// MUST be called inside mysqli_begin_transaction().
+function allocate_sale_profit(mysqli $conn, int $saleId, ?int $userId): void {
+    // Lock the sale row so two requests cannot allocate at the same time.
+    $lock = mysqli_prepare($conn, 'SELECT id FROM sales WHERE id = ? FOR UPDATE');
+    mysqli_stmt_bind_param($lock, 'i', $saleId);
+    mysqli_stmt_execute($lock);
+    mysqli_stmt_get_result($lock);
+
+    // Already allocated? Do nothing.
+    $chk = mysqli_prepare($conn, "SELECT id FROM fund_movements
+        WHERE ref_type = 'SALE' AND ref_id = ? AND movement_type = 'ALLOCATION' LIMIT 1");
+    mysqli_stmt_bind_param($chk, 'i', $saleId);
+    mysqli_stmt_execute($chk);
+    if (mysqli_fetch_assoc(mysqli_stmt_get_result($chk))) { return; }
+
+    $profit = sale_profit($conn, $saleId);
+    if ($profit == 0.0) { return; }
+
+    $period = date('Y-m');
+    foreach (build_allocation(funds_all($conn), $profit) as $row) {
+        $dir = $row['amount'] >= 0 ? 'IN' : 'OUT';
+        fund_record_movement($conn, (int) $row['fund']['id'], 'ALLOCATION', $dir, abs($row['amount']),
+            $period, null, $userId, 'Sale #' . $saleId . ' profit allocation', null, 'SALE', $saleId);
+    }
+}
+
+/**
+ * Generic reversal. Finds every movement matching $whereSql that has not been
+ * reversed yet and posts an opposite-direction REVERSAL row for each, linked to
+ * the original through reverses_movement_id. Originals are never edited or deleted.
+ *
+ * $whereSql refers to the movement as "m", for example:
+ *   "m.ref_type = 'SALE' AND m.ref_id = ?"      with $types 'i', $params [$saleId]
+ *   "m.transaction_id = ?"                       with $types 'i', $params [$txId]
+ * MUST be called inside mysqli_begin_transaction(). Returns how many rows were reversed.
+ */
+function fund_reverse_movements(mysqli $conn, string $whereSql, string $types, array $params,
+        ?int $userId, string $reason): int {
+    $q = mysqli_prepare($conn, "SELECT m.* FROM fund_movements m
+        LEFT JOIN fund_movements r ON r.reverses_movement_id = m.id
+        WHERE m.movement_type <> 'REVERSAL' AND r.id IS NULL AND ($whereSql)
+        FOR UPDATE");
+    mysqli_stmt_bind_param($q, $types, ...$params);
+    mysqli_stmt_execute($q);
+    $originals = mysqli_fetch_all(mysqli_stmt_get_result($q), MYSQLI_ASSOC);
+
+    $rev = mysqli_prepare($conn, "INSERT INTO fund_movements
+        (fund_id, period, movement_type, direction, amount, transaction_id, source_type, description, created_by, ref_type, ref_id, reverses_movement_id)
+        VALUES (?, ?, 'REVERSAL', ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    $period = date('Y-m');   // the reversal is posted in the month it happens
+    $desc = mb_substr('Reversal: ' . $reason, 0, 255);
+    foreach ($originals as $m) {
+        $fid    = (int) $m['fund_id'];
+        $dir    = $m['direction'] === 'IN' ? 'OUT' : 'IN';
+        $amt    = (float) $m['amount'];
+        $txId   = $m['transaction_id'] !== null ? (int) $m['transaction_id'] : null;
+        $source = $m['source_type'];
+        $refT   = $m['ref_type'];
+        $refId  = $m['ref_id'] !== null ? (int) $m['ref_id'] : null;
+        $origId = (int) $m['id'];
+        mysqli_stmt_bind_param($rev, 'issdissisii', $fid, $period, $dir, $amt, $txId, $source, $desc, $userId, $refT, $refId, $origId);
+        mysqli_stmt_execute($rev);
+    }
+    return count($originals);
+}
+
+// Section 2: call when a paid sale is cancelled. Reverses EVERY fund movement the sale
+// created (profit allocations now, and the Capital Fund cost-of-stock movements later).
+// Safe to call twice: already reversed rows are skipped.
+function reverse_sale_profit(mysqli $conn, int $saleId, ?int $userId): int {
+    return fund_reverse_movements($conn, "m.ref_type = 'SALE' AND m.ref_id = ?", 'i', [$saleId],
+        $userId, 'Sale #' . $saleId . ' cancelled');
 }

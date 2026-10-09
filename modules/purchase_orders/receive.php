@@ -3,7 +3,7 @@ require '../../config/db.php';
 require '../../includes/purchase_order_helpers.php';
 require_role(['Admin', 'Manager']);
 
-$id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
+$id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT) ?: filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
 if (!$id) { header('Location: index.php?error=Invalid purchase order.'); exit; }
 
 $statement = mysqli_prepare($conn, 'SELECT purchase_orders.*, users.names AS created_by_name FROM purchase_orders LEFT JOIN users ON purchase_orders.created_by = users.id WHERE purchase_orders.id = ?');
@@ -22,7 +22,9 @@ $items = mysqli_stmt_get_result($itemsStatement);
 if (isset($_POST['confirm'])) {
     $result = po_receive($conn, $id, current_user_id());
     if ($result['ok']) {
-        header('Location: view.php?id=' . $id . '&success=' . urlencode('Purchase Order received. Stock updated and Expense transaction posted.'));
+        // CHANGED wording: receiving no longer posts an Expense. The money left the Capital Fund
+        // when the order was placed; now the same amount returns to it as stock value.
+        header('Location: view.php?id=' . $id . '&success=' . urlencode('Purchase Order received. Stock updated and the amount returned to the RM Capital Fund as stock value.'));
     } else {
         header('Location: view.php?id=' . $id . '&error=' . urlencode($result['error']));
     }
@@ -30,7 +32,7 @@ if (isset($_POST['confirm'])) {
 }
 
 include '../../includes/header.php'; include '../../includes/sidebar.php';
-$modal_icon = 'bi-box-arrow-in-down'; $modal_title = 'Receive Purchase Order'; $modal_subtitle = 'This will update stock and post an Expense transaction automatically.';
+$modal_icon = 'bi-box-arrow-in-down'; $modal_title = 'Receive Purchase Order'; $modal_subtitle = 'This will update stock and return the order amount to the RM Capital Fund as stock value.';
 ?>
 <div class="rm-modal-backdrop"><div class="rm-modal">
     <?php include '../../includes/model_header.php'; ?>
@@ -56,8 +58,9 @@ $modal_icon = 'bi-box-arrow-in-down'; $modal_title = 'Receive Purchase Order'; $
                 <div class="col-6"><span class="text-muted">Total:</span> <strong>RWF <?= number_format($po['total_amount'], 2); ?></strong></div>
             </div>
         </div>
-        <p class="text-muted small">Confirming will add all quantities above to stock immediately, record them in Purchase History, and post one Expense transaction for RWF <?= number_format($po['total_amount'], 2); ?> to Transactions — no approval required.</p>
+        <p class="text-muted small">Confirming will add all quantities above to stock immediately, record them in Purchase History, and return RWF <?= number_format($po['total_amount'], 2); ?> to the RM Capital Fund as stock value (the money was taken out when the order was placed). No new expense is posted.</p>
         <form method="POST">
+            <input type="hidden" name="id" value="<?= (int) $id; ?>">
             <div class="d-grid gap-2 d-md-flex justify-content-end mt-4">
                 <button class="btn btn-success rm-btn-primary" type="submit" name="confirm" value="1"><i class="bi bi-check-circle-fill me-2"></i>Confirm Receive</button>
                 <a href="view.php?id=<?= (int) $id; ?>" class="btn btn-light rm-btn-light">Cancel</a>

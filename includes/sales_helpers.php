@@ -3,6 +3,12 @@
  * Shared helpers for the RM Mart & Spark sales module.
  */
 
+// NEW: needed for automatic fund allocation and reversal.
+// IMPORTANT: every other page that loads these two files must use require_once
+// (not plain require), otherwise PHP stops with "Cannot redeclare ...".
+require_once __DIR__ . '/profit_rules.php';
+require_once __DIR__ . '/fund_helpers.php';
+
 const LOYALTY_CREDIT_THRESHOLD = 500;   // points needed for automatic Credit approval
 const LOYALTY_POINTS_PER_RWF = 50;      // RWF 50 profit = 1 Loyalty Point
 const SERVICE_PROFIT_MARGIN = 0.8;      // Service profit = 80% of amount paid
@@ -33,31 +39,27 @@ function customer_credit_status($loyaltyPoints) {
  * Service profit = 80% of the amount paid for the service.
  */
 function calculate_sale_profit($conn, $saleId) {
-    $itemsStatement = mysqli_prepare($conn, 'SELECT sale_items.*, products.buying_price
-        FROM sale_items LEFT JOIN products ON sale_items.product_id = products.id
-        WHERE sale_id = ?');
-    mysqli_stmt_bind_param($itemsStatement, 'i', $saleId);
-    mysqli_stmt_execute($itemsStatement);
-    $items = mysqli_stmt_get_result($itemsStatement);
+    // CHANGED: uses the company profit rules (includes/profit_rules.php), so loyalty points,
+    // reports and fund allocations all use the same profit. The discount is now respected.
+    $lineNet  = sales_report_line_net_sql('sales', 'sale_items');
+    $lineCost = sales_report_line_cost_sql('sales', 'sale_items', 'products');
+    $statement = mysqli_prepare($conn, "SELECT
+            COALESCE(SUM(CASE WHEN sale_items.item_type = 'Product' THEN $lineNet - $lineCost ELSE 0 END), 0) AS product_profit,
+            COALESCE(SUM(CASE WHEN sale_items.item_type = 'Service' THEN $lineNet - $lineCost ELSE 0 END), 0) AS service_profit
+        FROM sale_items
+        JOIN sales ON sale_items.sale_id = sales.id
+        LEFT JOIN products ON sale_items.product_id = products.id
+        WHERE sales.id = ?");
+    mysqli_stmt_bind_param($statement, 'i', $saleId);
+    mysqli_stmt_execute($statement);
+    $row = mysqli_fetch_assoc(mysqli_stmt_get_result($statement));
 
-    $productProfit = 0.0;
-    $serviceProfit = 0.0;
-
-    while ($item = mysqli_fetch_assoc($items)) {
-        if ($item['item_type'] === 'Product') {
-            $packSize = max(1, (int) $item['pack_size']);
-            $baseUnitsSold = (int) $item['quantity'] * $packSize;
-            $sellingPricePerBaseUnit = (float) $item['unit_price'] / $packSize; // unit_price is per pack sold
-            $buyingPricePerBaseUnit = (float) ($item['buying_price'] ?? 0);
-            $productProfit += ($sellingPricePerBaseUnit - $buyingPricePerBaseUnit) * $baseUnitsSold;
-        } elseif ($item['item_type'] === 'Service') {
-            $serviceProfit += SERVICE_PROFIT_MARGIN * (float) $item['line_total'];
-        }
-    }
+    $productProfit = round((float) $row['product_profit'], 2);
+    $serviceProfit = round((float) $row['service_profit'], 2);
 
     return [
-        'product_profit' => round($productProfit, 2),
-        'service_profit' => round($serviceProfit, 2),
+        'product_profit' => $productProfit,
+        'service_profit' => $serviceProfit,
         'total_profit' => round($productProfit + $serviceProfit, 2),
     ];
 }
@@ -93,8 +95,12 @@ function award_loyalty_points($conn, $customerId, $profit) {
  * even though the sale itself was rung up in whatever unit (Piece, Carton,
  * Box) the cashier picked at checkout. Units themselves (Carton, Box, etc.)
  * are only ever created/managed via Add/Edit Item, not invented here.
+ *
+ * CHANGED: optional $userId (who triggered the finalize). When the sale ends up
+ * fully Paid, its profit is allocated to the four Funds immediately.
+ * Must run inside the caller's mysqli_begin_transaction().
  */
-function sales_finalize($conn, $saleId) {
+function sales_finalize($conn, $saleId, $userId = null) {
     $saleStatement = mysqli_prepare($conn, 'SELECT * FROM sales WHERE id = ?');
     mysqli_stmt_bind_param($saleStatement, 'i', $saleId);
     mysqli_stmt_execute($saleStatement);
@@ -117,10 +123,25 @@ function sales_finalize($conn, $saleId) {
         $packSize = max(1, (int) $item['pack_size']);
         $baseUnitsSold = (int) $item['quantity'] * $packSize;
 
-        $update = mysqli_prepare($conn, 'UPDATE products SET quantity = quantity - ? WHERE id = ?');
-        mysqli_stmt_bind_param($update, 'ii', $baseUnitsSold, $item['product_id']);
+        // NEW: atomic stock guard. The UPDATE only succeeds while enough stock remains, so two
+        // sales at the same moment (or a late approval) can never push stock below zero.
+        $update = mysqli_prepare($conn, 'UPDATE products SET quantity = quantity - ? WHERE id = ? AND quantity >= ?');
+        mysqli_stmt_bind_param($update, 'iii', $baseUnitsSold, $item['product_id'], $baseUnitsSold);
         mysqli_stmt_execute($update);
+        if (mysqli_stmt_affected_rows($update) !== 1) {
+            throw new RuntimeException('Not enough stock to complete this sale. Please check the stock levels and try again.');
+        }
     }
+
+    // NEW: freeze the buying price (per base unit) on each product line at the moment of sale,
+    // so later restocks at a different price never change this sale's cost or profit.
+    // Only fills lines that have no snapshot yet, so running twice is harmless.
+    $snapshot = mysqli_prepare($conn, "UPDATE sale_items
+        JOIN products ON sale_items.product_id = products.id
+        SET sale_items.unit_cost = products.buying_price
+        WHERE sale_items.sale_id = ? AND sale_items.item_type = 'Product' AND sale_items.unit_cost IS NULL");
+    mysqli_stmt_bind_param($snapshot, 'i', $saleId);
+    mysqli_stmt_execute($snapshot);
 
     // A sale can mix Product and Service line items, but a transaction only
     // takes one category now — tag it Product if any physical item was sold,
@@ -143,6 +164,14 @@ function sales_finalize($conn, $saleId) {
     mysqli_stmt_bind_param($updateSale, 'siii', $newStatus, $transactionId, $pointsEarned, $saleId);
     mysqli_stmt_execute($updateSale);
 
+    // NEW (spec section 1): a fully Paid sale puts its profit into the Funds right now.
+    // Credit / Partially Paid sales are allocated later, by the payment that makes them Paid
+    // (the same call must be added to the code that records payments).
+    if ($newStatus === 'Paid') {
+        $actor = $userId !== null ? (int) $userId : ($sale['recorded_by'] !== null ? (int) $sale['recorded_by'] : null);
+        allocate_sale_profit($conn, $saleId, $actor);
+    }
+
     return true;
 }
 /**
@@ -160,38 +189,53 @@ function sales_finalize($conn, $saleId) {
  * intentionally left in place on cancellation, consistent with amount_paid
  * handling above — reversing points retroactively is a separate decision
  * this function does not make.
+ *
+ * CHANGED (spec section 2): everything now happens in ONE database transaction,
+ * the sale is re-checked under a lock (so a double click cannot cancel twice),
+ * and every fund movement the sale created is reversed automatically.
  */
 function sales_cancel($conn, $saleId, $userId, $reason) {
-    $saleStatement = mysqli_prepare($conn, 'SELECT * FROM sales WHERE id = ?');
-    mysqli_stmt_bind_param($saleStatement, 'i', $saleId);
-    mysqli_stmt_execute($saleStatement);
-    $sale = mysqli_fetch_assoc(mysqli_stmt_get_result($saleStatement));
-
-    if (!$sale) {
-        return ['ok' => false, 'error' => 'Sale not found.'];
-    }
-    if (!in_array($sale['status'], ['Credit', 'Partially Paid', 'Paid'], true)) {
-        return ['ok' => false, 'error' => 'Only Credit, Partially Paid, or Paid sales can be cancelled.'];
-    }
-
     mysqli_begin_transaction($conn);
 
-    if (!empty($sale['transaction_id'])) {
-        $deleteTx = mysqli_prepare($conn, 'DELETE FROM transactions WHERE id = ?');
-        mysqli_stmt_bind_param($deleteTx, 'i', $sale['transaction_id']);
-        mysqli_stmt_execute($deleteTx);
+    try {
+        $saleStatement = mysqli_prepare($conn, 'SELECT * FROM sales WHERE id = ? FOR UPDATE');
+        mysqli_stmt_bind_param($saleStatement, 'i', $saleId);
+        mysqli_stmt_execute($saleStatement);
+        $sale = mysqli_fetch_assoc(mysqli_stmt_get_result($saleStatement));
+
+        if (!$sale) {
+            mysqli_rollback($conn);
+            return ['ok' => false, 'error' => 'Sale not found.'];
+        }
+        if (!in_array($sale['status'], ['Credit', 'Partially Paid', 'Paid'], true)) {
+            mysqli_rollback($conn);
+            return ['ok' => false, 'error' => 'Only Credit, Partially Paid, or Paid sales can be cancelled.'];
+        }
+
+        if (!empty($sale['transaction_id'])) {
+            $deleteTx = mysqli_prepare($conn, 'DELETE FROM transactions WHERE id = ?');
+            mysqli_stmt_bind_param($deleteTx, 'i', $sale['transaction_id']);
+            mysqli_stmt_execute($deleteTx);
+        }
+
+        $updateSale = mysqli_prepare($conn, 'UPDATE sales
+        SET status = "Cancelled", transaction_id = NULL, amount_paid = 0, cancelled_by = ?, cancelled_at = NOW(), cancel_reason = ?,
+            cancel_requested_by = NULL, cancel_requested_at = NULL, cancel_request_reason = NULL
+        WHERE id = ?');
+        mysqli_stmt_bind_param($updateSale, 'isi', $userId, $reason, $saleId);
+        mysqli_stmt_execute($updateSale);
+
+        // NEW: reverse the profit allocated to the Funds (and any other fund movement
+        // linked to this sale). Does nothing if the sale never allocated anything.
+        reverse_sale_profit($conn, (int) $saleId, $userId !== null ? (int) $userId : null);
+
+        mysqli_commit($conn);
+        return ['ok' => true];
+    } catch (Throwable $e) {
+        mysqli_rollback($conn);
+        error_log('sales_cancel failed for sale #' . $saleId . ': ' . $e->getMessage());
+        return ['ok' => false, 'error' => 'Unable to cancel the sale. Nothing was changed.'];
     }
-
-    $updateSale = mysqli_prepare($conn, 'UPDATE sales
-    SET status = "Cancelled", transaction_id = NULL, amount_paid = 0, cancelled_by = ?, cancelled_at = NOW(), cancel_reason = ?,
-        cancel_requested_by = NULL, cancel_requested_at = NULL, cancel_request_reason = NULL
-    WHERE id = ?');
-    mysqli_stmt_bind_param($updateSale, 'isi', $userId, $reason, $saleId);
-    mysqli_stmt_execute($updateSale);
-
-    mysqli_commit($conn);
-
-    return ['ok' => true];
 }
 /**
  * Employee flags a Credit/Partially Paid sale for cancellation. Nothing is

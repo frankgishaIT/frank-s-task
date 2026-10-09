@@ -76,25 +76,11 @@ if (isset($_POST['save'])) {
             mysqli_stmt_bind_param($updateStock, 'ii', $baseQuantity, $id);
             mysqli_stmt_execute($updateStock);
 
-            // Auto-post the restock cost to Transactions as an Expense, paid from the
-            // RM Capital Fund (posted immediately, no approval needed).
-            // fund_post_automatic_expense() checks the fund balance first. If the
-            // Capital Fund cannot cover it, it throws and this whole restock is
-            // cancelled below (no stock is added).
-            $packSummary = $packQuantity . ' x ' . $packLabel . ($packSize > 1 ? ' (' . $packSize . ' ' . ($product['unit'] ?: 'units') . ' each)' : '');
-            $description = 'Restock: ' . $packSummary . ' of ' . $product['product_name']
-                . ($supplier !== '' ? ' from ' . $supplier : '');
-            if ($totalCost > 0) {
-                fund_post_automatic_expense(
-                    $conn, 'CAPITAL', 'Purchase (Re-stock)', (float) $totalCost,
-                    $purchaseDate, $description, $recordedBy ? (int) $recordedBy : null
-                );
-            }
-
             // Also record this restock as a Purchase Order (status: Received,
             // since the stock has already landed) so it gets the same
             // invoice-style PDF as a regular PO — no separate document type
             // needed for restocks.
+            // CHANGED: this now happens BEFORE the fund postings, so they can be linked to it.
             $poNotes = trim('Recorded via Restock.' . ($notes !== '' ? ' ' . $notes : ''));
             $orderedAt = date('Y-m-d H:i:s');
             $insertPO = mysqli_prepare($conn, "INSERT INTO purchase_orders
@@ -112,14 +98,39 @@ if (isset($_POST['save'])) {
                 $poId, $id, $packQuantity, $costPerBaseUnit, $totalCost, $packLabel, $packSize);
             mysqli_stmt_execute($insertPOItem);
 
+            // Auto-post the restock cost to Transactions as an Expense, paid from the
+            // RM Capital Fund (posted immediately, no approval needed).
+            // fund_post_automatic_expense() checks the fund balance first. If the
+            // Capital Fund cannot cover it, it throws and this whole restock is
+            // cancelled below (no stock is added).
+            $packSummary = $packQuantity . ' x ' . $packLabel . ($packSize > 1 ? ' (' . $packSize . ' ' . ($product['unit'] ?: 'units') . ' each)' : '');
+            $description = 'Restock: ' . $packSummary . ' of ' . $product['product_name']
+                . ($supplier !== '' ? ' from ' . $supplier : '');
+            if ($totalCost > 0) {
+                // CHANGED: linked to the restock's PO record ('PO' + id).
+                fund_post_automatic_expense(
+                    $conn, 'CAPITAL', 'Purchase (Re-stock)', (float) $totalCost,
+                    $purchaseDate, $description, $recordedBy ? (int) $recordedBy : null, null, 'PO', (int) $poId
+                );
+
+                // NEW (spec section 7): the buying price of the stock added is recognised as value
+                // in the RM Capital Fund. The cash that was just paid has become stock.
+                fund_record_capital_inflow(
+                    $conn, (float) $totalCost, $purchaseDate, 'Stock added (Re-stock)',
+                    $description . ': cash converted to stock',
+                    $recordedBy ? (int) $recordedBy : null, 'PO', (int) $poId
+                );
+            }
+
             mysqli_commit($conn);
             header('Location: ../purchase_orders/view.php?id=' . $poId . '&success=' . urlencode($baseQuantity . ' ' . ($product['unit'] ?: 'units') . ' added to ' . $product['product_name'] . '.'));
             exit;
         } catch (InsufficientFundException $e) {
             mysqli_rollback($conn);
             $error = $e->getMessage();
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             mysqli_rollback($conn);
+            error_log('restock failed for product #' . $id . ': ' . $e->getMessage());
             $error = 'Unable to record restock. Please try again.';
         }
     }

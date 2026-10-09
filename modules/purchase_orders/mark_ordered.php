@@ -1,22 +1,19 @@
 <?php
 require '../../config/db.php';
+require '../../includes/purchase_order_helpers.php';   // NEW: loads the Capital Fund integration
 require_role(['Admin', 'Manager']);
 
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
 if (!$id) { header('Location: index.php?error=Invalid purchase order.'); exit; }
 
-$statement = mysqli_prepare($conn, 'SELECT status FROM purchase_orders WHERE id = ?');
-mysqli_stmt_bind_param($statement, 'i', $id);
-mysqli_stmt_execute($statement);
-$po = mysqli_fetch_assoc(mysqli_stmt_get_result($statement));
+// CHANGED: po_mark_ordered() checks the order is a Draft, marks it Ordered and takes the
+// order total out of the RM Capital Fund, all in one transaction. If the Capital Fund
+// cannot cover the amount, the order stays a Draft and the reason is shown.
+$result = po_mark_ordered($conn, $id, current_user_id());
 
-if (!$po) { header('Location: index.php?error=Purchase order not found.'); exit; }
-if ($po['status'] !== 'Draft') { header('Location: view.php?id=' . $id . '&error=Only Draft purchase orders can be marked as Ordered.'); exit; }
-
-$userId = current_user_id();
-$update = mysqli_prepare($conn, "UPDATE purchase_orders SET status = 'Ordered', ordered_by = ?, ordered_at = NOW() WHERE id = ?");
-mysqli_stmt_bind_param($update, 'ii', $userId, $id);
-mysqli_stmt_execute($update);
-
-header('Location: view.php?id=' . $id . '&success=' . urlencode('Purchase Order marked as Ordered.'));
+if ($result['ok']) {
+    header('Location: view.php?id=' . $id . '&success=' . urlencode('Purchase Order marked as Ordered. The amount was taken from the RM Capital Fund.'));
+} else {
+    header('Location: view.php?id=' . $id . '&error=' . urlencode($result['error']));
+}
 exit;

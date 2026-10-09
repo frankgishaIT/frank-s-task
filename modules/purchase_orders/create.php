@@ -95,26 +95,46 @@ if (isset($_POST['save'])) {
         foreach ($supplierList as $s) { if ((int) $s['id'] === $supplierPartyId) { $selectedSupplier = $s; break; } }
         $supplier = $selectedSupplier ? $selectedSupplier['business_name'] : '';
 
+        // CHANGED: the PO, its lines and (for "Mark as Ordered") the Capital Fund expense are
+        // saved together. If the Capital Fund cannot cover the order, NOTHING is saved.
+        $saved = false;
         mysqli_begin_transaction($conn);
+        try {
+            $poStatement = mysqli_prepare($conn, 'INSERT INTO purchase_orders
+                (supplier, supplier_party_id, order_date, expected_delivery_date, status, total_amount, notes, created_by, ordered_by, ordered_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+            mysqli_stmt_bind_param($poStatement, 'sisssdsiis',
+                $supplier, $supplierPartyId, $orderDate, $expectedDeliveryValue, $status, $total, $notes, $userId, $orderedBy, $orderedAt);
+            mysqli_stmt_execute($poStatement);
+            $poId = mysqli_insert_id($conn);
 
-        $poStatement = mysqli_prepare($conn, 'INSERT INTO purchase_orders
-            (supplier, supplier_party_id, order_date, expected_delivery_date, status, total_amount, notes, created_by, ordered_by, ordered_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-        mysqli_stmt_bind_param($poStatement, 'sisssdsiis',
-            $supplier, $supplierPartyId, $orderDate, $expectedDeliveryValue, $status, $total, $notes, $userId, $orderedBy, $orderedAt);
-        mysqli_stmt_execute($poStatement);
-        $poId = mysqli_insert_id($conn);
+            foreach ($lineItems as $item) {
+                $itemStatement = mysqli_prepare($conn, 'INSERT INTO purchase_order_items (purchase_order_id, product_id, quantity, unit_cost, line_total, pack_label, pack_size) VALUES (?, ?, ?, ?, ?, ?, ?)');
+                mysqli_stmt_bind_param($itemStatement, 'iiiddsi', $poId, $item['product_id'], $item['quantity'], $item['unit_cost'], $item['line_total'], $item['pack_label'], $item['pack_size']);
+                mysqli_stmt_execute($itemStatement);
+            }
 
-        foreach ($lineItems as $item) {
-            $itemStatement = mysqli_prepare($conn, 'INSERT INTO purchase_order_items (purchase_order_id, product_id, quantity, unit_cost, line_total, pack_label, pack_size) VALUES (?, ?, ?, ?, ?, ?, ?)');
-            mysqli_stmt_bind_param($itemStatement, 'iiiddsi', $poId, $item['product_id'], $item['quantity'], $item['unit_cost'], $item['line_total'], $item['pack_label'], $item['pack_size']);
-            mysqli_stmt_execute($itemStatement);
+            // NEW (spec section 4): an order created as "Ordered" takes its total out of the
+            // RM Capital Fund right now.
+            if ($action === 'order') {
+                po_post_ordered_expense($conn, (int) $poId, (float) $total, (string) $supplier, $userId ? (int) $userId : null);
+            }
+
+            mysqli_commit($conn);
+            $saved = true;
+        } catch (InsufficientFundException $e) {
+            mysqli_rollback($conn);
+            $error = $e->getMessage() . ' The Purchase Order was not saved. You can save it as a Draft instead.';
+        } catch (Throwable $e) {
+            mysqli_rollback($conn);
+            error_log('new_purchase_order failed: ' . $e->getMessage());
+            $error = 'Unable to save the Purchase Order. Nothing was saved. Please try again.';
         }
 
-        mysqli_commit($conn);
-
-        header('Location: view.php?id=' . $poId . '&success=' . urlencode('Purchase Order ' . ($action === 'order' ? 'created and marked as Ordered.' : 'saved as Draft.')));
-        exit;
+        if ($saved) {
+            header('Location: view.php?id=' . $poId . '&success=' . urlencode('Purchase Order ' . ($action === 'order' ? 'created and marked as Ordered.' : 'saved as Draft.')));
+            exit;
+        }
     }
 }
 

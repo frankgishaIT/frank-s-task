@@ -4,7 +4,8 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 require '../../config/db.php';
 require '../../includes/profit_rules.php'; // shared profit rules (same as the Sales reports)
-require '../../includes/fund_helpers.php'; // RM Funds
+require_once '../../includes/fund_helpers.php'; // RM Funds
+require_once '../../includes/fund_report_helpers.php'; // NEW: fund card figures (spec sections 13 and 14)
 $pageSearchScope = 'transactions'; // tells the topbar search what module we're in
 require '../../includes/pagination.php';
 include '../../includes/header.php'; include '../../includes/sidebar.php';
@@ -49,25 +50,16 @@ $serviceProfit = (float) $profitTotals['service_profit'];
 $totalProfit = $productProfit + $serviceProfit;
 
 // ---- RM Fund cards ----
-// Contributions = money put in by profit allocation or capital inflows.
-// Used = expenses paid out of the fund (minus any reversals).
-// Available = ledger balance minus expenses still waiting for admin approval.
+// CHANGED: figures come from fund_breakdown() (includes/fund_report_helpers.php).
+// Before, the new movement types were counted wrongly: a cancelled sale's reversal showed as
+// money "Used", cost of stock sold and depreciation showed as "Used", and stock received or
+// assets added were not counted at all, so Contributed - Used did not match the balance.
+// Now every movement is in exactly one group (Contributed, Used, Stock, Assets) and a
+// reversal stays in the group of what it reverses.
 $currentPeriod = date('Y-m');
-$fundSql = "SELECT f.id, f.code, f.name, f.allocation_percent,
-        COALESCE(SUM(CASE WHEN m.direction = 'IN' AND m.movement_type IN ('ALLOCATION','CAPITAL_INFLOW') THEN m.amount WHEN m.direction = 'OUT' AND m.movement_type = 'ADJUSTMENT' THEN -m.amount END), 0) AS total_contrib,
-        COALESCE(SUM(CASE WHEN m.period = ? THEN CASE WHEN m.direction = 'IN' AND m.movement_type IN ('ALLOCATION','CAPITAL_INFLOW') THEN m.amount WHEN m.direction = 'OUT' AND m.movement_type = 'ADJUSTMENT' THEN -m.amount END END), 0) AS period_contrib,
-        COALESCE(SUM(CASE WHEN m.direction = 'OUT' AND m.movement_type <> 'ADJUSTMENT' THEN m.amount END), 0)
-          - COALESCE(SUM(CASE WHEN m.direction = 'IN' AND m.movement_type = 'REVERSAL' THEN m.amount END), 0) AS total_used,
-        MAX(m.created_at) AS last_date
-    FROM funds f
-    LEFT JOIN fund_movements m ON m.fund_id = f.id
-    WHERE f.is_active = 1
-    GROUP BY f.id, f.code, f.name, f.allocation_percent
-    ORDER BY FIELD(f.code, 'FUTURE_PLANS', 'EMERGENCY', 'TEAM_GROWTH', 'OPERATING', 'CAPITAL')";
-$fundStmt = mysqli_prepare($conn, $fundSql);
-mysqli_stmt_bind_param($fundStmt, 's', $currentPeriod);
-mysqli_stmt_execute($fundStmt);
-$fundRows = mysqli_fetch_all(mysqli_stmt_get_result($fundStmt), MYSQLI_ASSOC);
+$breakdown = fund_breakdown($conn, $currentPeriod);
+$fundRows = mysqli_fetch_all(mysqli_query($conn, "SELECT id, code, name, allocation_percent FROM funds WHERE is_active = 1
+    ORDER BY FIELD(code, 'FUTURE_PLANS', 'EMERGENCY', 'TEAM_GROWTH', 'OPERATING', 'CAPITAL')"), MYSQLI_ASSOC);
 
 // The colour is only a thin bar at the top of each card. Balances stay dark and neutral.
 $fundColor = [
@@ -82,13 +74,20 @@ $fundColor = [
 $operatingCard = null;
 $otherCards = [];
 foreach ($fundRows as $fc) {
+    $b = $breakdown[(int) $fc['id']] ?? ['contrib' => 0.0, 'used' => 0.0, 'stock' => 0.0, 'assets' => 0.0, 'period_contrib' => 0.0, 'last_date' => null];
+    $fc['total_contrib'] = $b['contrib'];
+    $fc['total_used'] = $b['used'];
+    $fc['stock_value'] = $b['stock'];
+    $fc['asset_value'] = $b['assets'];
+    $fc['period_contrib'] = $b['period_contrib'];
+    $fc['last_date'] = $b['last_date'];
     $fc['available'] = fund_available($conn, (int) $fc['id']);
     $fc['pending'] = fund_pending_total($conn, (int) $fc['id']);
-    $fc['is_empty'] = ((float) $fc['total_contrib'] == 0.0 && (float) $fc['total_used'] == 0.0);
+    $fc['is_empty'] = $b['contrib'] == 0.0 && $b['used'] == 0.0 && $b['stock'] == 0.0 && $b['assets'] == 0.0;
     $fc['color'] = $fundColor[$fc['code']] ?? '#6c757d';
     $fc['share'] = $fc['allocation_percent'] !== null
         ? rtrim(rtrim(number_format((float) $fc['allocation_percent'], 2), '0'), '.') . '% of Net Profit'
-        : 'Non-profit funding (no fixed %)';
+        : 'Capital: cash + stock + assets';
     $fc['hint'] = $fc['code'] === 'CAPITAL' ? 'No capital recorded yet' : 'No allocation yet';
     if ($fc['code'] === 'OPERATING') {
         $operatingCard = $fc;
@@ -97,13 +96,21 @@ foreach ($fundRows as $fc) {
     }
 }
 
-$sql = "SELECT transactions.*, users.names AS recorder_name, funds.name AS fund_name FROM transactions LEFT JOIN users ON transactions.recorded_by = users.id LEFT JOIN funds ON transactions.fund_id = funds.id WHERE $visibilityWhere ORDER BY transaction_date DESC, transactions.id DESC LIMIT " . PER_PAGE . ' OFFSET ' . $offset;
+// CHANGED: also finds the sale a transaction belongs to (sales.transaction_id), so automatic
+// sale income can be told apart from manual entries.
+$sql = "SELECT transactions.*, users.names AS recorder_name, funds.name AS fund_name, linked_sale.id AS linked_sale_id
+    FROM transactions
+    LEFT JOIN users ON transactions.recorded_by = users.id
+    LEFT JOIN funds ON transactions.fund_id = funds.id
+    LEFT JOIN sales linked_sale ON linked_sale.transaction_id = transactions.id
+    WHERE $visibilityWhere ORDER BY transaction_date DESC, transactions.id DESC LIMIT " . PER_PAGE . ' OFFSET ' . $offset;
 $transactions = mysqli_query($conn, $sql);
 
 $statusBadge = [
     'approved' => 'success',
     'pending' => 'warning text-dark',
     'rejected' => 'danger',
+    'deleted' => 'dark', // NEW: kept for the audit trail
 ];
 ?>
 <style>
@@ -147,6 +154,8 @@ $statusBadge = [
                 <?php } ?>
                 <?php if ($canSeeFundReports) { ?>
                 <li><a class="dropdown-item" href="fund_reports.php">Fund Reports</a></li>
+                <!-- NEW -->
+                <li><a class="dropdown-item" href="capital_check.php">Capital Fund Check</a></li>
                 <?php } ?>
             </ul>
         </div>
@@ -199,10 +208,19 @@ $statusBadge = [
                     <?php } elseif ($fc['is_empty']) { echo $fc['hint']; } ?>
                 </div>
                 <hr class="my-2">
+                <?php if ($fc['code'] === 'CAPITAL') { ?>
+                <!-- NEW (spec section 13): what the Capital Fund is made of. -->
+                <div class="rm-fund-stat"><span>Cash &amp; other</span><span><?= number_format((float) $fc['total_contrib'] - (float) $fc['total_used'], 2); ?></span></div>
+                <div class="rm-fund-stat"><span>Stock value</span><span><?= number_format((float) $fc['stock_value'], 2); ?></span></div>
+                <div class="rm-fund-stat"><span>Assets value</span><span><?= number_format((float) $fc['asset_value'], 2); ?></span></div>
+                <div class="rm-fund-stat"><span>Last activity</span><span><?= $fc['last_date'] ? date('d M Y', strtotime($fc['last_date'])) : '—'; ?></span></div>
+                <?php if ($canSeeFundReports) { ?><a href="capital_check.php" class="small">Check against real stock &amp; assets &rarr;</a><?php } ?>
+                <?php } else { ?>
                 <div class="rm-fund-stat"><span>This period</span><span><?= number_format((float) $fc['period_contrib'], 2); ?></span></div>
                 <div class="rm-fund-stat"><span>Contributed</span><span><?= number_format((float) $fc['total_contrib'], 2); ?></span></div>
                 <div class="rm-fund-stat"><span>Used</span><span><?= number_format((float) $fc['total_used'], 2); ?></span></div>
                 <div class="rm-fund-stat"><span>Last activity</span><span><?= $fc['last_date'] ? date('d M Y', strtotime($fc['last_date'])) : '—'; ?></span></div>
+                <?php } ?>
             </div>
         </div>
     </div>
@@ -288,25 +306,37 @@ $statusBadge = [
         <th>Action</th>
     </tr><?php if (mysqli_num_rows($transactions) === 0) { ?>
     <tr><td colspan="9" class="text-center text-muted py-4">No transactions found. Click "Add Transaction" to record one.</td></tr><?php } ?>
-    <?php while ($transaction = mysqli_fetch_assoc($transactions)) { ?>
-    <tr><td><?= date('d M Y', strtotime($transaction['transaction_date'])); ?>
+    <?php while ($transaction = mysqli_fetch_assoc($transactions)) {
+        // NEW (spec section 3): only MANUAL transactions can be edited or deleted here.
+        // Automatic ones (sale income, purchase orders, re-stock, asset gain/loss) belong to their
+        // own module; editing them here would leave the sale, stock or fund out of step.
+        $isManual = (int) $transaction['is_automatic'] === 0 && empty($transaction['linked_sale_id']);
+        $isDeleted = $transaction['status'] === 'deleted';
+    ?>
+    <tr<?= $isDeleted ? ' class="text-muted" style="text-decoration:line-through;"' : ''; ?>><td><?= date('d M Y', strtotime($transaction['transaction_date'])); ?>
 </td><td><?= htmlspecialchars($transaction['category'], ENT_QUOTES, 'UTF-8'); ?>
 </td><td><span class="badge bg-<?= $transaction['transaction_type'] === 'Income' ? 'success' : 'danger'; ?>">
-    <?= $transaction['transaction_type']; ?></span></td>
+    <?= htmlspecialchars($transaction['transaction_type'], ENT_QUOTES, 'UTF-8'); ?></span></td>
     <td><?= htmlspecialchars($transaction['fund_name'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></td>
     <td>RWF <?= number_format((float) $transaction['amount'], 2); ?></td>
     <td><?= htmlspecialchars($transaction['description'] ?? '', ENT_QUOTES, 'UTF-8'); ?></td>
     <td><?= htmlspecialchars($transaction['recorder_name'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></td>
     <td>
         <span class="badge bg-<?= $statusBadge[$transaction['status']] ?? 'secondary'; ?>">
-            <?= ucfirst($transaction['status']); ?>
+            <?= htmlspecialchars(ucfirst($transaction['status']), ENT_QUOTES, 'UTF-8'); ?>
         </span>
         <?php if ($transaction['status'] === 'rejected' && !empty($transaction['rejection_reason'])) { ?>
             <i class="bi bi-info-circle" title="<?= htmlspecialchars($transaction['rejection_reason'], ENT_QUOTES, 'UTF-8'); ?>"></i>
         <?php } ?>
+        <?php if (!$isManual) { ?>
+            <span class="badge bg-light text-muted border" title="Created automatically. Change it from its own module (e.g. cancel the sale or purchase order).">Auto</span>
+        <?php } ?>
     </td>
     <td class="text-nowrap">
         <a href="view.php?id=<?= (int) $transaction['id']; ?>" class="rm-btn rm-btn-info rm-btn-sm">View</a>
+        <?php if (!empty($transaction['linked_sale_id'])) { ?>
+            <a href="../sales/invoice.php?id=<?= (int) $transaction['linked_sale_id']; ?>" class="rm-btn rm-btn-light rm-btn-sm">Sale</a>
+        <?php } ?>
         <?php if ($isAdmin && $transaction['status'] === 'pending') { ?>
             <a href="approve.php?id=<?= (int) $transaction['id']; ?>" class="rm-btn rm-btn-success rm-btn-sm">Approve</a>
             <button type="button" class="rm-btn rm-btn-danger rm-btn-sm" data-bs-toggle="modal" data-bs-target="#rejectModal<?= (int) $transaction['id']; ?>">Reject</button>
@@ -333,8 +363,8 @@ $statusBadge = [
                 </div>
             </div>
         <?php } ?>
-        <?php if ($isAdmin) { ?>
-         <a href="edit.php?id=<?= (int) $transaction['id']; ?>" class="rm-btn rm-btn-warning rm-btn-sm">Edit</a> 
+        <?php if ($isAdmin && $isManual && !$isDeleted) { ?>
+         <a href="edit.php?id=<?= (int) $transaction['id']; ?>" class="rm-btn rm-btn-warning rm-btn-sm">Edit</a>
          <form method="POST" action="delete.php" class="d-inline" onsubmit="return confirm('Delete this transaction?')">
             <input type="hidden" name="id" value="<?= (int) $transaction['id']; ?>">
             <button type="submit" class="rm-btn rm-btn-danger rm-btn-sm">Delete</button>

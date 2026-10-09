@@ -30,6 +30,40 @@ function po_status_badge($status) {
     return '<span class="badge bg-' . $class . '">' . htmlspecialchars($status, ENT_QUOTES, 'UTF-8') . '</span>';
 }
 
+/**
+ * NEW: adds stock to a product AND updates its buying price to the weighted average of
+ * the stock already held and the stock arriving. Used by Receive PO and Re-Stock.
+ *
+ * Why: sales take their cost from products.buying_price. If stock arrives at a new price
+ * but buying_price stays old, the Capital Fund goes up by the new price and down by the
+ * old one on every sale, and slowly stops matching the real stock value.
+ *
+ * Example: 10 notebooks at RWF 800 + 10 new at RWF 900 -> 20 notebooks at RWF 850.
+ * MUST be called inside the caller's mysqli_begin_transaction().
+ */
+function stock_add_at_average_cost(mysqli $conn, int $productId, int $baseQuantity, float $costPerBaseUnit): void {
+    if ($baseQuantity <= 0) { return; }
+
+    $s = mysqli_prepare($conn, 'SELECT quantity, buying_price FROM products WHERE id = ? FOR UPDATE');
+    mysqli_stmt_bind_param($s, 'i', $productId);
+    mysqli_stmt_execute($s);
+    $product = mysqli_fetch_assoc(mysqli_stmt_get_result($s));
+    if (!$product) {
+        throw new RuntimeException('Product #' . $productId . ' was not found.');
+    }
+
+    $oldQuantity = max(0, (int) $product['quantity']);
+    $oldPrice = (float) $product['buying_price'];
+    $newQuantity = $oldQuantity + $baseQuantity;
+    $newPrice = $oldQuantity > 0
+        ? round((($oldQuantity * $oldPrice) + ($baseQuantity * $costPerBaseUnit)) / $newQuantity, 2)
+        : round($costPerBaseUnit, 2);
+
+    $u = mysqli_prepare($conn, 'UPDATE products SET quantity = quantity + ?, buying_price = ? WHERE id = ?');
+    mysqli_stmt_bind_param($u, 'idi', $baseQuantity, $newPrice, $productId);
+    mysqli_stmt_execute($u);
+}
+
 /* =====================================================================
  * RM Capital Fund integration (spec sections 4, 5 and 6)
  *   Ordered   -> expense out of the Capital Fund (cash leaves)
@@ -67,6 +101,12 @@ function po_post_ordered_expense(mysqli $conn, int $poId, float $total, string $
  * If the PO was ordered before this system went live (no expense was ever posted),
  * nothing is posted, so the fund is not inflated.
  * MUST be called inside the caller's mysqli_begin_transaction().
+ *
+ * CHANGED: recorded as STOCK_IN instead of CAPITAL_INFLOW. CAPITAL_INFLOW means new money
+ * put into the business (a loan, share capital, a grant), so receiving stock was being
+ * counted as "Contributed" capital in the Capital Fund report. STOCK_IN is the opposite of
+ * STOCK_OUT (a sale), so the report can show stock movements separately.
+ * The balance is the same either way. It is also safe to call twice now.
  */
 function po_post_received_income(mysqli $conn, int $poId, ?string $supplier, string $date, ?int $userId): void {
     $q = mysqli_prepare($conn, "SELECT m.amount FROM fund_movements m
@@ -78,11 +118,21 @@ function po_post_received_income(mysqli $conn, int $poId, ?string $supplier, str
     $ordered = mysqli_fetch_assoc(mysqli_stmt_get_result($q));
     if (!$ordered) { return; }
 
-    fund_record_capital_inflow(
-        $conn, (float) $ordered['amount'], $date, 'Stock received (Purchase Order)',
-        'Purchase Order #' . $poId . ' received' . ($supplier ? ' from ' . $supplier : '') . ': cash converted to stock',
-        $userId, 'PO', $poId
-    );
+    // NEW: already received into the fund? Do nothing (old receipts used CAPITAL_INFLOW).
+    $chk = mysqli_prepare($conn, "SELECT id FROM fund_movements
+        WHERE ref_type = 'PO' AND ref_id = ? AND movement_type IN ('STOCK_IN', 'CAPITAL_INFLOW') LIMIT 1");
+    mysqli_stmt_bind_param($chk, 'i', $poId);
+    mysqli_stmt_execute($chk);
+    if (mysqli_fetch_assoc(mysqli_stmt_get_result($chk))) { return; }
+
+    $fund = fund_by_code($conn, 'CAPITAL');
+    if (!$fund) {
+        throw new RuntimeException('RM Capital Fund was not found.');
+    }
+
+    $description = mb_substr('Purchase Order #' . $poId . ' received' . ($supplier ? ' from ' . $supplier : '') . ': cash converted to stock', 0, 255);
+    fund_record_movement($conn, (int) $fund['id'], 'STOCK_IN', 'IN', (float) $ordered['amount'],
+        substr($date, 0, 7), null, $userId, $description, 'Stock received (Purchase Order)', 'PO', $poId);
 }
 
 /**
@@ -105,6 +155,12 @@ function po_mark_ordered($conn, $poId, $userId) {
         if ($po['status'] !== 'Draft') {
             mysqli_rollback($conn);
             return ['ok' => false, 'error' => 'Only Draft Purchase Orders can be marked as Ordered.'];
+        }
+        // NEW: same rule as the New Purchase Order page. A RWF 0 order would take nothing
+        // from the Capital Fund and later bring stock in for free.
+        if ((float) $po['total_amount'] <= 0) {
+            mysqli_rollback($conn);
+            return ['ok' => false, 'error' => 'An order with a total of RWF 0 cannot be marked as Ordered. Please enter the cost of the products first.'];
         }
 
         $update = mysqli_prepare($conn, "UPDATE purchase_orders SET status = 'Ordered', ordered_by = ?, ordered_at = NOW() WHERE id = ?");
@@ -190,6 +246,10 @@ function po_cancel($conn, $poId, $userId, $reason = null) {
  * the PO was marked Ordered; now the same amount comes back as stock value.
  * The PO is also locked while it is received, so two clicks can no longer add the stock twice.
  *
+ * IMPORTANT for Re-Stock (spec section 7): this function does NOT go through restock.php,
+ * so the Re-Stock Capital Fund posting must live in restock.php itself (never on the
+ * purchases table), otherwise a received PO would be added to the Capital Fund twice.
+ *
  * Only 'Ordered' Purchase Orders can be received.
  */
 function po_receive($conn, $poId, $userId) {
@@ -243,9 +303,11 @@ function po_receive($conn, $poId, $userId) {
                 $today, $notes, $userId, $poId, $item['pack_label'], $packSize, $packQuantity);
             mysqli_stmt_execute($insertPurchase);
 
-            $updateStock = mysqli_prepare($conn, 'UPDATE products SET quantity = quantity + ? WHERE id = ?');
-            mysqli_stmt_bind_param($updateStock, 'ii', $baseQuantity, $item['product_id']);
-            mysqli_stmt_execute($updateStock);
+            // CHANGED: adds the stock AND updates the buying price to the weighted average,
+            // so later sales take the right cost out of the Capital Fund.
+            if (!empty($item['product_id'])) {
+                stock_add_at_average_cost($conn, (int) $item['product_id'], $baseQuantity, $costPerBaseUnit);
+            }
 
             $itemCount++;
         }

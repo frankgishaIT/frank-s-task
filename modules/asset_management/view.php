@@ -66,6 +66,9 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
     </h2>
     <div class="d-flex gap-2">
     <a href="edit.php?id=<?= (int) $asset['id']; ?>" class="rm-btn rm-btn-primary"><i class="bi bi-pencil-square me-2"></i>Edit Asset</a>
+       <?php if (in_array($asset['status'], ['Active', 'Under Maintenance'], true)) { ?>
+   <a href="dispose.php?id=<?= (int) $asset['id']; ?>" class="rm-btn rm-btn-danger">Remove Asset</a>
+   <?php } ?>
     <a href="index.php" class="rm-btn rm-btn-light">Back to Assets</a>
 </div>
 </div>

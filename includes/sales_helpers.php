@@ -87,6 +87,23 @@ function award_loyalty_points($conn, $customerId, $profit) {
 }
 
 /**
+ * NEW: removes the Loyalty Points a sale awarded (used when the sale is cancelled).
+ * Never takes a customer below zero points.
+ */
+function revoke_loyalty_points($conn, $customerId, $points) {
+    $points = (int) $points;
+    if (!$customerId || $points <= 0) {
+        return 0;
+    }
+
+    $update = mysqli_prepare($conn, 'UPDATE customers SET loyalty_points = GREATEST(loyalty_points - ?, 0) WHERE id = ?');
+    mysqli_stmt_bind_param($update, 'ii', $points, $customerId);
+    mysqli_stmt_execute($update);
+
+    return $points;
+}
+
+/**
  * Deducts stock for every line item on a sale and posts the revenue into
  * Finance/Transactions. Called either immediately (auto-approved sale)
  * or once a Manager approves a discounted/credit-restricted sale.
@@ -101,12 +118,24 @@ function award_loyalty_points($conn, $customerId, $profit) {
  * Must run inside the caller's mysqli_begin_transaction().
  */
 function sales_finalize($conn, $saleId, $userId = null) {
-    $saleStatement = mysqli_prepare($conn, 'SELECT * FROM sales WHERE id = ?');
+    // CHANGED: the sale row is locked (FOR UPDATE) so two finalize calls for the same sale
+    // (e.g. a double click on Approve) wait for each other instead of running side by side.
+    $saleStatement = mysqli_prepare($conn, 'SELECT * FROM sales WHERE id = ? FOR UPDATE');
     mysqli_stmt_bind_param($saleStatement, 'i', $saleId);
     mysqli_stmt_execute($saleStatement);
     $sale = mysqli_fetch_assoc(mysqli_stmt_get_result($saleStatement));
     if (!$sale) {
         return false;
+    }
+
+    // NEW: never finalize the same sale twice. A finalized sale already has its income
+    // transaction; running again would deduct stock, record income, award points and
+    // allocate profit a second time.
+    if (!empty($sale['transaction_id'])) {
+        return true;
+    }
+    if ($sale['status'] === 'Cancelled') {
+        throw new RuntimeException('This sale has been cancelled and cannot be completed.');
     }
 
     $itemsStatement = mysqli_prepare($conn, 'SELECT * FROM sale_items WHERE sale_id = ?');
@@ -143,6 +172,12 @@ function sales_finalize($conn, $saleId, $userId = null) {
     mysqli_stmt_bind_param($snapshot, 'i', $saleId);
     mysqli_stmt_execute($snapshot);
 
+    // NEW (spec section 8): the stock just left the shop, so the RM Capital Fund goes down by
+    // its BUYING price (cost of stock sold). This happens for every finalized sale, paid or
+    // not, because the goods leave either way. Revenue and profit are handled separately.
+    $stockActor = $userId !== null ? (int) $userId : ($sale['recorded_by'] !== null ? (int) $sale['recorded_by'] : null);
+    record_sale_stock_cost($conn, (int) $saleId, $stockActor);
+
     // A sale can mix Product and Service line items, but a transaction only
     // takes one category now — tag it Product if any physical item was sold,
     // otherwise Service.
@@ -177,7 +212,12 @@ function sales_finalize($conn, $saleId, $userId = null) {
 /**
  * Cancels a Credit, Partially Paid, or fully Paid sale. Deletes the linked
  * income transaction (it's being reversed) and marks the sale Cancelled.
- * Stock is intentionally left untouched — goods already left the shop.
+ *
+ * CHANGED: $returnToStock (default false).
+ *   false = goods already left the shop: stock and the Capital Fund cost stay as they are
+ *           (same behaviour as before).
+ *   true  = goods came back (e.g. a wrongly entered sale): they are added back to stock
+ *           and their cost is returned to the RM Capital Fund.
  * amount_paid is reset to 0 so a cancelled sale never shows a stale paid
  * balance; if cash was actually collected and needs to go back to the
  * customer, that refund must be recorded separately (e.g. as an expense).
@@ -185,16 +225,16 @@ function sales_finalize($conn, $saleId, $userId = null) {
  * Already 'Cancelled' sales and sales still 'Pending Discount Approval'
  * are rejected.
  *
- * NOTE: Loyalty Points already awarded when the sale was finalized are
- * intentionally left in place on cancellation, consistent with amount_paid
- * handling above — reversing points retroactively is a separate decision
- * this function does not make.
+ * CHANGED: Loyalty Points the sale awarded are now taken back on cancellation
+ * (spec section 2: reverse ALL effects of the transaction). Before, a customer
+ * could collect points from sales that were later cancelled and use them to
+ * reach the 500 points needed for automatic Credit approval.
  *
  * CHANGED (spec section 2): everything now happens in ONE database transaction,
  * the sale is re-checked under a lock (so a double click cannot cancel twice),
  * and every fund movement the sale created is reversed automatically.
  */
-function sales_cancel($conn, $saleId, $userId, $reason) {
+function sales_cancel($conn, $saleId, $userId, $reason, $returnToStock = false) {
     mysqli_begin_transaction($conn);
 
     try {
@@ -218,6 +258,9 @@ function sales_cancel($conn, $saleId, $userId, $reason) {
             mysqli_stmt_execute($deleteTx);
         }
 
+        // NEW: take back the Loyalty Points this sale awarded.
+        revoke_loyalty_points($conn, $sale['customer_id'], $sale['loyalty_points_earned'] ?? 0);
+
         $updateSale = mysqli_prepare($conn, 'UPDATE sales
         SET status = "Cancelled", transaction_id = NULL, amount_paid = 0, cancelled_by = ?, cancelled_at = NOW(), cancel_reason = ?,
             cancel_requested_by = NULL, cancel_requested_at = NULL, cancel_request_reason = NULL
@@ -225,9 +268,29 @@ function sales_cancel($conn, $saleId, $userId, $reason) {
         mysqli_stmt_bind_param($updateSale, 'isi', $userId, $reason, $saleId);
         mysqli_stmt_execute($updateSale);
 
-        // NEW: reverse the profit allocated to the Funds (and any other fund movement
-        // linked to this sale). Does nothing if the sale never allocated anything.
+        // NEW: reverse the profit allocated to the four Funds.
+        // Does nothing if the sale never allocated anything.
         reverse_sale_profit($conn, (int) $saleId, $userId !== null ? (int) $userId : null);
+
+        // NEW (spec sections 2 and 8): when the goods come back, put them back into stock
+        // and return their cost to the RM Capital Fund. When they do not come back, both
+        // stay as they are, so the Capital Fund keeps matching the real stock value.
+        if ($returnToStock) {
+            $itemsStatement = mysqli_prepare($conn, "SELECT product_id, quantity, pack_size FROM sale_items WHERE sale_id = ? AND item_type = 'Product' AND product_id IS NOT NULL");
+            mysqli_stmt_bind_param($itemsStatement, 'i', $saleId);
+            mysqli_stmt_execute($itemsStatement);
+            $returnItems = mysqli_fetch_all(mysqli_stmt_get_result($itemsStatement), MYSQLI_ASSOC);
+
+            $restock = mysqli_prepare($conn, 'UPDATE products SET quantity = quantity + ? WHERE id = ?');
+            foreach ($returnItems as $item) {
+                $baseUnits = (int) $item['quantity'] * max(1, (int) $item['pack_size']);
+                $productId = (int) $item['product_id'];
+                mysqli_stmt_bind_param($restock, 'ii', $baseUnits, $productId);
+                mysqli_stmt_execute($restock);
+            }
+
+            reverse_sale_stock_cost($conn, (int) $saleId, $userId !== null ? (int) $userId : null);
+        }
 
         mysqli_commit($conn);
         return ['ok' => true];
@@ -238,7 +301,7 @@ function sales_cancel($conn, $saleId, $userId, $reason) {
     }
 }
 /**
- * Employee flags a Credit/Partially Paid sale for cancellation. Nothing is
+ * Employee flags a Credit/Partially Paid/Paid sale for cancellation. Nothing is
  * actually cancelled yet — an Admin/Manager must approve it.
  */
 function sales_request_cancel($conn, $saleId, $userId, $reason) {
@@ -250,7 +313,7 @@ function sales_request_cancel($conn, $saleId, $userId, $reason) {
     if (!$sale) {
         return ['ok' => false, 'error' => 'Sale not found.'];
     }
-   if (!in_array($sale['status'], ['Credit', 'Partially Paid', 'Paid'], true)) {
+    if (!in_array($sale['status'], ['Credit', 'Partially Paid', 'Paid'], true)) {
         return ['ok' => false, 'error' => 'Only Credit, Partially Paid, or Paid sales can be requested for cancellation.'];
     }
     if (!empty($sale['cancel_requested_by'])) {

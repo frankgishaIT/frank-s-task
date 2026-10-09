@@ -3,15 +3,15 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 require '../../config/db.php';
-require '../../includes/profit_rules.php';
-require '../../includes/fund_helpers.php';
+require_once '../../includes/profit_rules.php';
+require_once '../../includes/fund_helpers.php'; // also provides build_allocation(), sale_profit(), allocate_sale_profit()
 
 $isAdmin = isset($_SESSION['user_role']) && strtolower($_SESSION['user_role']) === 'admin';
 if (!$isAdmin) {
     header('Location: index.php?error=' . urlencode('Only an admin can allocate Net Profit.'));
     exit;
 }
-$currentUserId = $_SESSION['user_id'] ?? null;
+$currentUserId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
 
 /* ---------- helpers ---------- */
 
@@ -30,9 +30,47 @@ function sales_date_column(mysqli $conn): ?string {
     return null;
 }
 
+// NEW: the first month in which profit is allocated AUTOMATICALLY, sale by sale (spec section 1).
+// From this month on, the monthly allocation below is switched off, otherwise the same profit
+// would go into the Funds twice. If no sale has been allocated yet, it is the current month.
+function auto_allocation_start(mysqli $conn): string {
+    $row = mysqli_fetch_row(mysqli_query($conn, "SELECT MIN(period) FROM fund_movements WHERE ref_type = 'SALE' AND movement_type = 'ALLOCATION'"));
+    $first = $row[0] ?? null;
+    $now = date('Y-m');
+    return ($first && $first < $now) ? $first : $now;
+}
+
+// NEW: fully Paid sales of a month whose profit has not reached the Funds yet
+// (for example sales paid before the automatic allocation was installed).
+function unallocated_paid_sales(mysqli $conn, string $period, string $dateCol): array {
+    $start = $period . '-01';
+    $end = date('Y-m-d', strtotime($start . ' +1 month'));
+    $s = mysqli_prepare($conn, "SELECT s.id FROM sales s
+        WHERE s.status = 'Paid' AND s.`$dateCol` >= ? AND s.`$dateCol` < ?
+          AND NOT EXISTS (SELECT 1 FROM fund_movements m
+                          WHERE m.ref_type = 'SALE' AND m.ref_id = s.id AND m.movement_type = 'ALLOCATION')
+        ORDER BY s.id");
+    mysqli_stmt_bind_param($s, 'ss', $start, $end);
+    mysqli_stmt_execute($s);
+    return array_map('intval', array_column(mysqli_fetch_all(mysqli_stmt_get_result($s), MYSQLI_ASSOC), 'id'));
+}
+
+// NEW: profit allocated automatically to the four Funds and posted in this month
+// (allocations minus reversals of cancelled sales). The RM Capital Fund is excluded.
+function auto_allocated_total(mysqli $conn, string $period): float {
+    $s = mysqli_prepare($conn, "SELECT COALESCE(SUM(CASE WHEN m.direction = 'IN' THEN m.amount ELSE -m.amount END), 0) AS t
+        FROM fund_movements m JOIN funds f ON f.id = m.fund_id
+        WHERE m.ref_type = 'SALE' AND m.movement_type IN ('ALLOCATION', 'REVERSAL')
+          AND f.code <> 'CAPITAL' AND m.period = ?");
+    mysqli_stmt_bind_param($s, 's', $period);
+    mysqli_stmt_execute($s);
+    return round((float) mysqli_fetch_assoc(mysqli_stmt_get_result($s))['t'], 2);
+}
+
 // Net Profit = sales profit of the month - approved business expenses of the month.
 // Expenses paid from the Capital Fund (stock purchases, loan principal) are NOT deducted:
 // the cost of stock is already inside product profit (selling - buying price).
+// Used only for months BEFORE the automatic allocation started.
 function compute_period_profit(mysqli $conn, string $period, string $dateCol): array {
     $start = $period . '-01';
     $end = date('Y-m-d', strtotime($start . ' +1 month'));
@@ -72,41 +110,23 @@ function compute_period_profit(mysqli $conn, string $period, string $dateCol): a
     ];
 }
 
-// Splits the Net Profit by the fund percentages. Operating gets the remainder,
-// so the four parts always add up to exactly 100% of the Net Profit.
-function build_allocation(array $funds, float $net): array {
-    $order = ['FUTURE_PLANS', 'EMERGENCY', 'TEAM_GROWTH', 'OPERATING'];
-    $byCode = [];
-    foreach ($funds as $f) {
-        if ($f['allocation_percent'] !== null) { $byCode[$f['code']] = $f; }
-    }
-    $rows = [];
-    $sum = 0.0;
-    foreach ($order as $code) {
-        if ($code === 'OPERATING' || !isset($byCode[$code])) { continue; }
-        $amt = round($net * (float) $byCode[$code]['allocation_percent'] / 100, 2);
-        $rows[$code] = ['fund' => $byCode[$code], 'amount' => $amt];
-        $sum += $amt;
-    }
-    if (isset($byCode['OPERATING'])) {
-        $rows['OPERATING'] = ['fund' => $byCode['OPERATING'], 'amount' => round($net - $sum, 2)];
-    }
-    $ordered = [];
-    foreach ($order as $code) {
-        if (isset($rows[$code])) { $ordered[] = $rows[$code]; }
-    }
-    return $ordered;
-}
+// CHANGED: build_allocation() was removed from this page. It now lives in fund_helpers.php
+// (shared with the automatic allocation). Declaring it twice stops PHP with
+// "Cannot redeclare build_allocation()".
 
 /* ---------- confirm & allocate ---------- */
 
 $salesDateCol = sales_date_column($conn);
 $funds = funds_all($conn);
+$autoFrom = auto_allocation_start($conn);
 
 if (isset($_POST['confirm'])) {
     $period = $_POST['period'] ?? '';
     if (!valid_period($period)) {
         $error = 'Invalid month selected.';
+    } elseif ($period >= $autoFrom) {
+        // NEW: blocked. This month's profit is allocated automatically, sale by sale.
+        $error = 'Profit from ' . date('F Y', strtotime($autoFrom . '-01')) . ' onwards is allocated to the Funds automatically when each sale is paid. Allocating this month again would count the same profit twice.';
     } elseif (!$salesDateCol) {
         $error = 'Could not find the date column of the sales table.';
     } else {
@@ -144,14 +164,44 @@ if (isset($_POST['confirm'])) {
             mysqli_commit($conn);
             header('Location: allocate_profit.php?period=' . urlencode($period) . '&success=' . urlencode('Net Profit for ' . $period . ' was allocated to the Funds.'));
             exit;
+        } catch (mysqli_sql_exception $e) {
+            mysqli_rollback($conn);
+            error_log('allocate_profit failed: ' . $e->getMessage());
+            $error = (int) $e->getCode() === 1062 ? 'This month has already been allocated.' : 'Unable to allocate the Net Profit.';
         } catch (RuntimeException $e) {
             mysqli_rollback($conn);
             $error = $e->getMessage();
         } catch (Throwable $e) {
             mysqli_rollback($conn);
-            $error = ($e instanceof mysqli_sql_exception && (int) $e->getCode() === 1062)
-                ? 'This month has already been allocated.'
-                : 'Unable to allocate the Net Profit.';
+            error_log('allocate_profit failed: ' . $e->getMessage());
+            $error = 'Unable to allocate the Net Profit.';
+        }
+    }
+}
+
+// NEW: catch-up for automatic months. Allocates the profit of fully Paid sales that never
+// reached the Funds (e.g. paid before the automatic allocation was installed).
+// allocate_sale_profit() skips any sale already allocated, so this can never double count.
+if (isset($_POST['allocate_missing'])) {
+    $period = $_POST['period'] ?? '';
+    if (!valid_period($period) || $period < $autoFrom) {
+        $error = 'Invalid month selected.';
+    } elseif (!$salesDateCol) {
+        $error = 'Could not find the date column of the sales table.';
+    } else {
+        mysqli_begin_transaction($conn);
+        try {
+            $missing = unallocated_paid_sales($conn, $period, $salesDateCol);
+            foreach ($missing as $saleId) {
+                allocate_sale_profit($conn, $saleId, $currentUserId);
+            }
+            mysqli_commit($conn);
+            header('Location: allocate_profit.php?period=' . urlencode($period) . '&success=' . urlencode(count($missing) . ' sale(s) allocated to the Funds.'));
+            exit;
+        } catch (Throwable $e) {
+            mysqli_rollback($conn);
+            error_log('allocate_missing failed: ' . $e->getMessage());
+            $error = 'Unable to allocate these sales. Nothing was changed.';
         }
     }
 }
@@ -165,6 +215,10 @@ $existing = null;
 $existingRows = [];
 $calc = null;
 $preview = [];
+$isAutoMonth = $period >= $autoFrom;
+$missingSales = [];
+$missingProfit = 0.0;
+$autoTotal = 0.0;
 
 $q = mysqli_prepare($conn, 'SELECT pa.*, u.names AS confirmer FROM profit_allocations pa LEFT JOIN users u ON pa.confirmed_by = u.id WHERE pa.period = ?');
 mysqli_stmt_bind_param($q, 's', $period);
@@ -177,6 +231,13 @@ if ($existing) {
     mysqli_stmt_bind_param($q2, 'i', $allocIdView);
     mysqli_stmt_execute($q2);
     $existingRows = mysqli_fetch_all(mysqli_stmt_get_result($q2), MYSQLI_ASSOC);
+} elseif ($isAutoMonth) {
+    $autoTotal = auto_allocated_total($conn, $period);
+    if ($salesDateCol) {
+        $missingSales = unallocated_paid_sales($conn, $period, $salesDateCol);
+        foreach ($missingSales as $saleId) { $missingProfit += sale_profit($conn, $saleId); }
+        $missingProfit = round($missingProfit, 2);
+    }
 } elseif ($salesDateCol) {
     $calc = compute_period_profit($conn, $period, $salesDateCol);
     if ($calc['net'] > 0) { $preview = build_allocation($funds, $calc['net']); }
@@ -186,6 +247,7 @@ $history = mysqli_fetch_all(mysqli_query($conn, 'SELECT pa.*, u.names AS confirm
 
 include '../../includes/header.php'; include '../../includes/sidebar.php';
 $periodLabel = date('F Y', strtotime($period . '-01'));
+$autoFromLabel = date('F Y', strtotime($autoFrom . '-01'));
 ?>
 <?php if (isset($_GET['success'])) { ?>
 <div class="alert alert-success alert-dismissible fade show" role="alert">
@@ -199,6 +261,13 @@ $periodLabel = date('F Y', strtotime($period . '-01'));
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2>Allocate Net Profit</h2>
     <a href="index.php" class="rm-btn rm-btn-secondary">&larr; Back to Transactions</a>
+</div>
+
+<!-- NEW -->
+<div class="alert alert-info" style="border-radius:10px;">
+    <i class="bi bi-lightning-charge-fill me-1"></i>
+    Since <strong><?= htmlspecialchars($autoFromLabel, ENT_QUOTES, 'UTF-8'); ?></strong>, profit is allocated to the Funds <strong>automatically</strong> when each sale is paid,
+    and business expenses come out of the fund that pays them. This page is only needed for months before that, which were never allocated.
 </div>
 
 <div class="card border-0 shadow-sm mb-4">
@@ -227,6 +296,32 @@ $periodLabel = date('F Y', strtotime($period . '-01'));
         <?= date('d M Y H:i', strtotime($existing['confirmed_at'])); ?>
         by <?= htmlspecialchars($existing['confirmer'] ?? 'Unknown', ENT_QUOTES, 'UTF-8'); ?>. This allocation is final.
     </div>
+<?php } ?>
+
+<?php if (!$existing && $isAutoMonth) { ?>
+<!-- NEW: automatic month -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+        <h6 class="mb-3"><?= htmlspecialchars($periodLabel, ENT_QUOTES, 'UTF-8'); ?>: allocated automatically</h6>
+        <p class="mb-2">Profit posted to the four Funds this month: <strong>RWF <?= number_format($autoTotal, 2); ?></strong>
+            <span class="text-muted small">(after reversals of cancelled sales)</span></p>
+
+        <?php if ($missingSales) { ?>
+        <div class="alert alert-warning mb-3">
+            <?= count($missingSales); ?> paid sale(s) from this month have not reached the Funds yet
+            (RWF <?= number_format($missingProfit, 2); ?> profit). This happens for sales paid before the automatic allocation was installed.
+        </div>
+        <form method="POST" onsubmit="return confirm('Allocate the profit of these <?= count($missingSales); ?> sale(s) to the Funds?');">
+            <input type="hidden" name="period" value="<?= htmlspecialchars($period, ENT_QUOTES, 'UTF-8'); ?>">
+            <button type="submit" name="allocate_missing" value="1" class="rm-btn rm-btn-primary">
+                <i class="bi bi-check-circle-fill me-2"></i>Allocate These Sales
+            </button>
+        </form>
+        <?php } else { ?>
+        <div class="text-success small"><i class="bi bi-check-circle-fill me-1"></i>Every paid sale of this month has been allocated. Nothing to do.</div>
+        <?php } ?>
+    </div>
+</div>
 <?php } ?>
 
 <?php if ($existing || $calc) {
@@ -280,27 +375,24 @@ $periodLabel = date('F Y', strtotime($period . '-01'));
 </div>
 
 <?php if (!$existing) { ?>
-<form method="POST" onsubmit="return confirm('Allocate RWF <?= number_format($np, 2); ?> for <?= htmlspecialchars($periodLabel, ENT_QUOTES, 'UTF-8'); ?>? This is final and cannot be changed.<?= $period === date('Y-m') ? ' NOTE: this month is not finished yet.' : ''; ?>');">
+<form method="POST" onsubmit="return confirm('Allocate RWF <?= number_format($np, 2); ?> for <?= htmlspecialchars($periodLabel, ENT_QUOTES, 'UTF-8'); ?>? This is final and cannot be changed.');">
     <input type="hidden" name="period" value="<?= htmlspecialchars($period, ENT_QUOTES, 'UTF-8'); ?>">
     <button type="submit" name="confirm" class="rm-btn rm-btn-primary">
         <i class="bi bi-check-circle-fill me-2"></i>Confirm Net Profit &amp; Allocate
     </button>
-    <?php if ($period === date('Y-m')) { ?>
-    <span class="text-warning small ms-2">This month is not finished yet. Profit may still change.</span>
-    <?php } ?>
 </form>
 <?php } ?>
 <?php } ?>
 <?php } ?>
 
-<h5 class="mt-5 mb-3">Allocation History</h5>
+<h5 class="mt-5 mb-3">Monthly Allocation History</h5>
 <div class="card border-0 shadow-sm">
     <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-bordered table-hover bg-white mb-0">
                 <tr><th>Month</th><th class="text-end">Sales Profit</th><th class="text-end">Expenses</th><th class="text-end">Net Profit</th><th>Confirmed By</th><th>Date</th></tr>
                 <?php if (!$history) { ?>
-                <tr><td colspan="6" class="text-center text-muted py-4">No month has been allocated yet.</td></tr>
+                <tr><td colspan="6" class="text-center text-muted py-4">No month has been allocated manually.</td></tr>
                 <?php } foreach ($history as $h) { ?>
                 <tr>
                     <td><a href="allocate_profit.php?period=<?= htmlspecialchars($h['period'], ENT_QUOTES, 'UTF-8'); ?>"><?= date('F Y', strtotime($h['period'] . '-01')); ?></a></td>

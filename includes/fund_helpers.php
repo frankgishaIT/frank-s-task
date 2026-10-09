@@ -276,10 +276,70 @@ function fund_reverse_movements(mysqli $conn, string $whereSql, string $types, a
     return count($originals);
 }
 
-// Section 2: call when a paid sale is cancelled. Reverses EVERY fund movement the sale
-// created (profit allocations now, and the Capital Fund cost-of-stock movements later).
-// Safe to call twice: already reversed rows are skipped.
+// Section 2: call when a paid sale is cancelled. Reverses the PROFIT ALLOCATIONS the sale
+// made to the four funds. Safe to call twice: already reversed rows are skipped.
+// CHANGED: limited to ALLOCATION rows. The Capital Fund cost-of-stock movement is reversed
+// separately by reverse_sale_stock_cost(), and only when the goods really come back into
+// stock — otherwise the Capital Fund would no longer match the stock value.
 function reverse_sale_profit(mysqli $conn, int $saleId, ?int $userId): int {
-    return fund_reverse_movements($conn, "m.ref_type = 'SALE' AND m.ref_id = ?", 'i', [$saleId],
+    return fund_reverse_movements($conn,
+        "m.ref_type = 'SALE' AND m.ref_id = ? AND m.movement_type = 'ALLOCATION'", 'i', [$saleId],
         $userId, 'Sale #' . $saleId . ' cancelled');
+}
+
+/* =====================================================================
+ * NEW: Capital Fund and cost of stock sold (spec section 8)
+ * Stock leaving through a sale lowers the RM Capital Fund by its BUYING price.
+ * Sales revenue and profit are handled separately (allocate_sale_profit).
+ * No Expense transaction is created: the cost is already inside the sale's
+ * profit, so recording it again in Transactions would count it twice.
+ * ===================================================================== */
+
+// Buying-price value of the PRODUCTS on one sale (services carry no stock).
+// Uses the same cost rule as profit (profit_rules.php), so profit + cost always
+// match the sale amount.
+function sale_stock_cost(mysqli $conn, int $saleId): float {
+    if (!function_exists('sales_report_line_cost_sql')) {
+        throw new RuntimeException('includes/profit_rules.php must be loaded before calculating the cost of stock sold.');
+    }
+    $lineCost = sales_report_line_cost_sql('sales', 'sale_items', 'products');
+    $s = mysqli_prepare($conn, "SELECT COALESCE(SUM(CASE WHEN sale_items.item_type = 'Product' THEN $lineCost ELSE 0 END), 0) AS cost
+        FROM sale_items
+        JOIN sales ON sale_items.sale_id = sales.id
+        LEFT JOIN products ON sale_items.product_id = products.id
+        WHERE sales.id = ?");
+    mysqli_stmt_bind_param($s, 'i', $saleId);
+    mysqli_stmt_execute($s);
+    return round((float) mysqli_fetch_assoc(mysqli_stmt_get_result($s))['cost'], 2);
+}
+
+// Call when a sale's stock is deducted (sales_finalize). Lowers the RM Capital Fund by the
+// cost of the stock sold. Safe to call twice. MUST be called inside mysqli_begin_transaction().
+// It does NOT check the Capital Fund balance: this is stock that already left the shop,
+// not money being spent, so a sale must never be blocked by it.
+function record_sale_stock_cost(mysqli $conn, int $saleId, ?int $userId): void {
+    $chk = mysqli_prepare($conn, "SELECT id FROM fund_movements
+        WHERE ref_type = 'SALE' AND ref_id = ? AND movement_type = 'STOCK_OUT' LIMIT 1");
+    mysqli_stmt_bind_param($chk, 'i', $saleId);
+    mysqli_stmt_execute($chk);
+    if (mysqli_fetch_assoc(mysqli_stmt_get_result($chk))) { return; }
+
+    $cost = sale_stock_cost($conn, $saleId);
+    if ($cost <= 0) { return; }
+
+    $fund = fund_by_code($conn, 'CAPITAL');
+    if (!$fund) {
+        throw new RuntimeException('RM Capital Fund was not found.');
+    }
+
+    fund_record_movement($conn, (int) $fund['id'], 'STOCK_OUT', 'OUT', $cost, date('Y-m'), null, $userId,
+        'Sale #' . $saleId . ' cost of stock sold', null, 'SALE', $saleId);
+}
+
+// Call when a cancelled sale's goods are put back into stock. Returns the cost of stock
+// to the RM Capital Fund. Safe to call twice.
+function reverse_sale_stock_cost(mysqli $conn, int $saleId, ?int $userId): int {
+    return fund_reverse_movements($conn,
+        "m.ref_type = 'SALE' AND m.ref_id = ? AND m.movement_type = 'STOCK_OUT'", 'i', [$saleId],
+        $userId, 'Sale #' . $saleId . ' cancelled, goods returned to stock');
 }

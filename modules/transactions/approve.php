@@ -24,7 +24,7 @@ mysqli_stmt_execute($statement);
 $transaction = mysqli_stmt_get_result($statement)->fetch_assoc();
 
 if ($transaction) {
-    $adminId = $_SESSION['user_id'] ?? null;
+    $adminId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
     $amount = (float) $transaction['amount'];
     $isExpense = $transaction['transaction_type'] === 'Expense';
     $fundId = $transaction['fund_id'] ? (int) $transaction['fund_id'] : null;
@@ -64,12 +64,13 @@ if ($transaction) {
             throw new RuntimeException('Transaction already reviewed.');
         }
 
-        // Money now leaves the fund.
+        // Money now leaves the fund. The ledger entry carries the transaction id, so a later
+        // edit or delete can reverse exactly this entry.
         if ($isExpense) {
             fund_record_movement(
                 $conn, $fundId, 'EXPENSE', 'OUT', $amount,
                 substr($transaction['transaction_date'], 0, 7), $id, $adminId,
-                $transaction['expense_category'] ?: ($transaction['description'] ?: 'Expense')
+                mb_substr($transaction['expense_category'] ?: ($transaction['description'] ?: 'Expense'), 0, 255)
             );
         }
 
@@ -80,7 +81,9 @@ if ($transaction) {
         exit;
     } catch (Throwable $e) {
         mysqli_rollback($conn);
-        header('Location: index.php?error=' . urlencode('Unable to approve the transaction.'));
+        // CHANGED: the cause is logged.
+        error_log('transaction approve failed for #' . $id . ': ' . $e->getMessage());
+        header('Location: index.php?error=' . urlencode('Unable to approve the transaction. Nothing was changed.'));
         exit;
     }
 
@@ -93,9 +96,10 @@ if ($transaction) {
         );
     }
 
-    header('Location: index.php?success=Transaction approved.');
+    // CHANGED: messages are urlencoded.
+    header('Location: index.php?success=' . urlencode('Transaction approved.'));
     exit;
 }
 
-header('Location: index.php?error=Transaction not found or already reviewed.');
+header('Location: index.php?error=' . urlencode('Transaction not found or already reviewed.'));
 exit;

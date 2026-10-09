@@ -1,6 +1,6 @@
 <?php
 require '../../config/db.php';
-require '../../includes/asset_helpers.php';
+require '../../includes/asset_helpers.php'; // also loads asset_fund_helpers.php (RM Capital Fund sync)
 require_role(['Admin']);
 
 $assetId = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
@@ -39,8 +39,14 @@ if (isset($_POST['save'])) {
 
     if ($assetName === '' || $assetType === '') {
         $error = 'Please provide the Asset Name and Asset Type.';
+    } elseif (!in_array($assetType, $assetTypes, true)) {
+        // NEW: only the listed asset types (or the asset's existing type) are accepted.
+        $error = 'Invalid Asset Type.';
     } elseif (!$validDate || $validDate->format('Y-m-d') !== $acquisitionDate) {
         $error = 'Please provide a valid Acquisition Date.';
+    } elseif ($acquisitionDate > date('Y-m-d')) {
+        // NEW: same rule as Register Asset.
+        $error = 'The Acquisition Date cannot be in the future.';
     } elseif ($acquisitionValue === false || $acquisitionValue === null || $acquisitionValue <= 0) {
         $error = 'Please provide a valid Acquisition Value.';
     } elseif ($residualValue === false || $residualValue === null || $residualValue < 0) {
@@ -51,8 +57,18 @@ if (isset($_POST['save'])) {
         $error = 'Please provide a valid Useful Life (in years).';
     } elseif (!in_array($status, $validStatuses, true)) {
         $error = 'Invalid status.';
+    } elseif (in_array($asset['status'], ASSET_COUNTED_STATUSES, true) && !in_array($status, ASSET_COUNTED_STATUSES, true)) {
+        // NEW: selling, theft, damage and disposal go through the Remove Asset page, which
+        // records the reason, the amount received and the gain or loss (spec section 12).
+        $error = 'To mark this asset as Disposed or Lost, use the "Remove Asset" button instead.';
+    } elseif (!in_array($asset['status'], ASSET_COUNTED_STATUSES, true) && $status !== $asset['status']) {
+        // NEW: a Disposed or Lost asset keeps its status; its disposal record cannot be undone here.
+        $error = 'The status of a ' . $asset['status'] . ' asset cannot be changed.';
     } else {
+        $acquisitionValue = round($acquisitionValue, 2);
+        $residualValue = round($residualValue, 2);
         $usefulLifeDays = (int) round($usefulLifeYears * 365);
+        $userId = current_user_id();
 
         mysqli_begin_transaction($conn);
         try {
@@ -95,14 +111,47 @@ if (isset($_POST['save'])) {
 
             if ($termsChanged) {
                 asset_rebuild_history($conn, $assetId, $acquisitionDate, $acquisitionValue, $residualValue, $usefulLifeDays, $endDate);
+            } elseif ($current['status'] !== 'Active' && $status === 'Active') {
+                // NEW: the asset comes back into use (e.g. after maintenance). Record today's
+                // value with 0 depreciation, so the next catch-up starts from TODAY. Before, it
+                // started from the last valued day and charged depreciation for the whole time
+                // the asset was frozen, which the module is designed not to do.
+                $today = date('Y-m-d');
+                $value = (float) $current['current_value'];
+                $bridge = mysqli_prepare($conn, 'INSERT IGNORE INTO asset_valuation_history (asset_id, valuation_date, daily_depreciation, value) VALUES (?, ?, 0, ?)');
+                mysqli_stmt_bind_param($bridge, 'isd', $assetId, $today, $value);
+                mysqli_stmt_execute($bridge);
+                mysqli_stmt_close($bridge);
             }
+
+            // NEW (spec sections 11 and 12): the RM Capital Fund follows the asset's new value
+            // and status. Only the difference is posted, labelled by what happened.
+            $wasCounted = in_array($current['status'], ASSET_COUNTED_STATUSES, true);
+            $nowCounted = in_array($status, ASSET_COUNTED_STATUSES, true);
+            if (!asset_is_in_capital_fund($conn, $assetId)) {
+                $movementType = 'ASSET_IN';       // not in the fund yet (registered before the integration)
+                $what = 'added to RM Capital Fund';
+            } elseif (!$nowCounted) {
+                $movementType = 'ASSET_OUT';      // now Disposed or Lost
+                $what = 'marked ' . $status . ', value removed';
+            } elseif (!$wasCounted) {
+                $movementType = 'ASSET_IN';       // back from Disposed or Lost
+                $what = 'restored to ' . $status;
+            } else {
+                $movementType = 'ADJUSTMENT';     // value corrected / revalued
+                $what = 'value corrected';
+            }
+            asset_sync_capital_fund($conn, (int) $assetId, $movementType, $userId ? (int) $userId : null,
+                'Asset ' . $current['asset_code'] . ' ' . $what . ' (edit)');
 
             mysqli_commit($conn);
             header('Location: view.php?id=' . $assetId . '&success=' . urlencode('Asset updated' . ($termsChanged ? ' and valuation history recalculated.' : '.')));
             exit;
         } catch (Throwable $e) {
             mysqli_rollback($conn);
-            $error = 'Unable to update the asset. Please try again.';
+            // CHANGED: the cause is logged.
+            error_log('asset edit failed for asset #' . $assetId . ': ' . $e->getMessage());
+            $error = 'Unable to update the asset. Nothing was changed. Please try again.';
         }
     }
 }
@@ -125,6 +174,8 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
 <div class="alert alert-warning mb-3" style="border-radius:10px; border:none; font-size:13px; padding:10px 14px;">
     <i class="bi bi-info-circle-fill me-1"></i>
     If you change the Acquisition Date, Acquisition Value, Residual Value, or Useful Life, the asset's valuation history is deleted and rebuilt from the corrected figures, and the Current Value is recalculated.
+    <!-- NEW -->
+    The RM Capital Fund is updated automatically to match the new value or status.
 </div>
 
 <div class="card border-0 shadow-sm">
@@ -148,11 +199,11 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
             <div class="row g-3 mb-3">
                 <div class="col-md-4">
                     <label class="form-label small fw-semibold text-muted">Acquisition Date</label>
-                    <input type="date" name="acquisition_date" class="form-control rm-input" value="<?= htmlspecialchars((string) $val('acquisition_date', $asset['acquisition_date']), ENT_QUOTES, 'UTF-8'); ?>" required>
+                    <input type="date" name="acquisition_date" class="form-control rm-input" max="<?= date('Y-m-d'); ?>" value="<?= htmlspecialchars((string) $val('acquisition_date', $asset['acquisition_date']), ENT_QUOTES, 'UTF-8'); ?>" required>
                 </div>
                 <div class="col-md-4">
                     <label class="form-label small fw-semibold text-muted">Acquisition Value (RWF)</label>
-                    <input type="number" name="acquisition_value" class="form-control rm-input" min="0" step="0.01" value="<?= htmlspecialchars((string) $val('acquisition_value', $asset['acquisition_value']), ENT_QUOTES, 'UTF-8'); ?>" required>
+                    <input type="number" name="acquisition_value" class="form-control rm-input" min="0.01" step="0.01" value="<?= htmlspecialchars((string) $val('acquisition_value', $asset['acquisition_value']), ENT_QUOTES, 'UTF-8'); ?>" required>
                 </div>
                 <div class="col-md-4">
                     <label class="form-label small fw-semibold text-muted">Residual Value (RWF)</label>
@@ -185,12 +236,20 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
 
             <div class="mb-4">
                 <label class="form-label small fw-semibold text-muted">Asset Status</label>
+                <?php if (in_array($asset['status'], ASSET_COUNTED_STATUSES, true)) { ?>
                 <select name="status" class="form-select rm-input" required>
-                    <?php foreach (['Active', 'Under Maintenance', 'Disposed', 'Lost'] as $s) { ?>
+                    <?php foreach (ASSET_COUNTED_STATUSES as $s) { ?>
                     <option value="<?= $s; ?>" <?= $val('status', $asset['status']) === $s ? 'selected' : ''; ?>><?= $s; ?></option>
                     <?php } ?>
                 </select>
-                <div class="form-text">Only Active assets keep depreciating. The Asset Code cannot be changed.</div>
+                <div class="form-text">Only Active assets keep depreciating. The Asset Code cannot be changed.
+                    Sold, stolen, damaged or thrown away? Use <a href="dispose.php?id=<?= (int) $assetId; ?>">Remove Asset</a>.</div>
+                <?php } else { ?>
+                <!-- NEW: a Disposed or Lost asset keeps its status. -->
+                <input type="hidden" name="status" value="<?= htmlspecialchars($asset['status'], ENT_QUOTES, 'UTF-8'); ?>">
+                <input type="text" class="form-control rm-input" value="<?= htmlspecialchars($asset['status'], ENT_QUOTES, 'UTF-8'); ?>" disabled>
+                <div class="form-text">This asset is no longer in use. Its status cannot be changed.</div>
+                <?php } ?>
             </div>
 
             <div class="d-grid gap-2 d-md-flex justify-content-end">

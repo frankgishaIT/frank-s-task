@@ -1,0 +1,1 @@
+ALTER TABLE transactions MODIFY approved_by INT(11) DEFAULT NULL;

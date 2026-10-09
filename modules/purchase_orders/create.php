@@ -64,26 +64,38 @@ if (isset($_POST['save'])) {
         // piece). When buying in a pack (e.g. a Box of 54), the line total
         // must scale by the pack size, not just by the number of packs.
         $packSize = max(1, (int) $matchedUnit['pack_size']);
-        $lineTotal = $qty * $packSize * $unitCost;
+        // CHANGED: rounded to 2 decimals, so the PO total and the Capital Fund expense
+        // never carry tiny float leftovers (e.g. 50000.000000001).
+        $lineTotal = round($qty * $packSize * $unitCost, 2);
         $total += $lineTotal;
         $lineItems[] = [
             'product_id' => $productId, 'quantity' => $qty, 'unit_cost' => $unitCost,
             'line_total' => $lineTotal, 'pack_label' => $matchedUnit['unit_name'], 'pack_size' => $packSize,
         ];
     }
+    $total = round($total, 2);
+
+    // CHANGED: the supplier must be one of the real RM Suppliers. Before, any id was accepted
+    // and the PO was saved with an empty supplier name.
+    $selectedSupplier = null;
+    foreach ($supplierList as $s) { if ((int) $s['id'] === $supplierPartyId) { $selectedSupplier = $s; break; } }
 
     if (!$validOrderDate || $validOrderDate->format('Y-m-d') !== $orderDate) {
         $error = 'Please provide a valid order date.';
     } elseif ($expectedDelivery !== '' && (!$validExpectedDate || $validExpectedDate->format('Y-m-d') !== $expectedDelivery)) {
         $error = 'Please provide a valid expected delivery date.';
-    } elseif (!$supplierPartyId) {
-        $error = 'Please select a Supplier.';
+    } elseif (!$supplierPartyId || !$selectedSupplier) {
+        $error = 'Please select a valid Supplier.';
     } elseif (empty($lineItems)) {
         $error = 'Add at least one product with a valid quantity.';
     } elseif ($lineError) {
         $error = $lineError;
     } elseif (!in_array($action, ['draft', 'order'], true)) {
         $error = 'Invalid action.';
+    } elseif ($action === 'order' && $total <= 0) {
+        // NEW: an "Ordered" PO worth RWF 0 would post nothing to the Capital Fund and
+        // later bring stock in for free, which breaks the Capital Fund = Stock rule.
+        $error = 'An order with a total of RWF 0 cannot be marked as Ordered. Please enter the cost of the products.';
     } else {
         $userId = current_user_id();
         $status = $action === 'order' ? 'Ordered' : 'Draft';
@@ -91,9 +103,7 @@ if (isset($_POST['save'])) {
         $orderedAt = $action === 'order' ? date('Y-m-d H:i:s') : null;
         $expectedDeliveryValue = $expectedDelivery !== '' ? $expectedDelivery : null;
 
-        $selectedSupplier = null;
-        foreach ($supplierList as $s) { if ((int) $s['id'] === $supplierPartyId) { $selectedSupplier = $s; break; } }
-        $supplier = $selectedSupplier ? $selectedSupplier['business_name'] : '';
+        $supplier = $selectedSupplier['business_name'];
 
         // CHANGED: the PO, its lines and (for "Mark as Ordered") the Capital Fund expense are
         // saved together. If the Capital Fund cannot cover the order, NOTHING is saved.
@@ -108,8 +118,8 @@ if (isset($_POST['save'])) {
             mysqli_stmt_execute($poStatement);
             $poId = mysqli_insert_id($conn);
 
+            $itemStatement = mysqli_prepare($conn, 'INSERT INTO purchase_order_items (purchase_order_id, product_id, quantity, unit_cost, line_total, pack_label, pack_size) VALUES (?, ?, ?, ?, ?, ?, ?)');
             foreach ($lineItems as $item) {
-                $itemStatement = mysqli_prepare($conn, 'INSERT INTO purchase_order_items (purchase_order_id, product_id, quantity, unit_cost, line_total, pack_label, pack_size) VALUES (?, ?, ?, ?, ?, ?, ?)');
                 mysqli_stmt_bind_param($itemStatement, 'iiiddsi', $poId, $item['product_id'], $item['quantity'], $item['unit_cost'], $item['line_total'], $item['pack_label'], $item['pack_size']);
                 mysqli_stmt_execute($itemStatement);
             }
@@ -235,22 +245,31 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
 </div>
 
 <script>
+// CHANGED: escape any text before it is placed into the page with innerHTML, so product
+// or unit names containing < > " ' & cannot break the page or run script.
+function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+}
+
 const CATALOG = <?= json_encode(array_map(function ($p) {
     return ['id' => (int) $p['id'], 'name' => $p['product_name'], 'code' => $p['product_code'], 'cost' => (float) $p['buying_price'], 'stock' => (int) $p['quantity'], 'unit' => $p['unit']];
-}, $catalogList)); ?>;
+}, $catalogList), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 const LOW_STOCK = <?= json_encode(array_map(function ($p) {
     return ['id' => (int) $p['id'], 'name' => $p['product_name'], 'code' => $p['product_code'], 'cost' => (float) $p['buying_price'], 'stock' => (int) $p['quantity'], 'unit' => $p['unit']];
-}, $lowStockList)); ?>;
-const UNITS_MAP = <?= json_encode($unitsMap); ?>; // { productId: [ {unit_name, pack_size, is_base}, ... ] }
+}, $lowStockList), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+const UNITS_MAP = <?= json_encode($unitsMap, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>; // { productId: [ {unit_name, pack_size, is_base}, ... ] }
 const PREFILL_LOW_STOCK = <?= $prefillLowStock ? 'true' : 'false'; ?>;
 
 const itemsBody = document.querySelector('#itemsTable tbody');
 
 function createSearchable(wrapper, options) {
     const { items, hiddenName, placeholder, initialLabel, initialValue, onSelect } = options;
+    // CHANGED: all values escaped.
     wrapper.innerHTML =
-        '<input type="text" class="form-control rm-input rs-input" autocomplete="off" placeholder="' + placeholder + '" value="' + (initialLabel || '') + '">' +
-        '<input type="hidden" name="' + hiddenName + '" value="' + (initialValue !== undefined ? initialValue : '') + '">';
+        '<input type="text" class="form-control rm-input rs-input" autocomplete="off" placeholder="' + escapeHtml(placeholder) + '" value="' + escapeHtml(initialLabel || '') + '">' +
+        '<input type="hidden" name="' + escapeHtml(hiddenName) + '" value="' + escapeHtml(initialValue !== undefined ? initialValue : '') + '">';
     const input = wrapper.querySelector('.rs-input');
     const hidden = wrapper.querySelector('input[type=hidden]');
     let currentItems = items;
@@ -269,11 +288,12 @@ function createSearchable(wrapper, options) {
     function renderList(filterText) {
         const f = (filterText || '').trim().toLowerCase();
         const filtered = f === '' ? currentItems : currentItems.filter(function (it) { return it.label.toLowerCase().includes(f); });
+        // CHANGED: id, label and meta escaped.
         dropdown.innerHTML = filtered.length === 0
             ? '<div class="rm-searchable-empty">No matches found</div>'
             : filtered.map(function (it) {
-                const meta = it.meta ? '<span class="opt-meta">' + it.meta + '</span>' : '';
-                return '<div class="rm-searchable-option" data-id="' + it.id + '"><span>' + it.label + '</span>' + meta + '</div>';
+                const meta = it.meta ? '<span class="opt-meta">' + escapeHtml(it.meta) + '</span>' : '';
+                return '<div class="rm-searchable-option" data-id="' + escapeHtml(it.id) + '"><span>' + escapeHtml(it.label) + '</span>' + meta + '</div>';
             }).join('');
         positionDropdown();
         dropdown.style.display = 'block';
@@ -308,7 +328,7 @@ function buildRow(prefill) {
         '<td class="target-cell"><div class="rm-searchable catalog-field"></div></td>' +
         '<td class="stock-cell text-center">—</td>' +
         '<td><select class="form-select rm-input unit-select" name="unit_choice[]"><option value="">Select product first</option></select></td>' +
-        '<td><input type="number" class="form-control rm-input qty-input" name="quantity[]" min="1" value="' + (prefill && prefill.qty ? prefill.qty : 1) + '" required></td>' +
+        '<td><input type="number" class="form-control rm-input qty-input" name="quantity[]" min="1" value="' + (prefill && prefill.qty ? parseInt(prefill.qty) : 1) + '" required></td>' +
         '<td><input type="number" class="form-control rm-input cost-input" name="unit_cost[]" min="0" step="0.01" value="' + (prefill ? prefill.cost.toFixed(2) : '0.00') + '"></td>' +
         '<td><span class="line-total">0.00</span></td>' +
         '<td><input type="hidden" name="product_id[]" class="row-product-id"><button type="button" class="btn btn-outline-danger btn-sm remove-row">&times;</button></td>';
@@ -338,9 +358,10 @@ function bindRow(row, prefill) {
 
     function populateUnitSelect(productId) {
         const units = UNITS_MAP[productId] || [{ unit_name: 'Piece', pack_size: 1, is_base: true }];
+        // CHANGED: unit names escaped (value and visible text).
         unitSelect.innerHTML = units.map(function (u) {
-            return '<option value="' + u.unit_name.replace(/"/g, '&quot;') + '">'
-                + u.unit_name + (u.pack_size > 1 ? ' (' + u.pack_size + ' each)' : '') + '</option>';
+            return '<option value="' + escapeHtml(u.unit_name) + '">'
+                + escapeHtml(u.unit_name) + (u.pack_size > 1 ? ' (' + escapeHtml(u.pack_size) + ' each)' : '') + '</option>';
         }).join('');
         currentPackSize = packSizeForSelectedUnit();
     }
@@ -360,7 +381,7 @@ function bindRow(row, prefill) {
         updateTotal();
     }
 
-    createSearchable(catalogFieldEl, {
+    const catalogWidget = createSearchable(catalogFieldEl, {
         items: catalogOptions(),
         hiddenName: '',
         placeholder: 'Select product',
@@ -392,6 +413,8 @@ function bindRow(row, prefill) {
     qty.addEventListener('input', updateTotal);
     costInput.addEventListener('input', updateTotal);
     removeBtn.addEventListener('click', function () {
+        // CHANGED: also remove the row's dropdown, which lives outside the table.
+        catalogWidget.destroy();
         row.remove();
         recalcTotals();
     });
@@ -417,7 +440,7 @@ const lowStockBtn = document.getElementById('addLowStockBtn');
 if (lowStockBtn) {
     lowStockBtn.addEventListener('click', function () {
         LOW_STOCK.forEach(function (p) {
-            const suggestedQty = Math.max(1, (<?= PO_LOW_STOCK_THRESHOLD; ?> * 2) - p.stock);
+            const suggestedQty = Math.max(1, (<?= (int) PO_LOW_STOCK_THRESHOLD; ?> * 2) - p.stock);
             const row = buildRow({ id: p.id, name: p.name, code: p.code, cost: p.cost, stock: p.stock, qty: suggestedQty });
             itemsBody.appendChild(row);
             bindRow(row, { id: p.id, name: p.name, code: p.code, cost: p.cost, stock: p.stock });

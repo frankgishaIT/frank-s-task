@@ -35,6 +35,10 @@ if (isset($_POST['save'])) {
     $subtotal = 0;
     $lineError = null;
 
+    // CHANGED: total base units requested per product across ALL lines. Previously each line was
+    // checked against the full stock on its own, so the same product on two lines could oversell.
+    $requestedBaseUnits = [];
+
     foreach ($catalogIds as $index => $catalogId) {
         $catalogId = (int) $catalogId;
         $qty = (int) ($quantities[$index] ?? 0);
@@ -62,9 +66,11 @@ if (isset($_POST['save'])) {
             $packLabel = $matchedUnit['unit_name'];
             $packSize = $matchedUnit['pack_size'];
 
+            // CHANGED: check the running total for this product, not just this line.
             $baseUnitsRequested = $qty * $packSize;
-            if ($baseUnitsRequested > (int) $found['quantity']) {
-                $lineError = 'Not enough stock for "' . $found['product_name'] . '" (only ' . $found['quantity'] . ' ' . ($found['unit'] ?: 'units') . ' available, this line needs ' . $baseUnitsRequested . ').';
+            $requestedBaseUnits[$catalogId] = ($requestedBaseUnits[$catalogId] ?? 0) + $baseUnitsRequested;
+            if ($requestedBaseUnits[$catalogId] > (int) $found['quantity']) {
+                $lineError = 'Not enough stock for "' . $found['product_name'] . '" (only ' . $found['quantity'] . ' ' . ($found['unit'] ?: 'units') . ' available, all lines for this product need ' . $requestedBaseUnits[$catalogId] . ').';
                 break;
             }
         }
@@ -97,6 +103,10 @@ if (isset($_POST['save'])) {
         $error = 'Add at least one item or service with a valid quantity.';
     } elseif ($lineError) {
         $error = $lineError;
+    } elseif ($paymentMethod === 'Credit' && !$customerId) {
+        // CHANGED: a Walk-in Customer used to skip the credit approval check entirely,
+        // leaving an unpaid balance with nobody recorded to collect it from.
+        $error = 'Credit sales need a registered customer. Please select a customer instead of Walk-in.';
     } elseif ($discountAmount < 0 || $discountAmount > $subtotal) {
         $error = 'Discount cannot be negative or greater than the subtotal.';
     } else {
@@ -316,15 +326,23 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
 </div>
 
 <script>
+// CHANGED: escape any text before it is placed into the page with innerHTML, so product,
+// customer or unit names containing < > " ' & cannot break the page or run script.
+function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+}
+
 const CATALOG = <?= json_encode(array_map(function ($p) {
     return ['id' => (int) $p['id'], 'type' => $p['item_type'], 'name' => $p['product_name'], 'code' => $p['product_code'], 'price' => (float) $p['selling_price'], 'stock' => (int) $p['quantity'], 'unit' => $p['unit']];
-}, $catalogList)); ?>;
+}, $catalogList), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 
 const CUSTOMERS = <?= json_encode(array_map(function ($c) {
     return ['id' => (int) $c['id'], 'name' => $c['name']];
-}, $customerList)); ?>;
+}, $customerList), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 
-const UNITS_MAP = <?= json_encode($unitsMap); ?>; // { productId: [ {unit_name, pack_size, is_base}, ... ] }, Items only
+const UNITS_MAP = <?= json_encode($unitsMap, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>; // { productId: [ {unit_name, pack_size, is_base}, ... ] }, Items only
 
 const itemsBody = document.querySelector('#itemsTable tbody');
 const discountInput = document.getElementById('discountInput');
@@ -356,9 +374,10 @@ function createSearchable(wrapper, options) {
         onSelect,             // called with the chosen item (or null when cleared)
     } = options;
 
+    // CHANGED: all values escaped.
     wrapper.innerHTML =
-        '<input type="text" class="form-control rm-input rs-input" autocomplete="off" placeholder="' + placeholder + '" value="' + (initialLabel || '') + '">' +
-        '<input type="hidden" name="' + hiddenName + '" value="' + (initialValue !== undefined ? initialValue : '') + '">';
+        '<input type="text" class="form-control rm-input rs-input" autocomplete="off" placeholder="' + escapeHtml(placeholder) + '" value="' + escapeHtml(initialLabel || '') + '">' +
+        '<input type="hidden" name="' + escapeHtml(hiddenName) + '" value="' + escapeHtml(initialValue !== undefined ? initialValue : '') + '">';
 
     const input = wrapper.querySelector('.rs-input');
     const hidden = wrapper.querySelector('input[type=hidden]');
@@ -386,9 +405,10 @@ function createSearchable(wrapper, options) {
         if (filtered.length === 0) {
             dropdown.innerHTML = '<div class="rm-searchable-empty">No matches found</div>';
         } else {
+            // CHANGED: id, label and meta escaped.
             dropdown.innerHTML = filtered.map(function (it) {
-                const meta = it.meta ? '<span class="opt-meta">' + it.meta + '</span>' : '';
-                return '<div class="rm-searchable-option" data-id="' + it.id + '"><span>' + it.label + '</span>' + meta + '</div>';
+                const meta = it.meta ? '<span class="opt-meta">' + escapeHtml(it.meta) + '</span>' : '';
+                return '<div class="rm-searchable-option" data-id="' + escapeHtml(it.id) + '"><span>' + escapeHtml(it.label) + '</span>' + meta + '</div>';
             }).join('');
         }
         positionDropdown();
@@ -493,9 +513,10 @@ function bindRow(row) {
         const select = document.createElement('select');
         select.className = 'form-select rm-input';
         select.name = 'unit_choice[]';
+        // CHANGED: unit names escaped (value and visible text).
         select.innerHTML = units.map(function (u) {
-            return '<option value="' + u.unit_name.replace(/"/g, '&quot;') + '" data-pack-size="' + u.pack_size + '">'
-                + u.unit_name + (u.pack_size > 1 ? ' (' + u.pack_size + ' each)' : '') + '</option>';
+            return '<option value="' + escapeHtml(u.unit_name) + '" data-pack-size="' + escapeHtml(u.pack_size) + '">'
+                + escapeHtml(u.unit_name) + (u.pack_size > 1 ? ' (' + escapeHtml(u.pack_size) + ' each)' : '') + '</option>';
         }).join('');
         unitCell.innerHTML = '';
         unitCell.appendChild(select);
@@ -570,7 +591,7 @@ function recalcTotals() {
     const total = Math.max(0, subtotal - discount);
     document.getElementById('subtotalDisplay').textContent = 'RWF ' + subtotal.toFixed(2);
     document.getElementById('totalDisplay').textContent = 'RWF ' + total.toFixed(2);
-        amountPaidInput.max = total;
+    amountPaidInput.max = total;
     currentTotal = total;
     syncAmountPaidRule();
 }

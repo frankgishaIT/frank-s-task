@@ -1,15 +1,19 @@
 <?php
 require '../../config/db.php';
 require_once '../../includes/sales_helpers.php';   // NEW: also loads fund_helpers.php and profit_rules.php
+// CHANGED: this page had no role check, unlike every other sales page, so anyone who could
+// reach the URL could record payments (which also allocates profit to the RM Funds).
+require_role(['Admin', 'Manager', 'Employee']);
 
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
-if (!$id) { header('Location: index.php?success=Invalid sale requested.'); exit; }
+// CHANGED: problems are sent as "error" (they were sent as "success"), and all messages are urlencoded.
+if (!$id) { header('Location: index.php?error=' . urlencode('Invalid sale requested.')); exit; }
 
 $statement = mysqli_prepare($conn, 'SELECT sales.*, customers.name AS customer_name FROM sales LEFT JOIN customers ON sales.customer_id = customers.id WHERE sales.id = ?');
 mysqli_stmt_bind_param($statement, 'i', $id);
 mysqli_stmt_execute($statement);
 $sale = mysqli_fetch_assoc(mysqli_stmt_get_result($statement));
-if (!$sale) { header('Location: index.php?success=Sale not found.'); exit; }
+if (!$sale) { header('Location: index.php?error=' . urlencode('Sale not found.')); exit; }
 
 $balance = round((float) $sale['total_amount'] - (float) $sale['amount_paid'], 2);
 // NEW: only Credit and Partially Paid sales can receive a payment
@@ -64,7 +68,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             mysqli_commit($conn);
-            header('Location: invoice.php?id=' . $id . '&success=Payment recorded successfully.');
+            header('Location: invoice.php?id=' . $id . '&success=' . urlencode('Payment recorded successfully.'));
             exit;
         } catch (mysqli_sql_exception $e) {
             mysqli_rollback($conn);
@@ -85,7 +89,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Record Payment - Sale #<?= $id; ?></title>
+    <title>Record Payment - Sale #<?= (int) $id; ?></title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
 </head>
 <body class="bg-light">
@@ -110,7 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <form method="POST">
                 <div class="mb-3">
                     <label class="form-label">Amount Being Paid Now (RWF)</label>
-                    <input type="number" step="0.01" name="amount" class="form-control" max="<?= $balance; ?>" required>
+                    <input type="number" step="0.01" min="0.01" name="amount" class="form-control" max="<?= $balance; ?>" required>
                 </div>
                 <button type="submit" class="btn btn-primary w-100">Record Payment</button>
             </form>

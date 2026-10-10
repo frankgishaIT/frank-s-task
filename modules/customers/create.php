@@ -1,6 +1,10 @@
 <?php
 require '../../config/db.php';
 require '../../includes/notification_helper.php';
+require_once '../../includes/sms_messages.php'; // NEW: welcome SMS to the new customer
+// NEW: this page had no role check of its own (every other page has one).
+require_role(['Admin', 'Manager', 'Employee']);
+
 if (isset($_POST['save'])) {
     $name = trim($_POST['name'] ?? '');
     $phone = trim($_POST['phone'] ?? '');
@@ -13,6 +17,8 @@ if (isset($_POST['save'])) {
     if ($name === '') { $error = 'Customer name is required.'; }
     elseif ($phone === '') { $error = 'Phone number is required.'; }
     elseif (!preg_match('/^\d{10}$/', $phone)) { $error = 'Phone number must be exactly 10 digits.'; }
+    // NEW: a Rwandan mobile number starts with 07. Other 10-digit numbers cannot receive SMS.
+    elseif (strpos($phone, '07') !== 0) { $error = 'Please enter a mobile number starting with 07 (e.g. 0788123456).'; }
     elseif ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
          $error = 'Please enter a valid email address.'; }
     elseif ($province === '' || $district === '' || $sector === '') {
@@ -32,7 +38,14 @@ if (isset($_POST['save'])) {
             $statement = mysqli_prepare($conn, 'INSERT INTO customers (name, phone, email, province, district, sector, address) VALUES (?, ?, ?, ?, ?, ?, ?)');
             mysqli_stmt_bind_param($statement, 'sssssss', $name, $phone, $email, $province, $district, $sector, $address);
             if (mysqli_stmt_execute($statement)) {
-                header('Location: index.php?success=Customer added successfully.'); exit; }
+                $customerId = (int) mysqli_insert_id($conn);
+                // NEW: welcome SMS with the Customer ID (sent once, only after the customer is saved).
+                $creator = current_user_id();
+                sms_notify_customer_welcome($conn, $customerId, $creator ? (int) $creator : null);
+                // CHANGED: message is urlencoded.
+                header('Location: index.php?success=' . urlencode('Customer added successfully. Customer ID: ' . sms_customer_code($conn, $customerId) . '.'));
+                exit;
+            }
             $error = 'Unable to add customer.';
         }
     }
@@ -52,7 +65,11 @@ $modal_subtitle = 'Create a new customer profile.';
         <form method="POST">
             <div class="mb-3"><label class="form-label small fw-semibold text-muted">Customer Name</label><input type="text" name="name" class="form-control rm-input" value="<?= htmlspecialchars($name ?? '', ENT_QUOTES, 'UTF-8'); ?>" required></div>
             <div class="row g-3 mb-3">
-                <div class="col-6"><label class="form-label small fw-semibold text-muted">Phone</label><input type="text" name="phone" class="form-control rm-input" value="<?= htmlspecialchars($phone ?? '', ENT_QUOTES, 'UTF-8'); ?>" inputmode="numeric" pattern="\d{10}" maxlength="10" placeholder="0788888888" title="Phone number must be exactly 10 digits" required></div>
+                <div class="col-6">
+                    <label class="form-label small fw-semibold text-muted">Phone</label>
+                    <input type="text" name="phone" class="form-control rm-input" value="<?= htmlspecialchars($phone ?? '', ENT_QUOTES, 'UTF-8'); ?>" inputmode="numeric" pattern="07\d{8}" maxlength="10" placeholder="0788888888" title="A 10-digit mobile number starting with 07" required>
+                    <div class="form-text">The customer receives a welcome SMS with their Customer ID.</div>
+                </div>
                 <div class="col-6"><label class="form-label small fw-semibold text-muted">Email</label><input type="email" name="email" class="form-control rm-input" value="<?= htmlspecialchars($email ?? '', ENT_QUOTES, 'UTF-8'); ?>"></div>
             </div>
 
@@ -96,9 +113,10 @@ $modal_subtitle = 'Create a new customer profile.';
 
     // Preserve the previously selected values if the form re-renders after a
     // validation error, so the user doesn't have to reselect everything.
-    var selectedProvince = <?= json_encode($province ?? '', JSON_UNESCAPED_UNICODE); ?>;
-    var selectedDistrict = <?= json_encode($district ?? '', JSON_UNESCAPED_UNICODE); ?>;
-    var selectedSector = <?= json_encode($sector ?? '', JSON_UNESCAPED_UNICODE); ?>;
+    // CHANGED: JSON_HEX_* so a crafted value can never close this <script> tag.
+    var selectedProvince = <?= json_encode($province ?? '', JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    var selectedDistrict = <?= json_encode($district ?? '', JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    var selectedSector = <?= json_encode($sector ?? '', JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 
     function fillSelect(select, options, selectedValue, placeholder) {
         select.innerHTML = '<option value="">' + placeholder + '</option>';

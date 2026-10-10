@@ -299,3 +299,57 @@ function sms_notify_payroll_paid(mysqli $conn, int $payrollId, ?int $userId = nu
         error_log('sms_notify_payroll_paid failed for payroll #' . $payrollId . ': ' . $e->getMessage());
     }
 }
+
+/* =====================================================================
+ * NEW: welcome message to a new customer (sent once, when the customer is registered)
+ * ===================================================================== */
+
+const SMS_WEBSITE = 'www.risemotive.rw';
+
+/**
+ * The Customer ID shown in the welcome SMS. Uses the customer's own code column if the table has
+ * one (customer_code, code, customer_no ...), otherwise "RMC" + the number with 6 digits
+ * (customer 25 -> RMC000025). Change here to match the ID printed elsewhere in the system.
+ */
+function sms_customer_code(mysqli $conn, int $customerId): string {
+    static $codeCol = false;
+    if ($codeCol === false) {
+        $codeCol = null;
+        $res = @mysqli_query($conn, 'SHOW COLUMNS FROM customers');
+        $cols = [];
+        if ($res) { while ($r = mysqli_fetch_assoc($res)) { $cols[] = strtolower($r['Field']); } }
+        foreach (['customer_code', 'code', 'customer_no', 'customer_number', 'reference'] as $c) {
+            if (in_array($c, $cols, true)) { $codeCol = $c; break; }
+        }
+    }
+    if ($codeCol) {
+        $s = mysqli_prepare($conn, "SELECT `$codeCol` AS code FROM customers WHERE id = ?");
+        mysqli_stmt_bind_param($s, 'i', $customerId);
+        mysqli_stmt_execute($s);
+        $row = mysqli_fetch_assoc(mysqli_stmt_get_result($s));
+        if ($row && trim((string) $row['code']) !== '') { return trim((string) $row['code']); }
+    }
+    return 'RMC' . str_pad((string) $customerId, 6, '0', STR_PAD_LEFT);
+}
+
+// Call right after a new customer is saved (customers create page). Sent only once per customer.
+function sms_notify_customer_welcome(mysqli $conn, int $customerId, ?int $userId = null): void {
+    try {
+        $phoneCol = sms_phone_column($conn, 'customers');
+        if (!$phoneCol) { return; }
+        $s = mysqli_prepare($conn, "SELECT name, `$phoneCol` AS phone FROM customers WHERE id = ?");
+        mysqli_stmt_bind_param($s, 'i', $customerId);
+        mysqli_stmt_execute($s);
+        $c = mysqli_fetch_assoc(mysqli_stmt_get_result($s));
+        if (!$c || trim((string) $c['phone']) === '') { return; }
+        if (sms_already_sent($conn, 'CUSTOMER_WELCOME', 'CUSTOMER', $customerId)) { return; }
+
+        $text = sms_greet($c['name'], 'Customer', 'en') . ', welcome to the RISE MOTIVE family! Your Customer ID is '
+            . sms_customer_code($conn, $customerId) . '. You will receive updates about your purchases and payments through this number. '
+            . 'Our products and services are also available at ' . SMS_WEBSITE . '. For assistance, call 0795 344 768. '
+            . 'Thank you for choosing RISE MOTIVE!';
+        sms_send($conn, $c['phone'], $text, 'CUSTOMER_WELCOME', 'CUSTOMER', $customerId, $userId);
+    } catch (Throwable $e) {
+        error_log('sms_notify_customer_welcome failed for customer #' . $customerId . ': ' . $e->getMessage());
+    }
+}

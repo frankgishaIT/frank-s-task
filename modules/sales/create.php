@@ -3,6 +3,7 @@ require '../../config/db.php';
 require '../../includes/notification_helper.php';
 require '../../includes/sales_helpers.php';   // also loads fund_helpers.php and profit_rules.php (require_once)
 require '../../includes/product_unit_helpers.php';
+require_once '../../includes/sms_messages.php'; // NEW: customer SMS (MY MOTIVE SMS, messages 2 and 3)
 require_role(['Admin', 'Manager', 'Employee']);
 
 $customers = mysqli_query($conn, 'SELECT id, name FROM customers WHERE is_active = 1 ORDER BY name');
@@ -183,6 +184,12 @@ if (isset($_POST['save'])) {
             }
 
             if ($saved) {
+                // NEW: receipt (paid) or credit SMS to the customer, only once the sale is saved and
+                // completed. A sale waiting for approval gets its SMS when it is approved.
+                if (!$needsApproval) {
+                    sms_notify_sale_created($conn, (int) $saleId, $userId ? (int) $userId : null);
+                }
+
                 $successMessage = 'Sale recorded successfully.';
                 if ($needsApproval) {
                     if ($needsDiscountApproval && $needsCreditApproval) {

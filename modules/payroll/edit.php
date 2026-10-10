@@ -1,7 +1,97 @@
 <?php
 require '../../config/db.php';
-require_role(['Admin']); $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT); if (!$id) { header('Location: index.php?success=Invalid payroll record selected.'); exit; } $recordStatement = mysqli_prepare($conn, 'SELECT payroll.*, users.names AS employee_name FROM payroll INNER JOIN users ON payroll.user_id = users.id WHERE payroll.id = ?'); mysqli_stmt_bind_param($recordStatement, 'i', $id); mysqli_stmt_execute($recordStatement); $payroll = mysqli_fetch_assoc(mysqli_stmt_get_result($recordStatement)); if (!$payroll) { header('Location: index.php?success=Payroll record not found.'); exit; }
-if (isset($_POST['update'])) { $bonus = filter_input(INPUT_POST, 'bonus', FILTER_VALIDATE_FLOAT); $deductions = filter_input(INPUT_POST, 'deductions', FILTER_VALIDATE_FLOAT); $salesCommission = filter_input(INPUT_POST, 'sales_commission', FILTER_VALIDATE_FLOAT); $status = $_POST['status'] ?? ''; if ($bonus === false || $bonus < 0 || $deductions === false || $deductions < 0 || $salesCommission === false || $salesCommission < 0 || !in_array($status, ['Draft', 'Paid'], true)) { $error = 'Enter valid bonus, deductions, commission, and status.'; } else { $netSalary = (float) $payroll['basic_salary'] + (float) $payroll['overtime_pay'] + (float) $payroll['performance_bonus'] + $salesCommission + $bonus - $deductions - (float) $payroll['attendance_deduction']; $paidAt = $status === 'Paid' ? ($payroll['paid_at'] ?? date('Y-m-d H:i:s')) : null; $statement = mysqli_prepare($conn, 'UPDATE payroll SET bonus = ?, deductions = ?, sales_commission = ?, net_salary = ?, status = ?, paid_at = ? WHERE id = ?'); mysqli_stmt_bind_param($statement, 'ddddssi', $bonus, $deductions, $salesCommission, $netSalary, $status, $paidAt, $id); mysqli_stmt_execute($statement); header('Location: index.php?success=Payroll updated successfully.'); exit; } $payroll['bonus'] = $bonus; $payroll['deductions'] = $deductions; $payroll['sales_commission'] = $salesCommission; $payroll['status'] = $status; }
+require_once '../../includes/notification_helper.php';
+require_once '../../includes/payroll_fund_helpers.php'; // NEW: keeps the Operating Fund in step with the payroll
+require_once '../../includes/sms_messages.php';         // NEW: payroll SMS when it becomes Paid (MY MOTIVE SMS, message 10)
+require_role(['Admin']);
+
+// CHANGED: problems are sent as "error" (they were sent as "success"), and messages are urlencoded.
+$id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
+if (!$id) { header('Location: index.php?error=' . urlencode('Invalid payroll record selected.')); exit; }
+
+$recordStatement = mysqli_prepare($conn, 'SELECT payroll.*, users.names AS employee_name FROM payroll INNER JOIN users ON payroll.user_id = users.id WHERE payroll.id = ?');
+mysqli_stmt_bind_param($recordStatement, 'i', $id);
+mysqli_stmt_execute($recordStatement);
+$payroll = mysqli_fetch_assoc(mysqli_stmt_get_result($recordStatement));
+if (!$payroll) { header('Location: index.php?error=' . urlencode('Payroll record not found.')); exit; }
+
+if (isset($_POST['update'])) {
+    $bonus = filter_input(INPUT_POST, 'bonus', FILTER_VALIDATE_FLOAT);
+    $deductions = filter_input(INPUT_POST, 'deductions', FILTER_VALIDATE_FLOAT);
+    $salesCommission = filter_input(INPUT_POST, 'sales_commission', FILTER_VALIDATE_FLOAT);
+    $status = $_POST['status'] ?? '';
+
+    if ($bonus === false || $bonus === null || $bonus < 0 || $deductions === false || $deductions === null || $deductions < 0
+        || $salesCommission === false || $salesCommission === null || $salesCommission < 0 || !in_array($status, ['Draft', 'Paid'], true)) {
+        $error = 'Enter valid bonus, deductions, commission, and status.';
+    } else {
+        $userId = current_user_id();
+        $userId = $userId ? (int) $userId : null;
+
+        mysqli_begin_transaction($conn);
+        try {
+            // NEW: read the payroll again under a lock, so two edits cannot run at the same time.
+            $lock = mysqli_prepare($conn, 'SELECT * FROM payroll WHERE id = ? FOR UPDATE');
+            mysqli_stmt_bind_param($lock, 'i', $id);
+            mysqli_stmt_execute($lock);
+            $current = mysqli_fetch_assoc(mysqli_stmt_get_result($lock));
+            $previousStatus = $current['status'];
+
+            // CHANGED: rounded, and never negative.
+            $netSalary = round((float) $current['basic_salary'] + (float) $current['overtime_pay'] + (float) $current['performance_bonus']
+                + $salesCommission + $bonus - $deductions - (float) $current['attendance_deduction'], 2);
+            if ($netSalary < 0) {
+                throw new RuntimeException('The deductions are larger than the salary (Net Salary would be RWF ' . number_format($netSalary, 2) . '). Please check the amounts.');
+            }
+            $paidAt = $status === 'Paid' ? ($current['paid_at'] ?? date('Y-m-d H:i:s')) : null;
+
+            $statement = mysqli_prepare($conn, 'UPDATE payroll SET bonus = ?, deductions = ?, sales_commission = ?, net_salary = ?, status = ?, paid_at = ? WHERE id = ?');
+            mysqli_stmt_bind_param($statement, 'ddddssi', $bonus, $deductions, $salesCommission, $netSalary, $status, $paidAt, $id);
+            mysqli_stmt_execute($statement);
+
+            // NEW (spec sections 3 and 14): the RM Business Operating Fund follows the payroll.
+            //   Draft -> Paid      the Net Salary is paid from the fund (balance is checked)
+            //   Paid, new amount   the old expense is reversed and the new amount paid
+            //   Paid -> Draft      the money goes back to the fund
+            payroll_sync_fund($conn, (int) $id, $previousStatus, $userId);
+
+            mysqli_commit($conn);
+
+            // NEW: when it has just become Paid, tell the employee (in the system and by SMS).
+            if ($status === 'Paid' && $previousStatus !== 'Paid') {
+                notifyUser($conn, (int) $current['user_id'], 'Payslip ready — payment made',
+                    'Your payroll for ' . date('F Y', strtotime($current['pay_period'])) . ' has been processed and paid. Net salary: RWF ' . number_format($netSalary, 2) . '.');
+                sms_notify_payroll_paid($conn, (int) $id, $userId);
+            }
+
+            header('Location: index.php?success=' . urlencode('Payroll updated successfully.'));
+            exit;
+        } catch (InsufficientFundException $e) {
+            mysqli_rollback($conn);
+            $error = $e->getMessage() . ' The payroll was not changed. You can keep it as a Draft until the fund has enough money.';
+        } catch (mysqli_sql_exception $e) {
+            mysqli_rollback($conn);
+            error_log('payroll edit failed for #' . $id . ': ' . $e->getMessage());
+            $error = 'Unable to update the payroll. Nothing was changed.';
+        } catch (RuntimeException $e) {
+            mysqli_rollback($conn);
+            $error = $e->getMessage();
+        } catch (Throwable $e) {
+            mysqli_rollback($conn);
+            error_log('payroll edit failed for #' . $id . ': ' . $e->getMessage());
+            $error = 'Unable to update the payroll. Nothing was changed.';
+        }
+    }
+    $payroll['bonus'] = $bonus;
+    $payroll['deductions'] = $deductions;
+    $payroll['sales_commission'] = $salesCommission;
+    $payroll['status'] = $status;
+}
+
+// Shown on the form, so the admin can see if "Paid" will be blocked.
+$operatingFund = fund_by_code($conn, 'OPERATING');
+$operatingAvailable = $operatingFund ? fund_available($conn, (int) $operatingFund['id']) : null;
+
 include '../../includes/header.php'; include '../../includes/sidebar.php';
 
 $modal_icon = 'bi-wallet2';
@@ -70,6 +160,8 @@ $modal_subtitle = 'Update bonus, deductions, and payment status.';
                         <option value="Draft" <?= $payroll['status'] === 'Draft' ? 'selected' : ''; ?>>Draft</option>
                         <option value="Paid" <?= $payroll['status'] === 'Paid' ? 'selected' : ''; ?>>Paid</option>
                     </select>
+                    <!-- NEW -->
+                    <small class="text-muted">"Paid" is paid from the RM Business Operating Fund<?php if ($operatingAvailable !== null) { ?> (available now: <strong>RWF <?= number_format($operatingAvailable, 2); ?></strong>)<?php } ?>. Changing the amount of a Paid payroll, or setting it back to Draft, updates the fund automatically.</small>
                 </div>
 
                 <p class="text-muted mb-4">Net Salary: <strong>RWF <?= number_format((float) $payroll['net_salary'], 2); ?></strong></p>

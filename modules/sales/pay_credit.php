@@ -1,6 +1,7 @@
 <?php
 require '../../config/db.php';
 require_once '../../includes/sales_helpers.php';   // NEW: also loads fund_helpers.php and profit_rules.php
+require_once '../../includes/sms_messages.php';    // NEW: payment SMS (MY MOTIVE SMS, message 4)
 // CHANGED: this page had no role check, unlike every other sales page, so anyone who could
 // reach the URL could record payments (which also allocates profit to the RM Funds).
 require_role(['Admin', 'Manager', 'Employee']);
@@ -52,6 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $recordedBy = current_user_id();
             mysqli_stmt_bind_param($insert, 'idi', $id, $payAmount, $recordedBy);
             mysqli_stmt_execute($insert);
+            $paymentId = (int) mysqli_insert_id($conn);
 
             $newAmountPaid = round((float) $fresh['amount_paid'] + $payAmount, 2);
             // CHANGED: same status rule as the rest of the sales module.
@@ -68,6 +70,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             mysqli_commit($conn);
+            // NEW: "we received your payment" SMS, sent only after the payment is saved.
+            sms_notify_payment($conn, (int) $id, $paymentId, (float) $payAmount, $recordedBy ? (int) $recordedBy : null);
             header('Location: invoice.php?id=' . $id . '&success=' . urlencode('Payment recorded successfully.'));
             exit;
         } catch (mysqli_sql_exception $e) {

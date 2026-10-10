@@ -1,13 +1,46 @@
 <?php
 require '../../config/db.php';
 require '../../includes/notification_helper.php';
+require_once '../../includes/sms_messages.php'; // NEW: SMS to the employee (MY MOTIVE SMS, message 7)
 require_role(['Admin', 'Manager']);
 if (isset($_POST['save'])) {
-    $projectId = filter_input(INPUT_POST, 'project_id', FILTER_VALIDATE_INT); $title = trim($_POST['title'] ?? ''); $description = trim($_POST['description'] ?? ''); $assignedTo = filter_input(INPUT_POST, 'assigned_to', FILTER_VALIDATE_INT) ?: null; $priority = $_POST['priority'] ?? ''; $dueDate = $_POST['due_date'] ?? '';
-    if (!$projectId || $title === '' || !in_array($priority, ['Low', 'Medium', 'High'], true)) { $error = 'Please provide valid task details.'; }
-    else {
-        $status = 'Pending'; $statement = mysqli_prepare($conn, "INSERT INTO tasks (project_id, title, description, assigned_to, priority, status, due_date) VALUES (?, ?, ?, ?, ?, ?, NULLIF(?, ''))"); mysqli_stmt_bind_param($statement, 'ississs', $projectId, $title, $description, $assignedTo, $priority, $status, $dueDate);
+    $projectId = filter_input(INPUT_POST, 'project_id', FILTER_VALIDATE_INT);
+    $title = trim($_POST['title'] ?? '');
+    $description = trim($_POST['description'] ?? '');
+    $assignedTo = filter_input(INPUT_POST, 'assigned_to', FILTER_VALIDATE_INT) ?: null;
+    $priority = $_POST['priority'] ?? '';
+    $dueDate = trim($_POST['due_date'] ?? '');
+    $validDue = $dueDate === '' || (($d = DateTime::createFromFormat('Y-m-d', $dueDate)) && $d->format('Y-m-d') === $dueDate);
+
+    // NEW: the project must exist and be open, and the person must be an active user.
+    $projectOk = false;
+    if ($projectId) {
+        $p = mysqli_prepare($conn, "SELECT id FROM projects WHERE id = ? AND status != 'Completed'");
+        mysqli_stmt_bind_param($p, 'i', $projectId);
+        mysqli_stmt_execute($p);
+        $projectOk = (bool) mysqli_fetch_assoc(mysqli_stmt_get_result($p));
+    }
+    $assigneeOk = true;
+    if ($assignedTo) {
+        $u = mysqli_prepare($conn, 'SELECT id FROM users WHERE id = ? AND is_active = 1');
+        mysqli_stmt_bind_param($u, 'i', $assignedTo);
+        mysqli_stmt_execute($u);
+        $assigneeOk = (bool) mysqli_fetch_assoc(mysqli_stmt_get_result($u));
+    }
+
+    if (!$projectId || !$projectOk || $title === '' || !in_array($priority, ['Low', 'Medium', 'High'], true)) {
+        $error = 'Please provide valid task details.';
+    } elseif (!$validDue) {
+        // NEW: an invalid date used to be saved as it was typed.
+        $error = 'Please provide a valid due date.';
+    } elseif (!$assigneeOk) {
+        $error = 'Please assign the task to an active employee.';
+    } else {
+        $status = 'Pending';
+        $statement = mysqli_prepare($conn, "INSERT INTO tasks (project_id, title, description, assigned_to, priority, status, due_date) VALUES (?, ?, ?, ?, ?, ?, NULLIF(?, ''))");
+        mysqli_stmt_bind_param($statement, 'ississs', $projectId, $title, $description, $assignedTo, $priority, $status, $dueDate);
         if (mysqli_stmt_execute($statement)) {
+            $taskId = (int) mysqli_insert_id($conn);
             if ($assignedTo) {
                 $dueDateText = $dueDate !== '' ? ' (due ' . date('d M Y', strtotime($dueDate)) . ')' : '';
                 notifyUser(
@@ -16,8 +49,12 @@ if (isset($_POST['save'])) {
                     'New task assigned',
                     'You have been assigned a new ' . $priority . '-priority task: "' . $title . '"' . $dueDateText . '.'
                 );
+                // NEW: the same news by SMS.
+                $creator = current_user_id();
+                sms_notify_task_assigned($conn, $taskId, $creator ? (int) $creator : null);
             }
-            header('Location: index.php?success=Task created successfully.'); exit;
+            // CHANGED: message is urlencoded.
+            header('Location: index.php?success=' . urlencode('Task created successfully.')); exit;
         }
         $error = 'Unable to create the task.';
     }
@@ -70,6 +107,7 @@ $modal_subtitle = 'Create a new task for a project.';
                             <option value="<?= (int) $employee['id']; ?>" <?= isset($assignedTo) && $assignedTo === (int) $employee['id'] ? 'selected' : ''; ?>><?= htmlspecialchars($employee['names'], ENT_QUOTES, 'UTF-8'); ?></option>
                         <?php } ?>
                     </select>
+                    <div class="form-text">The employee is notified in the system and by SMS (if their phone number is saved).</div>
                 </div>
 
                 <div class="row g-3 mb-4">

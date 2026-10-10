@@ -14,6 +14,7 @@ $offset = ($currentPage - 1) * PER_PAGE;
 $payrolls = mysqli_query($conn, 'SELECT payroll.*, users.names AS employee_name, departments.name AS department_name FROM payroll INNER JOIN users ON payroll.user_id = users.id LEFT JOIN departments ON users.department_id = departments.id ORDER BY payroll.pay_period DESC, users.names LIMIT ' . PER_PAGE . ' OFFSET ' . $offset);
 ?>
 <?php if (isset($_GET['success'])) { ?><div class="alert alert-success alert-dismissible fade show" role="alert"><?= htmlspecialchars($_GET['success'], ENT_QUOTES, 'UTF-8'); ?><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><?php } ?>
+<?php if (isset($_GET['error'])) { ?><div class="alert alert-danger alert-dismissible fade show" role="alert"><?= htmlspecialchars($_GET['error'], ENT_QUOTES, 'UTF-8'); ?><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><?php } ?>
 <div class="d-flex justify-content-between align-items-center mb-4"><h2>Payroll Management</h2><a href="create.php" class="btn btn-primary">+ Generate Payroll</a></div>
 <div class="card border-0 shadow-sm"><div class="card-body p-0"><div class="table-responsive">
 <table class="table table-bordered table-hover bg-white mb-0">

@@ -3,6 +3,7 @@ require '../../config/db.php';
 require '../../includes/purchase_order_helpers.php';
 require '../../includes/business_party_helpers.php';
 require '../../includes/product_unit_helpers.php';
+require_once '../../includes/sms_messages.php'; // NEW: supplier SMS (MY MOTIVE SMS, message 6)
 require_role(['Admin', 'Manager']);
 
 $catalog = mysqli_query($conn, "SELECT id, product_name, product_code, buying_price, quantity, unit FROM products WHERE item_type = 'Item' AND is_active = 1 ORDER BY product_name");
@@ -142,6 +143,10 @@ if (isset($_POST['save'])) {
         }
 
         if ($saved) {
+            // NEW: tell the supplier about the order (only for "Mark as Ordered", not Drafts).
+            if ($action === 'order') {
+                sms_notify_po_ordered($conn, (int) $poId, $userId ? (int) $userId : null);
+            }
             header('Location: view.php?id=' . $poId . '&success=' . urlencode('Purchase Order ' . ($action === 'order' ? 'created and marked as Ordered.' : 'saved as Draft.')));
             exit;
         }

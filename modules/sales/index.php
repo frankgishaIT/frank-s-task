@@ -8,6 +8,7 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
 const PER_PAGE = 10;
 $role = current_user_role();
 $userId = current_user_id();
+$canSendSms = in_array($role, ['Admin', 'Manager'], true); // NEW: same roles as the Send SMS page
 
 // --- Credit view filter -------------------------------------------------
 $viewFilter = ($_GET['view'] ?? 'all') === 'credit' ? 'credit' : 'all';
@@ -42,8 +43,15 @@ $creditSummary = mysqli_fetch_assoc(mysqli_query($conn, "
     WHERE status IN ('Credit', 'Partially Paid')" . $creditScopeWhere));
 
 $pending = null;
+$cancelRequests = null;
 if (in_array($role, ['Manager', 'Admin'], true)) {
     $pending = mysqli_query($conn, "SELECT sales.*, customers.name AS customer_name, users.names AS requested_by_name FROM sales LEFT JOIN customers ON sales.customer_id = customers.id LEFT JOIN users ON sales.discount_requested_by = users.id WHERE sales.status = 'Pending Discount Approval' ORDER BY sales.created_at");
+    // CHANGED: loaded here, on its own. It used to be inside the "Awaiting Approval" card, so
+    // cancellation requests were only visible when a discount/credit approval was also waiting.
+    $cancelRequests = mysqli_query($conn, "SELECT sales.*, customers.name AS customer_name, users.names AS requested_by_name
+        FROM sales LEFT JOIN customers ON sales.customer_id = customers.id
+        LEFT JOIN users ON sales.cancel_requested_by = users.id
+        WHERE sales.cancel_requested_by IS NOT NULL ORDER BY sales.cancel_requested_at");
 }
 
 function sale_status_badge($status) {
@@ -67,11 +75,11 @@ function sale_pending_reason_badges($row) {
 <div class="alert alert-success alert-dismissible fade show" role="alert">
     <?= htmlspecialchars($_GET['success'], ENT_QUOTES, 'UTF-8'); ?>
     <button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><?php } ?>
-    <?php if (isset($_GET['error'])) { ?>
-        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-            <?= htmlspecialchars($_GET['error'], ENT_QUOTES, 'UTF-8'); ?>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
-    <?php } ?>
+<?php if (isset($_GET['error'])) { ?>
+<div class="alert alert-danger alert-dismissible fade show" role="alert">
+    <?= htmlspecialchars($_GET['error'], ENT_QUOTES, 'UTF-8'); ?>
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+<?php } ?>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2>Sales</h2>
@@ -86,35 +94,6 @@ function sale_pending_reason_badges($row) {
 <?php if ($pending && mysqli_num_rows($pending) > 0) { ?>
 <div class="card border-0 shadow-sm mb-4">
     <div class="card-header bg-white"><h5 class="mb-0">Awaiting Approval</h5></div>
-    <?php
-$cancelRequests = null;
-if (in_array($role, ['Manager', 'Admin'], true)) {
-    $cancelRequests = mysqli_query($conn, "SELECT sales.*, customers.name AS customer_name, users.names AS requested_by_name
-        FROM sales LEFT JOIN customers ON sales.customer_id = customers.id
-        LEFT JOIN users ON sales.cancel_requested_by = users.id
-        WHERE sales.cancel_requested_by IS NOT NULL ORDER BY sales.cancel_requested_at");
-}
-?>
-<?php if ($cancelRequests && mysqli_num_rows($cancelRequests) > 0) { ?>
-<div class="card border-0 shadow-sm mb-4">
-    <div class="card-header bg-white"><h5 class="mb-0">Pending Cancellation Requests</h5></div>
-    <div class="card-body p-0">
-        <table class="table table-bordered table-hover bg-white mb-0">
-            <tr><th>Date</th><th>Customer</th><th>Requested By</th><th>Reason</th><th>Total</th><th>Action</th></tr>
-            <?php while ($row = mysqli_fetch_assoc($cancelRequests)) { ?>
-            <tr>
-                <td><?= date('d M Y', strtotime($row['sale_date'])); ?></td>
-                <td><?= htmlspecialchars($row['customer_name'] ?? 'Walk-in', ENT_QUOTES, 'UTF-8'); ?></td>
-                <td><?= htmlspecialchars($row['requested_by_name'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></td>
-                <td><?= htmlspecialchars($row['cancel_request_reason'], ENT_QUOTES, 'UTF-8'); ?></td>
-                <td>RWF <?= number_format($row['total_amount'], 2); ?></td>
-                <td><a href="review_cancel_request.php?id=<?= (int) $row['id']; ?>" class="btn btn-primary btn-sm">Review</a></td>
-            </tr>
-            <?php } ?>
-        </table>
-    </div>
-</div>
-<?php } ?>
     <div class="card-body p-0">
         <table class="table table-bordered table-hover bg-white mb-0">
             <tr><th>Date</th><th>Customer</th><th>Requested By</th><th>Reason</th><th>Discount</th><th>Total</th><th>Action</th></tr>
@@ -127,6 +106,28 @@ if (in_array($role, ['Manager', 'Admin'], true)) {
                 <td>RWF <?= number_format($row['discount_amount'], 2); ?></td>
                 <td>RWF <?= number_format($row['total_amount'], 2); ?></td>
                 <td><a href="approve_discount.php?id=<?= (int) $row['id']; ?>" class="btn btn-primary btn-sm">Review</a></td>
+            </tr>
+            <?php } ?>
+        </table>
+    </div>
+</div>
+<?php } ?>
+
+<?php if ($cancelRequests && mysqli_num_rows($cancelRequests) > 0) { ?>
+<!-- CHANGED: its own card, shown whenever there are cancellation requests. -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white"><h5 class="mb-0">Pending Cancellation Requests</h5></div>
+    <div class="card-body p-0">
+        <table class="table table-bordered table-hover bg-white mb-0">
+            <tr><th>Date</th><th>Customer</th><th>Requested By</th><th>Reason</th><th>Total</th><th>Action</th></tr>
+            <?php while ($row = mysqli_fetch_assoc($cancelRequests)) { ?>
+            <tr>
+                <td><?= date('d M Y', strtotime($row['sale_date'])); ?></td>
+                <td><?= htmlspecialchars($row['customer_name'] ?? 'Walk-in', ENT_QUOTES, 'UTF-8'); ?></td>
+                <td><?= htmlspecialchars($row['requested_by_name'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></td>
+                <td><?= htmlspecialchars($row['cancel_request_reason'] ?? '', ENT_QUOTES, 'UTF-8'); ?></td>
+                <td>RWF <?= number_format($row['total_amount'], 2); ?></td>
+                <td><a href="review_cancel_request.php?id=<?= (int) $row['id']; ?>" class="btn btn-primary btn-sm">Review</a></td>
             </tr>
             <?php } ?>
         </table>
@@ -148,6 +149,10 @@ if (in_array($role, ['Manager', 'Admin'], true)) {
                 <strong class="<?= $creditSummary['balance'] > 0 ? 'text-danger' : 'text-success'; ?>">
                     RWF <?= number_format($creditSummary['balance'], 2); ?>
                 </strong>
+                <?php if ($canSendSms && $creditSummary['cnt'] > 0) { ?>
+                <!-- NEW: one click to remind every customer who owes money (each gets their own amount). -->
+                <a href="../sms/sms_compose.php?group=credit&template=credit" class="btn btn-sm btn-outline-primary ms-2"><i class="bi bi-chat-dots me-1"></i>SMS all who owe</a>
+                <?php } ?>
             </div>
         </div>
     </div>
@@ -178,6 +183,7 @@ if (in_array($role, ['Manager', 'Admin'], true)) {
             <?php } ?>
             <?php while ($sale = mysqli_fetch_assoc($sales)) {
                 $balance = (float) $sale['total_amount'] - (float) $sale['amount_paid'];
+                $owes = in_array($sale['status'], ['Credit', 'Partially Paid'], true);
             ?>
             <tr>
                 <td><?= date('d M Y', strtotime($sale['sale_date'])); ?></td>
@@ -193,26 +199,31 @@ if (in_array($role, ['Manager', 'Admin'], true)) {
                     <?php } ?>
                 </td>
                 <td><?= sale_status_badge($sale['status']); ?></td>
-                <td>
-               <a href="invoice.php?id=<?= (int) $sale['id']; ?>" target="_blank" class="btn btn-outline-primary btn-sm">Invoice</a>
+                <td class="text-nowrap">
+                    <a href="invoice.php?id=<?= (int) $sale['id']; ?>" target="_blank" class="btn btn-outline-primary btn-sm">Invoice</a>
 
-    <?php if ($sale['status'] === 'Credit' || $sale['status'] === 'Partially Paid') { ?>
-        <a href="pay_credit.php?id=<?= (int) $sale['id']; ?>" class="btn btn-outline-success btn-sm">Pay</a>
-    <?php } ?>
+                    <?php if ($owes) { ?>
+                        <a href="pay_credit.php?id=<?= (int) $sale['id']; ?>" class="btn btn-outline-success btn-sm">Pay</a>
+                    <?php } ?>
 
-    <?php if (in_array($sale['status'], ['Credit', 'Partially Paid', 'Paid'], true)) { ?>
-        <?php if (in_array($role, ['Admin', 'Manager'], true)) { ?>
-            <?php if (!empty($sale['cancel_requested_by'])) { ?>
-                <a href="review_cancel_request.php?id=<?= (int) $sale['id']; ?>" class="btn btn-warning btn-sm">Review Request</a>
-            <?php } else { ?>
-                <a href="cancel.php?id=<?= (int) $sale['id']; ?>" class="btn btn-outline-danger btn-sm">Cancel</a>
-            <?php } ?>
-        <?php } elseif (!empty($sale['cancel_requested_by'])) { ?>
-            <span class="badge bg-secondary">Cancel Requested</span>
-        <?php } else { ?>
-            <a href="request_cancel.php?id=<?= (int) $sale['id']; ?>" class="btn btn-outline-warning btn-sm">Request Cancel</a>
-        <?php } ?>
-    <?php } ?>
+                    <?php if ($owes && $canSendSms && !empty($sale['customer_id'])) { ?>
+                        <!-- NEW: credit reminder SMS to this customer (opens Send SMS, ready to check and send). -->
+                        <a href="../sms/sms_compose.php?group=customer&id=<?= (int) $sale['customer_id']; ?>&template=credit" class="btn btn-outline-primary btn-sm" title="Send an SMS reminder to this customer"><i class="bi bi-chat-dots"></i> SMS</a>
+                    <?php } ?>
+
+                    <?php if (in_array($sale['status'], ['Credit', 'Partially Paid', 'Paid'], true)) { ?>
+                        <?php if (in_array($role, ['Admin', 'Manager'], true)) { ?>
+                            <?php if (!empty($sale['cancel_requested_by'])) { ?>
+                                <a href="review_cancel_request.php?id=<?= (int) $sale['id']; ?>" class="btn btn-warning btn-sm">Review Request</a>
+                            <?php } else { ?>
+                                <a href="cancel.php?id=<?= (int) $sale['id']; ?>" class="btn btn-outline-danger btn-sm">Cancel</a>
+                            <?php } ?>
+                        <?php } elseif (!empty($sale['cancel_requested_by'])) { ?>
+                            <span class="badge bg-secondary">Cancel Requested</span>
+                        <?php } else { ?>
+                            <a href="request_cancel.php?id=<?= (int) $sale['id']; ?>" class="btn btn-outline-warning btn-sm">Request Cancel</a>
+                        <?php } ?>
+                    <?php } ?>
                 </td>
             </tr>
             <?php } ?>

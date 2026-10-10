@@ -1,6 +1,7 @@
 <?php
 require '../../config/db.php';
 require '../../includes/sales_helpers.php';
+require_once '../../includes/sms_messages.php'; // NEW: cancellation SMS (MY MOTIVE SMS, message 5)
 require_role(['Admin', 'Manager']);
 
 $saleId = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT) ?: filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
@@ -43,6 +44,9 @@ if (isset($_POST['confirm_cancel'])) {
 
     $result = sales_cancel($conn, $saleId, current_user_id(), $reason ?: null, $returnToStock);
     if ($result['ok']) {
+        // NEW: tell the customer the invoice was cancelled and nothing is owed on it.
+        $cancelUser = current_user_id();
+        sms_notify_sale_cancelled($conn, (int) $saleId, $cancelUser ? (int) $cancelUser : null);
         $message = 'Sale #' . $saleId . ' has been cancelled.' . ($returnToStock ? ' The items were returned to stock.' : '');
         header('Location: index.php?success=' . urlencode($message));
     } else {

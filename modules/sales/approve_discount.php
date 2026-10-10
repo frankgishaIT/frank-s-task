@@ -1,16 +1,18 @@
 <?php
 require '../../config/db.php';
 require '../../includes/sales_helpers.php';   // also loads fund_helpers.php and profit_rules.php (require_once)
+require_once '../../includes/sms_messages.php'; // NEW: customer SMS when the sale is approved (MY MOTIVE SMS, messages 2 and 3)
 require_role(['Manager', 'Admin']);
 
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
-if (!$id) { header('Location: index.php?success=Invalid sale selected.'); exit; }
+// CHANGED: problems are sent as "error" (they were sent as "success"), and messages are urlencoded.
+if (!$id) { header('Location: index.php?error=' . urlencode('Invalid sale selected.')); exit; }
 
 $statement = mysqli_prepare($conn, 'SELECT sales.*, customers.name AS customer_name, customers.loyalty_points AS customer_loyalty_points, users.names AS requested_by_name FROM sales LEFT JOIN customers ON sales.customer_id = customers.id LEFT JOIN users ON sales.discount_requested_by = users.id WHERE sales.id = ?');
 mysqli_stmt_bind_param($statement, 'i', $id);
 mysqli_stmt_execute($statement);
 $sale = mysqli_fetch_assoc(mysqli_stmt_get_result($statement));
-if (!$sale) { header('Location: index.php?success=Sale not found.'); exit; }
+if (!$sale) { header('Location: index.php?error=' . urlencode('Sale not found.')); exit; }
 
 $itemsStatement = mysqli_prepare($conn, 'SELECT sale_items.*, products.product_name FROM sale_items LEFT JOIN products ON sale_items.product_id = products.id WHERE sale_id = ? ORDER BY sale_items.id');
 mysqli_stmt_bind_param($itemsStatement, 'i', $id);
@@ -47,7 +49,7 @@ if ($canAct && isset($_POST['decision']) && in_array($_POST['decision'], ['appro
 
         if (!$current || $current['status'] !== 'Pending Discount Approval') {
             mysqli_rollback($conn);
-            header('Location: index.php?success=' . urlencode('This sale has already been actioned by someone else.'));
+            header('Location: index.php?error=' . urlencode('This sale has already been actioned by someone else.'));
             exit;
         }
 
@@ -62,7 +64,9 @@ if ($canAct && isset($_POST['decision']) && in_array($_POST['decision'], ['appro
             }
 
             mysqli_commit($conn);
-            header('Location: invoice.php?id=' . $id . '&success=Sale approved. Invoice released.');
+            // NEW: the receipt (paid) or credit SMS goes out now that the sale is approved and saved.
+            sms_notify_sale_created($conn, (int) $id, $managerId ? (int) $managerId : null);
+            header('Location: invoice.php?id=' . $id . '&success=' . urlencode('Sale approved. Invoice released.'));
             exit;
         }
 
@@ -72,7 +76,8 @@ if ($canAct && isset($_POST['decision']) && in_array($_POST['decision'], ['appro
         mysqli_stmt_execute($update);
 
         mysqli_commit($conn);
-        header('Location: index.php?success=Sale cancelled — was not approved.');
+        // No SMS on rejection: the customer was never sent an invoice for this sale.
+        header('Location: index.php?success=' . urlencode('Sale cancelled — was not approved.'));
         exit;
     } catch (mysqli_sql_exception $e) {
         mysqli_rollback($conn);
@@ -137,7 +142,7 @@ $modal_icon = 'bi-shield-check'; $modal_title = 'Sale Approval'; $modal_subtitle
         <form method="POST">
             <div class="d-grid gap-2 d-md-flex justify-content-end mt-4">
                 <button class="btn btn-success rm-btn-primary" type="submit" name="decision" value="approve"><i class="bi bi-check-circle-fill me-2"></i>Approve Sale</button>
-                <button class="btn btn-danger rm-btn-primary" type="submit" name="decision" value="reject"><i class="bi bi-x-circle-fill me-2"></i>Reject & Cancel Sale</button>
+                <button class="btn btn-danger rm-btn-primary" type="submit" name="decision" value="reject" onclick="return confirm('Reject and cancel this sale?');"><i class="bi bi-x-circle-fill me-2"></i>Reject & Cancel Sale</button>
                 <a href="index.php" class="btn btn-light rm-btn-light">Cancel</a>
             </div>
         </form>

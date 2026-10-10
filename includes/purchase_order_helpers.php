@@ -4,6 +4,7 @@
  */
 require_once __DIR__ . '/stock_rules.php'; // single "low stock" rule (per-product reorder level, else the default)
 require_once __DIR__ . '/fund_helpers.php'; // RM Funds: purchases are paid from the RM Capital Fund
+require_once __DIR__ . '/sms_messages.php'; // NEW: supplier SMS when a PO is ordered (MY MOTIVE SMS, message 6)
 
 const PO_LOW_STOCK_THRESHOLD = STOCK_DEFAULT_REORDER_LEVEL; // default level, used when a product has none of its own
 
@@ -170,6 +171,8 @@ function po_mark_ordered($conn, $poId, $userId) {
         po_post_ordered_expense($conn, (int) $poId, (float) $po['total_amount'], (string) $po['supplier'], $userId ? (int) $userId : null);
 
         mysqli_commit($conn);
+        // NEW: tell the supplier, only after the order is saved.
+        sms_notify_po_ordered($conn, (int) $poId, $userId ? (int) $userId : null);
         return ['ok' => true];
     } catch (InsufficientFundException $e) {
         mysqli_rollback($conn);

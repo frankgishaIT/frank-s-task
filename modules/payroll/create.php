@@ -2,6 +2,7 @@
 require '../../config/db.php';
 require '../../includes/notification_helper.php';
 require '../../includes/fund_helpers.php';
+require_once '../../includes/sms_messages.php'; // NEW: SMS to the employee when paid (MY MOTIVE SMS, message 10)
 require_role(['Admin']);
 
 const WORKING_HOURS_PER_DAY = 8;
@@ -106,10 +107,13 @@ if (isset($_POST['save'])) {
     $salesCommission = filter_input(INPUT_POST, 'sales_commission', FILTER_VALIDATE_FLOAT);
     $status = $_POST['status'] ?? '';
 
-    if (!$userId || !preg_match('/^\d{4}-\d{2}$/', $period) || $bonus === false || $bonus < 0
-        || $deductions === false || $deductions < 0 || $salesCommission === false || $salesCommission < 0
+    if (!$userId || !preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $period) || $bonus === false || $bonus === null || $bonus < 0
+        || $deductions === false || $deductions === null || $deductions < 0 || $salesCommission === false || $salesCommission === null || $salesCommission < 0
         || !in_array($status, ['Draft', 'Paid'], true)) {
         $error = 'Please enter valid payroll details.';
+    } elseif ($period > date('Y-m')) {
+        // NEW: a future month cannot be paid yet.
+        $error = 'Payroll cannot be generated for a future month.';
     } else {
         $calc = calculate_payroll_preview($conn, $userId, $period);
         if (!$calc) {
@@ -121,16 +125,21 @@ if (isset($_POST['save'])) {
             mysqli_stmt_bind_param($duplicateCheck, 'is', $userId, $periodDate);
             mysqli_stmt_execute($duplicateCheck);
 
-            if (mysqli_num_rows(mysqli_stmt_get_result($duplicateCheck)) > 0) {
-                $error = 'Payroll already exists for this employee and month.';
-            } else {
-            $netSalary = $calc['basic_salary']
+            // CHANGED: rounded, and checked below so it can never be negative.
+            $netSalary = round($calc['basic_salary']
                 + $calc['overtime_pay']
                 + $calc['performance_bonus']
                 + $salesCommission
                 + $bonus
                 - $deductions
-                - $calc['attendance_deduction'];
+                - $calc['attendance_deduction'], 2);
+
+            if (mysqli_num_rows(mysqli_stmt_get_result($duplicateCheck)) > 0) {
+                $error = 'Payroll already exists for this employee and month.';
+            } elseif ($netSalary < 0) {
+                // NEW: deductions larger than the salary used to save a negative payroll.
+                $error = 'The deductions are larger than the salary (Net Salary would be RWF ' . number_format($netSalary, 2) . '). Please check the amounts.';
+            } else {
             $paidAt = $status === 'Paid' ? date('Y-m-d H:i:s') : null;
 
             // Fetched once here and reused both for the auto-posted Transaction
@@ -141,6 +150,7 @@ if (isset($_POST['save'])) {
             mysqli_stmt_execute($nameStatement);
             $employeeRow = mysqli_fetch_assoc(mysqli_stmt_get_result($nameStatement));
             $employeeName = $employeeRow['names'] ?? ('Employee #' . $userId);
+            $adminId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
 
             mysqli_begin_transaction($conn);
             try {
@@ -156,6 +166,7 @@ if (isset($_POST['save'])) {
                     $salesCommission, $bonus, $deductions, $netSalary, $status, $paidAt
                 );
                 mysqli_stmt_execute($statement);
+                $payrollId = (int) mysqli_insert_id($conn);
 
                 // Paid payroll is an automatic Expense paid from the RM Business
                 // Operating Fund. The helper checks the fund balance first and
@@ -163,13 +174,14 @@ if (isset($_POST['save'])) {
                 // which cancels the whole payroll run below.
                 // A Draft hasn't paid anyone yet, so it does not touch the fund.
                 if ($status === 'Paid' && $netSalary > 0) {
-                    $adminId = $_SESSION['user_id'] ?? null;
                     $paidDate = date('Y-m-d');
                     $description = 'Payroll: ' . $employeeName . ' (' . date('F Y', strtotime($periodDate)) . ')';
 
+                    // CHANGED: linked to this payroll ('PAYROLL' + id), so if the payroll is ever
+                    // cancelled or corrected, exactly this fund expense can be reversed.
                     fund_post_automatic_expense(
                         $conn, 'OPERATING', 'Payroll', (float) $netSalary,
-                        $paidDate, $description, $adminId ? (int) $adminId : null
+                        $paidDate, $description, $adminId, null, 'PAYROLL', $payrollId
                     );
                 }
 
@@ -186,14 +198,24 @@ if (isset($_POST['save'])) {
                         . '. Net salary: RWF ' . number_format($netSalary, 2) . '.'
                 );
 
-                header('Location: index.php?success=Payroll generated successfully.');
+                // NEW (MY MOTIVE SMS, message 10): SMS only when it is actually paid, not for a Draft.
+                if ($status === 'Paid') {
+                    sms_notify_payroll_paid($conn, $payrollId, $adminId);
+                }
+
+                // CHANGED: message is urlencoded.
+                header('Location: index.php?success=' . urlencode('Payroll generated successfully.'));
                 exit;
             } catch (InsufficientFundException $e) {
                 mysqli_rollback($conn);
                 $error = $e->getMessage() . ' You can save this payroll as a Draft instead.';
-            } catch (Exception $e) {
+            } catch (Throwable $e) {
+                // CHANGED: Throwable (was Exception), and the cause is logged.
                 mysqli_rollback($conn);
-                $error = 'Unable to generate payroll. Please try again.';
+                error_log('payroll generate failed for user #' . $userId . ' ' . $period . ': ' . $e->getMessage());
+                $error = ($e instanceof mysqli_sql_exception && (int) $e->getCode() === 1062)
+                    ? 'Payroll already exists for this employee and month.'
+                    : 'Unable to generate payroll. Nothing was saved. Please try again.';
             }
             }
         }
@@ -237,7 +259,7 @@ $modal_subtitle = 'Basic salary, attendance, and task performance are calculated
                     </div>
                     <div class="col-5">
                         <label class="form-label small fw-semibold text-muted">Pay Period</label>
-                        <input type="month" name="pay_period" class="form-control rm-input" value="<?= htmlspecialchars($selectedPeriod, ENT_QUOTES, 'UTF-8'); ?>" onchange="this.form.submit()" required>
+                        <input type="month" name="pay_period" class="form-control rm-input" max="<?= date('Y-m'); ?>" value="<?= htmlspecialchars($selectedPeriod, ENT_QUOTES, 'UTF-8'); ?>" onchange="this.form.submit()" required>
                     </div>
                 </div>
             </form>
@@ -265,7 +287,7 @@ $modal_subtitle = 'Basic salary, attendance, and task performance are calculated
                 <div class="row g-3 mb-3">
                     <div class="col-4">
                         <label class="form-label small fw-semibold text-muted">Sales Commission (RWF)</label>
-                        <input type="number" name="sales_commission" class="form-control rm-input" min="0" step="0.01" value="<?= $preview['sales_commission']; ?>">
+                        <input type="number" name="sales_commission" class="form-control rm-input" min="0" step="0.01" value="<?= htmlspecialchars((string) $preview['sales_commission'], ENT_QUOTES, 'UTF-8'); ?>">
                         <small class="text-muted">Auto: 2% of this employee's finalized sales this month.</small>
                     </div>
                     <div class="col-4">
@@ -285,7 +307,7 @@ $modal_subtitle = 'Basic salary, attendance, and task performance are calculated
                         <option value="Paid">Paid</option>
                     </select>
                     <?php if ($operatingAvailable !== null) { ?>
-                    <small class="text-muted">"Paid" is taken from the RM Business Operating Fund. Available now: <strong>RWF <?= number_format($operatingAvailable, 2); ?></strong>.</small>
+                    <small class="text-muted">"Paid" is taken from the RM Business Operating Fund and the employee gets an SMS. Available now: <strong>RWF <?= number_format($operatingAvailable, 2); ?></strong>.</small>
                     <?php } ?>
                 </div>
 

@@ -6,7 +6,7 @@
  */
 
 // Your Pindo API token: app.pindo.io -> Account -> Security settings.
-define('PINDO_API_TOKEN', 'PASTE_YOUR_PINDO_TOKEN_HERE');
+define('PINDO_API_TOKEN', 'eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE4ODYzMzU2NzgsImlhdCI6MTc5MTY0MTI3OCwiaWQiOiJ1c2VyXzAxTTJXQjhZQUdURVYyS0ZBMVFOWEExRlZEIiwicmV2b2tlZF90b2tlbl9jb3VudCI6MH0.I7J03oo4uu6dFSVfu_p4wIckJdlGNuYaGsnPfwkNGPkHPx7m7xhHHIz4bdxrY8resxmeyZTMA7wTG-fZIyFS4w');
 
 // The sender name people see on their phone. It must be a sender ID registered and
 // approved in your Pindo account, otherwise Pindo rejects the message.

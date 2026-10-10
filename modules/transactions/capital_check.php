@@ -50,7 +50,8 @@ $hasOpening = capital_has_opening_stock($conn);
 // NEW: loans (what was borrowed, repaid and is still owed).
 $loans = capital_loan_summary($conn);
 $ownerCapital = round($balance - $loans['outstanding'], 2);
-$loanFundDiff = round($loans['in_fund'] - $loans['received'], 2);
+// CHANGED: only loans taken after the RM Capital Fund started must be in the fund.
+$loanFundDiff = round($loans['expected_in_fund'] - $loans['expected'], 2);
 
 include '../../includes/header.php'; include '../../includes/sidebar.php';
 
@@ -151,13 +152,57 @@ function cc_diff_cell(float $d): string {
             </table>
         </div>
 
-        <?php if (abs($loanFundDiff) >= 0.01) { ?>
+        <?php if ($loans['before_count'] > 0) { ?>
+        <div class="alert alert-info mt-3 mb-0 small" style="border-radius:10px;">
+            <i class="bi bi-info-circle-fill me-1"></i>
+            <strong><?= (int) $loans['before_count']; ?> loan(s) (RWF <?= number_format($loans['before_amount'], 2); ?>)</strong> were taken before the RM Capital Fund started
+            (<?= htmlspecialchars(date('d M Y', strtotime($loans['fund_start'])), ENT_QUOTES, 'UTF-8'); ?>). Their money was received and used before the fund existed;
+            what it bought is already in the opening balances (stock and assets). They are <strong>not</strong> expected in the fund, but what is still owed on them
+            is counted in Outstanding loans.
+        </div>
+        <?php } ?>
+
+        <?php if ($loans['missing_count'] > 0 && abs($loanFundDiff) >= 0.01) { ?>
         <div class="alert alert-warning mt-3 mb-0 small" style="border-radius:10px;">
             <i class="bi bi-exclamation-triangle-fill me-1"></i>
-            The Loans module shows RWF <?= number_format($loans['received'], 2); ?> borrowed, but the RM Capital Fund received
-            RWF <?= number_format($loans['in_fund'], 2); ?> through it (difference RWF <?= number_format($loanFundDiff, 2); ?>).
-            Check that every loan was received into the fund, and that cancelled or corrected loans were taken back out.
+            <strong><?= (int) $loans['missing_count']; ?> loan(s) taken after the RM Capital Fund started</strong> did not bring all their money into the fund
+            (expected RWF <?= number_format($loans['expected'], 2); ?>, received RWF <?= number_format($loans['expected_in_fund'], 2); ?>).
+            See the loans marked <span class="badge bg-warning text-dark">Missing</span> below, and check how they were recorded in the Loans module.
         </div>
+        <?php } elseif ($loans['details']) { ?>
+        <div class="alert alert-success mt-3 mb-0 small" style="border-radius:10px;">
+            <i class="bi bi-check-circle-fill me-1"></i>
+            Every loan taken since the RM Capital Fund started has its money in the fund.
+        </div>
+        <?php } ?>
+
+        <?php if ($loans['details']) { ?>
+        <!-- NEW: each loan and how it relates to the fund -->
+        <details class="mt-3">
+            <summary class="small fw-semibold" style="cursor:pointer;">Show each loan</summary>
+            <div class="table-responsive mt-2">
+                <table class="table table-sm align-middle mb-0" style="font-size:13px;">
+                    <thead><tr><th>Lender</th><th>Start date</th><th>Status</th><th class="text-end">Borrowed</th><th class="text-end">In the fund</th><th class="text-end">Still owed</th><th>Check</th></tr></thead>
+                    <tbody>
+                    <?php foreach ($loans['details'] as $d) { ?>
+                        <tr>
+                            <td><?= htmlspecialchars($d['lender'] . ($d['loan_type'] ? ' (' . $d['loan_type'] . ')' : ''), ENT_QUOTES, 'UTF-8'); ?></td>
+                            <td class="text-nowrap"><?= htmlspecialchars(date('d M Y', strtotime($d['loan_start_date'])), ENT_QUOTES, 'UTF-8'); ?></td>
+                            <td><?= htmlspecialchars($d['status'], ENT_QUOTES, 'UTF-8'); ?></td>
+                            <td class="text-end"><?= number_format((float) $d['loan_amount'], 2); ?></td>
+                            <td class="text-end"><?= number_format((float) $d['in_fund'], 2); ?></td>
+                            <td class="text-end"><?= in_array($d['status'], ['Active', 'Defaulted'], true) ? number_format((float) $d['outstanding_balance'], 2) : '0.00'; ?></td>
+                            <td>
+                                <?php if ($d['check'] === 'ok') { ?><span class="badge bg-success">In the fund</span>
+                                <?php } elseif ($d['check'] === 'before') { ?><span class="badge bg-secondary" title="Taken before the RM Capital Fund started">Before the fund</span>
+                                <?php } else { ?><span class="badge bg-warning text-dark">Missing</span><?php } ?>
+                            </td>
+                        </tr>
+                    <?php } ?>
+                    </tbody>
+                </table>
+            </div>
+        </details>
         <?php } ?>
 
         <?php if ($loans['manual_count'] > 0) { ?>

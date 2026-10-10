@@ -161,7 +161,49 @@ function capital_loan_summary(mysqli $conn): array {
         WHERE m.movement_type = 'CAPITAL_INFLOW' AND (m.ref_type IS NULL OR m.ref_type = 'CAPITAL_EDIT')
           AND m.source_type = 'Business Loan' AND r.id IS NULL"));
 
+    // NEW: per-loan detail. Loans taken BEFORE the RM Capital Fund started never went through it:
+    // their money (and what it bought) is already inside the opening balances, so they are not
+    // compared with the fund. They still count in Outstanding loans (the business still owes them).
+    $startRow = mysqli_fetch_row(mysqli_query($conn, "SELECT DATE(MIN(m.created_at)) FROM fund_movements m
+        JOIN funds f ON f.id = m.fund_id AND f.code = 'CAPITAL'"));
+    $fundStart = $startRow[0] ?? null;
+
+    $details = mysqli_fetch_all(mysqli_query($conn, "SELECT l.id, l.lender, l.loan_type, l.loan_amount, l.loan_start_date, l.status,
+            l.outstanding_balance,
+            COALESCE((SELECT SUM(CASE WHEN m.direction = 'IN' THEN m.amount ELSE -m.amount END)
+                      FROM fund_movements m WHERE m.ref_type = 'loan' AND m.ref_id = l.id), 0) AS in_fund
+        FROM loans l WHERE l.status <> 'Cancelled' ORDER BY l.loan_start_date, l.id"), MYSQLI_ASSOC);
+
+    $expected = 0.0; $expectedInFund = 0.0; $beforeCount = 0; $beforeAmount = 0.0; $missingCount = 0;
+    foreach ($details as &$d) {
+        $amount = round((float) $d['loan_amount'], 2);
+        $in = round((float) $d['in_fund'], 2);
+        if ($in >= $amount - 0.01) {
+            $d['check'] = 'ok';
+        } elseif ($fundStart && $d['loan_start_date'] < $fundStart) {
+            $d['check'] = 'before';
+        } else {
+            $d['check'] = 'missing';
+            $missingCount++;
+        }
+        if ($d['check'] === 'before') {
+            $beforeCount++;
+            $beforeAmount += $amount;
+        } else {
+            $expected += $amount;
+            $expectedInFund += $in;
+        }
+    }
+    unset($d);
+
     return [
+        'fund_start' => $fundStart,
+        'details' => $details,
+        'before_count' => $beforeCount,
+        'before_amount' => round($beforeAmount, 2),
+        'missing_count' => $missingCount,
+        'expected' => round($expected, 2),               // loans that must be in the fund
+        'expected_in_fund' => round($expectedInFund, 2), // what the fund received for them
         'loans' => (int) $l['loans'],
         'open_loans' => (int) $l['open_loans'],
         'received' => round((float) $l['received'], 2),

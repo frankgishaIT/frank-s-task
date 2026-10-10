@@ -68,6 +68,19 @@ function sms_already_sent(mysqli $conn, string $event, string $refType, int $ref
     return (bool) mysqli_fetch_assoc(mysqli_stmt_get_result($s));
 }
 
+/**
+ * NEW: everything a customer still owes, on ALL their unpaid sales (Credit and Partially Paid).
+ * Used for "Ideni risigaye" in the messages, so a customer with several credits sees the full
+ * amount they owe, not only what is left on this one invoice.
+ */
+function sms_customer_outstanding(mysqli $conn, int $customerId): float {
+    $s = mysqli_prepare($conn, "SELECT COALESCE(SUM(total_amount - amount_paid), 0) AS owed
+        FROM sales WHERE customer_id = ? AND status IN ('Credit', 'Partially Paid')");
+    mysqli_stmt_bind_param($s, 'i', $customerId);
+    mysqli_stmt_execute($s);
+    return max(0, round((float) mysqli_fetch_assoc(mysqli_stmt_get_result($s))['owed'], 2));
+}
+
 // A sale with its customer's name and phone.
 function sms_load_sale(mysqli $conn, int $saleId): ?array {
     $phoneCol = sms_phone_column($conn, 'customers');
@@ -91,7 +104,8 @@ function sms_notify_sale_created(mysqli $conn, int $saleId, ?int $userId = null)
         if (sms_already_sent($conn, 'SALE_CREATED', 'SALE', $saleId)) { return; }
 
         $name = sms_greet($sale['customer_name'], 'Mukiliya');
-        $balance = max(0, (float) $sale['total_amount'] - (float) $sale['amount_paid']);
+        // CHANGED: "Ideni risigaye" = ALL the customer still owes (every unpaid sale), not only this invoice.
+        $balance = sms_customer_outstanding($conn, (int) $sale['customer_id']);
         $invoice = sms_invoice_no($saleId);
 
         if ($sale['payment_method'] === 'Credit') {
@@ -120,7 +134,8 @@ function sms_notify_payment(mysqli $conn, int $saleId, int $paymentId, float $am
         if (!$sale || !$sale['customer_id']) { return; }
         if (sms_already_sent($conn, 'PAYMENT_RECEIVED', 'SALE_PAYMENT', $paymentId)) { return; }
 
-        $balance = max(0, (float) $sale['total_amount'] - (float) $sale['amount_paid']);
+        // CHANGED: "Ideni risigaye" = ALL the customer still owes after this payment, on every unpaid sale.
+        $balance = sms_customer_outstanding($conn, (int) $sale['customer_id']);
         $text = sms_greet($sale['customer_name'], 'Mukiliya') . ', twakiriye ' . sms_money($amount) . 'FRW wishyuye kuri Invoice No: '
             . sms_invoice_no($saleId) . '. Ideni risigaye: ' . sms_money($balance) . 'FRW. EBM/Ikibazo: ' . SMS_HELP_PHONE
             . '. Murakoze guhitamo RISE MOTIVE';

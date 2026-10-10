@@ -6,6 +6,9 @@ require '../../config/db.php';
 require '../../includes/notification_helper.php';
 require '../../includes/business_party_helpers.php';
 require '../../includes/fund_helpers.php';
+require_once '../../includes/income_allocation_helpers.php'; // NEW: manual Income -> four Funds
+// CHANGED: the page had no login/role check of its own (every other page has one).
+require_role(['Admin', 'Manager', 'Employee']);
 
 $isAdmin = isset($_SESSION['user_role']) && strtolower($_SESSION['user_role']) === 'admin';
 $payeeList = business_parties_of_type($conn, 'Payee');
@@ -22,11 +25,20 @@ if (isset($_POST['save'])) {
     $partyId = filter_input(INPUT_POST, 'party_id', FILTER_VALIDATE_INT) ?: null;
     $fundId = filter_input(INPUT_POST, 'fund_id', FILTER_VALIDATE_INT) ?: null;
     $expenseCategory = trim($_POST['expense_category'] ?? '');
-    $recordedBy = $_SESSION['user_id'] ?? null;
+    $recordedBy = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
+    $amount = ($amount === false || $amount === null) ? $amount : round($amount, 2); // NEW: no float leftovers in the fund
     $validDate = DateTime::createFromFormat('Y-m-d', $transactionDate);
 
-    if (!in_array($category, ['Product', 'Service'], true) || !in_array($type, ['Income', 'Expense'], true) || $amount === false || $amount <= 0 || !$validDate || $validDate->format('Y-m-d') !== $transactionDate) {
+    // NEW: the party must be a real RM Payee (Expense) or RM Partner (Income).
+    $allowedParties = array_map(function ($p) { return (int) $p['id']; }, $type === 'Expense' ? $payeeList : $partnerList);
+
+    if (!in_array($category, ['Product', 'Service'], true) || !in_array($type, ['Income', 'Expense'], true) || $amount === false || $amount === null || $amount <= 0 || !$validDate || $validDate->format('Y-m-d') !== $transactionDate) {
         $error = 'Please provide a valid category, type, amount, and date.';
+    } elseif ($transactionDate > date('Y-m-d')) {
+        // NEW: a future date would take money out of a fund before it is spent.
+        $error = 'The date cannot be in the future.';
+    } elseif ($partyId && !in_array($partyId, $allowedParties, true)) {
+        $error = 'Please select a valid party.';
     } elseif ($type === 'Expense' && (!$fundId || !fund_get($conn, $fundId))) {
         $error = 'Please select the Fund this expense will be paid from.';
     } elseif ($type === 'Expense' && $expenseCategory !== '' && !in_array($expenseCategory, $categoryList, true)) {
@@ -35,13 +47,13 @@ if (isset($_POST['save'])) {
         if ($type === 'Income') { $fundId = null; $expenseCategory = null; }
         if ($expenseCategory === '') { $expenseCategory = null; }
 
-        // Income is always auto-approved. Expenses need admin approval
-        // unless the person recording it is already an admin.
-        $status = ($isAdmin || $type === 'Income') ? 'approved' : 'pending';
+        // CHANGED: an admin's entries are approved at once. An employee's Expense needs approval,
+        // and now an employee's Income too (INCOME_NEEDS_APPROVAL), because approved Income goes
+        // straight into the Funds.
+        $status = ($isAdmin || ($type === 'Income' && !INCOME_NEEDS_APPROVAL)) ? 'approved' : 'pending';
 
+        mysqli_begin_transaction($conn);
         try {
-            mysqli_begin_transaction($conn);
-
             if ($type === 'Expense') {
                 fund_lock($conn, $fundId);
                 $fund = fund_get($conn, $fundId);
@@ -65,6 +77,12 @@ if (isset($_POST['save'])) {
                 );
             }
 
+            // NEW (spec section 1): approved Income is profit, so it is allocated to the four
+            // Funds right away by the fund percentages (like sales profit).
+            if ($type === 'Income' && $status === 'approved') {
+                allocate_income_transaction($conn, (int) $newId, (float) $amount, $recordedBy);
+            }
+
             mysqli_commit($conn);
 
             if ($status === 'pending') {
@@ -77,9 +95,9 @@ if (isset($_POST['save'])) {
                         'A new ' . strtolower($type) . ' of RWF ' . number_format($amount, 2) . ' is awaiting your approval (#' . $newId . ').'
                     );
                 }
-                header('Location: index.php?success=Transaction submitted for admin approval.');
+                header('Location: index.php?success=' . urlencode('Transaction submitted for admin approval.'));
             } else {
-                header('Location: index.php?success=Transaction recorded successfully.');
+                header('Location: index.php?success=' . urlencode('Transaction recorded successfully.'));
             }
             exit;
         } catch (InsufficientFundException $e) {
@@ -87,7 +105,8 @@ if (isset($_POST['save'])) {
             $error = $e->getMessage();
         } catch (Throwable $e) {
             mysqli_rollback($conn);
-            $error = 'Unable to save the transaction.';
+            error_log('create transaction failed: ' . $e->getMessage()); // NEW: the cause is logged
+            $error = 'Unable to save the transaction. Nothing was saved.';
         }
     }
 }
@@ -114,7 +133,8 @@ $modal_subtitle = $isAdmin ? 'Record a new income or expense entry.' : 'Submit a
             <?php if (!$isAdmin) { ?>
 <div class="alert alert-info d-flex align-items-center gap-2 mb-3" style="border-radius:10px; border:none; font-size:13px; padding:10px 14px;">
     <i class="bi bi-info-circle-fill"></i>
-    Income is recorded right away. Expenses are sent to an admin for approval before they appear in totals.
+    Income and expenses are sent to an admin for approval before they appear in totals and Funds.
+    Product and service sales must be recorded in Sales, not here.
 </div>
 <?php } ?>
 
@@ -183,7 +203,7 @@ $modal_subtitle = $isAdmin ? 'Record a new income or expense entry.' : 'Submit a
 
                 <div class="mb-3">
                     <label class="form-label small fw-semibold text-muted">Transaction Date</label>
-                    <input type="date" name="transaction_date" class="form-control rm-input" value="<?= htmlspecialchars($transactionDate ?? date('Y-m-d'), ENT_QUOTES, 'UTF-8'); ?>" required>
+                    <input type="date" name="transaction_date" class="form-control rm-input" max="<?= date('Y-m-d'); ?>" value="<?= htmlspecialchars($transactionDate ?? date('Y-m-d'), ENT_QUOTES, 'UTF-8'); ?>" required>
                 </div>
 
                 <div class="mb-3">

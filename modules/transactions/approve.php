@@ -5,6 +5,7 @@ if (session_status() === PHP_SESSION_NONE) {
 require '../../config/db.php';
 require '../../includes/notification_helper.php';
 require '../../includes/fund_helpers.php';
+require_once '../../includes/income_allocation_helpers.php'; // NEW: manual Income -> four Funds
 
 $isAdmin = isset($_SESSION['user_role']) && strtolower($_SESSION['user_role']) === 'admin';
 if (!$isAdmin) {
@@ -12,7 +13,15 @@ if (!$isAdmin) {
     exit;
 }
 
-$id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
+// CHANGED: approving moves money out of a fund, so it only happens on a POST (a button),
+// never on a plain link. A link can be opened by a browser preview, a prefetch, or a
+// link shared in a message, and would approve the expense without anyone clicking.
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    header('Location: index.php');
+    exit;
+}
+
+$id = filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
 if (!$id) {
     header('Location: index.php');
     exit;
@@ -36,9 +45,8 @@ if ($transaction) {
         exit;
     }
 
+    mysqli_begin_transaction($conn);
     try {
-        mysqli_begin_transaction($conn);
-
         if ($isExpense) {
             fund_lock($conn, $fundId);
             $fund = fund_get($conn, $fundId);
@@ -61,17 +69,20 @@ if ($transaction) {
         mysqli_stmt_execute($update);
 
         if (mysqli_stmt_affected_rows($update) !== 1) {
-            throw new RuntimeException('Transaction already reviewed.');
+            throw new RuntimeException('This transaction was already reviewed.');
         }
 
-        // Money now leaves the fund. The ledger entry carries the transaction id, so a later
-        // edit or delete can reverse exactly this entry.
+        // Money now leaves the fund. Linked to the transaction (transaction_id), so editing or
+        // deleting the transaction later reverses exactly this entry.
         if ($isExpense) {
             fund_record_movement(
                 $conn, $fundId, 'EXPENSE', 'OUT', $amount,
                 substr($transaction['transaction_date'], 0, 7), $id, $adminId,
-                mb_substr($transaction['expense_category'] ?: ($transaction['description'] ?: 'Expense'), 0, 255)
+                $transaction['expense_category'] ?: ($transaction['description'] ?: 'Expense')
             );
+        } else {
+            // NEW (spec section 1): approved Income is allocated to the four Funds.
+            allocate_income_transaction($conn, (int) $id, $amount, $adminId);
         }
 
         mysqli_commit($conn);
@@ -81,9 +92,12 @@ if ($transaction) {
         exit;
     } catch (Throwable $e) {
         mysqli_rollback($conn);
-        // CHANGED: the cause is logged.
-        error_log('transaction approve failed for #' . $id . ': ' . $e->getMessage());
-        header('Location: index.php?error=' . urlencode('Unable to approve the transaction. Nothing was changed.'));
+        // CHANGED: the cause is logged; a "already reviewed" message is shown as it is.
+        error_log('approve transaction #' . $id . ' failed: ' . $e->getMessage());
+        $message = ($e instanceof RuntimeException && !($e instanceof mysqli_sql_exception))
+            ? $e->getMessage()
+            : 'Unable to approve the transaction.';
+        header('Location: index.php?error=' . urlencode($message));
         exit;
     }
 

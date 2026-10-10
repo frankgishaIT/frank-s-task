@@ -1,7 +1,8 @@
 <?php
 require '../../config/db.php';
 require '../../includes/notification_helper.php';
-require '../../includes/fund_helpers.php';
+require_once '../../includes/fund_helpers.php';
+require_once '../../includes/stock_rules.php'; // NEW: the same "low stock" rule as Purchase Orders
 include '../../includes/header.php';
 include '../../includes/sidebar.php';
 
@@ -11,35 +12,54 @@ function scalarQuery($conn, $sql) {
     return $row[0] ?? 0;
 }
 
+// CHANGED (spec section 14): money figures count APPROVED transactions only. Before, pending,
+// rejected and deleted transactions were added to this month's income and expenses.
+$approvedThisMonth = "status = 'approved' AND YEAR(transaction_date) = YEAR(CURDATE()) AND MONTH(transaction_date) = MONTH(CURDATE())";
+// Stock bought from the RM Capital Fund (purchase orders, re-stock) becomes stock; it is not a running cost.
+$stockPurchaseCategory = 'Purchase (Re-stock)';
+
 $activeEmployees = scalarQuery($conn, 'SELECT COUNT(*) FROM users WHERE is_active = 1');
 $activeDepartments = scalarQuery($conn, 'SELECT COUNT(*) FROM departments WHERE is_active = 1');
 $todayAttendance = scalarQuery($conn, "SELECT COUNT(*) FROM attendance WHERE attendance_date = CURDATE() AND status IN ('Present', 'Late')");
 $openTasks = scalarQuery($conn, "SELECT COUNT(*) FROM tasks WHERE status != 'Completed'");
-$monthlyIncome = scalarQuery($conn, "SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE transaction_type = 'Income' AND YEAR(transaction_date) = YEAR(CURDATE()) AND MONTH(transaction_date) = MONTH(CURDATE())");
-$monthlyExpense = scalarQuery($conn, "SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE transaction_type = 'Expense' AND YEAR(transaction_date) = YEAR(CURDATE()) AND MONTH(transaction_date) = MONTH(CURDATE())");
+$monthlyIncome = (float) scalarQuery($conn, "SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE transaction_type = 'Income' AND $approvedThisMonth");
+// CHANGED: expenses are split into running costs and stock purchases (same as the Transactions reports).
+$monthlyExpense = (float) scalarQuery($conn, "SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE transaction_type = 'Expense' AND category <> '$stockPurchaseCategory' AND $approvedThisMonth");
+$monthlyStockPurchases = (float) scalarQuery($conn, "SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE transaction_type = 'Expense' AND category = '$stockPurchaseCategory' AND $approvedThisMonth");
 
 $totalProjects = scalarQuery($conn, "SELECT COUNT(*) FROM projects");
 $totalProducts = scalarQuery($conn, "SELECT COUNT(*) FROM products");
-$lowStockCount = scalarQuery($conn, "SELECT COUNT(*) FROM products WHERE item_type = 'Item' AND quantity <= 5 AND is_active = 1");
+// CHANGED: uses each product's own reorder level (else the default), like the Purchase Order
+// "low stock" list. It was a fixed 5, so the two pages could disagree.
+$reorderLevel = stock_reorder_level_sql();
+$lowStockCount = scalarQuery($conn, "SELECT COUNT(*) FROM products WHERE item_type = 'Item' AND is_active = 1 AND quantity <= $reorderLevel");
 
-// RM Business Operating Fund: shown to admins and managers only
-// (change this list if other roles should see it too).
+// RM Funds: shown to admins and managers only
+// (change this list if other roles should see them too).
 $canSeeFunds = in_array(strtolower($_SESSION['user_role'] ?? ''), ['admin', 'manager'], true);
-$operatingFund = null;
-$operatingAvailable = 0.0;
-$operatingPending = 0.0;
+$fundCards = [];
 if ($canSeeFunds) {
-    $fundRes = mysqli_query($conn, "SELECT id, name FROM funds WHERE code = 'OPERATING' AND is_active = 1 LIMIT 1");
-    $operatingFund = mysqli_fetch_assoc($fundRes) ?: null;
-    if ($operatingFund) {
-        $operatingAvailable = fund_available($conn, (int) $operatingFund['id']);
-        $operatingPending = fund_pending_total($conn, (int) $operatingFund['id']);
+    // CHANGED: the Operating Fund card is now the same size as the other cards, and the
+    // RM Capital Fund is shown next to it (spec section 14: dashboards show the updated funds).
+    foreach (['OPERATING' => '../transactions/index.php', 'CAPITAL' => '../transactions/capital_check.php'] as $code => $link) {
+        $f = fund_by_code($conn, $code);
+        if ($f) {
+            $fundCards[] = [
+                'name' => $f['name'],
+                'available' => fund_available($conn, (int) $f['id']),
+                'pending' => fund_pending_total($conn, (int) $f['id']),
+                'link' => $link,
+                'icon' => $code === 'OPERATING' ? 'bi-wallet2' : 'bi-bank',
+                'tint' => $code === 'OPERATING' ? 'teal' : 'cyan',
+                'note' => $code === 'OPERATING' ? 'For business expenses' : 'Cash + stock + assets',
+            ];
+        }
     }
 }
 
 $topCategoriesResult = mysqli_query($conn, "SELECT transactions.category AS category_name, SUM(transactions.amount) AS total
     FROM transactions
-    WHERE YEAR(transactions.transaction_date) = YEAR(CURDATE()) AND MONTH(transactions.transaction_date) = MONTH(CURDATE())
+    WHERE $approvedThisMonth
     GROUP BY transactions.category
     ORDER BY total DESC
     LIMIT 4");
@@ -52,7 +72,8 @@ while ($row = mysqli_fetch_assoc($topCategoriesResult)) {
 $categoryPalette = ['#3B4FE0', '#0FA968', '#E68A1C', '#7C5CE0'];
 
 $recentTasksForFeed = mysqli_query($conn, "SELECT tasks.title, tasks.status, tasks.created_at, users.names AS assignee_name FROM tasks LEFT JOIN users ON tasks.assigned_to = users.id ORDER BY tasks.created_at DESC LIMIT 4");
-$recentTransactionsForFeed = mysqli_query($conn, "SELECT transactions.amount, transactions.transaction_type, transactions.transaction_date, transactions.category AS category_name FROM transactions ORDER BY transactions.transaction_date DESC, transactions.id DESC LIMIT 4");
+// CHANGED: deleted and rejected transactions are not shown as activity.
+$recentTransactionsForFeed = mysqli_query($conn, "SELECT transactions.amount, transactions.transaction_type, transactions.transaction_date, transactions.category AS category_name, transactions.status FROM transactions WHERE transactions.status IN ('approved', 'pending') ORDER BY transactions.transaction_date DESC, transactions.id DESC LIMIT 4");
 
 $activityFeed = [];
 while ($row = mysqli_fetch_assoc($recentTasksForFeed)) {
@@ -60,17 +81,18 @@ while ($row = mysqli_fetch_assoc($recentTasksForFeed)) {
         'icon' => $row['status'] === 'Completed' ? 'bi-check2-circle' : 'bi-list-task',
         'tint' => $row['status'] === 'Completed' ? 'teal' : 'amber',
         'title' => $row['status'] === 'Completed' ? 'Task completed' : 'Task updated',
-        'sub' => htmlspecialchars($row['title'], ENT_QUOTES, 'UTF-8') . ' · ' . htmlspecialchars($row['assignee_name'] ?? 'Unassigned', ENT_QUOTES, 'UTF-8'),
+        'sub' => htmlspecialchars($row['title'] ?? '', ENT_QUOTES, 'UTF-8') . ' · ' . htmlspecialchars($row['assignee_name'] ?? 'Unassigned', ENT_QUOTES, 'UTF-8'),
         'time' => $row['created_at'],
     ];
 }
 while ($row = mysqli_fetch_assoc($recentTransactionsForFeed)) {
     $isIncome = $row['transaction_type'] === 'Income';
+    $isPending = $row['status'] === 'pending';
     $activityFeed[] = [
         'icon' => $isIncome ? 'bi-cash-coin' : 'bi-credit-card-2-front',
-        'tint' => $isIncome ? 'teal' : 'red',
-        'title' => $isIncome ? 'Payment received' : 'Expense recorded',
-        'sub' => htmlspecialchars($row['category_name'], ENT_QUOTES, 'UTF-8') . ' · RWF ' . number_format((float) $row['amount']),
+        'tint' => $isPending ? 'amber' : ($isIncome ? 'teal' : 'red'),
+        'title' => ($isIncome ? 'Payment received' : 'Expense recorded') . ($isPending ? ' (awaiting approval)' : ''),
+        'sub' => htmlspecialchars($row['category_name'] ?? '', ENT_QUOTES, 'UTF-8') . ' · RWF ' . number_format((float) $row['amount']),
         'time' => $row['transaction_date'],
     ];
 }
@@ -92,13 +114,12 @@ $activityFeed = array_slice($activityFeed, 0, 6);
 .rm-card{ background:#fff; border:1px solid var(--border-soft); border-radius:16px; box-shadow:0 1px 2px rgba(16,24,40,.04); }
 .rm-card .card-header{ background:#fff; border-bottom:1px solid var(--border-soft); border-radius:16px 16px 0 0; font-weight:600; font-size:14px; color:var(--ink); padding:16px 20px; }
 .rm-card .card-body{ padding:20px; }
-.stat-card{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:18px 20px; }
+.stat-card{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:18px 20px; height:100%; }
 .stat-icon{ width:44px; height:44px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; }
 .stat-label{ font-size:12px; color:var(--muted); margin-bottom:4px; }
 .stat-value{ font-size:22px; font-weight:700; color:var(--ink); margin:0; line-height:1.1; }
-.fund-card{ border-top:4px solid var(--accent-teal); }
-.fund-card .stat-value{ font-size:28px; }
-.fund-note{ font-size:12px; color:var(--muted); margin:4px 0 0; }
+/* CHANGED: fund cards are normal-size stat cards; only the note line is extra. */
+.fund-note{ font-size:11px; color:var(--muted); margin:4px 0 0; }
 .date-pill{ background:#fff; border:1px solid var(--border-soft); border-radius:12px; padding:8px 16px; font-size:13px; color:var(--ink); box-shadow:0 1px 2px rgba(16,24,40,.04); }
 .summary-figure h6{ font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; margin-bottom:2px; }
 .summary-figure .amt{ font-size:24px; font-weight:700; color:var(--ink); }
@@ -116,7 +137,7 @@ $activityFeed = array_slice($activityFeed, 0, 6);
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
     <div>
         <h2 class="fw-bold mb-1" style="color:var(--ink)">
-    Welcome back, <?= htmlspecialchars($_SESSION['user_name'] ?? 'Admin'); ?>
+    Welcome back, <?= htmlspecialchars($_SESSION['user_name'] ?? 'Admin', ENT_QUOTES, 'UTF-8'); ?>
     <i class="bi bi-sun" style="color:var(--accent-amber); font-size:0.8em;"></i>
 </h2>
         <p class="text-muted mb-0">Here's what's happening in RISE MOTIVE today.</p>
@@ -127,37 +148,32 @@ $activityFeed = array_slice($activityFeed, 0, 6);
     </div>
 </div>
 
-<?php if ($operatingFund) { ?>
-<!-- RM Business Operating Fund -->
-<div class="row g-3 mb-3">
-    <div class="col-12">
-        <a href="../transactions/index.php" class="text-decoration-none">
-            <div class="rm-card stat-card fund-card">
-                <div>
-                    <p class="stat-label">RM Business Operating Fund</p>
-                    <p class="stat-value">RWF <?= number_format($operatingAvailable, 2); ?></p>
+<div class="row g-3 mb-4">
+    <?php foreach ($fundCards as $fc) { ?>
+    <!-- CHANGED: RM fund cards are the same size as Employees, Departments, etc. -->
+    <div class="col-6 col-xl-4">
+        <a href="<?= $fc['link']; ?>" class="text-decoration-none">
+            <div class="rm-card stat-card">
+                <div class="min-width-0">
+                    <p class="stat-label"><?= htmlspecialchars($fc['name'], ENT_QUOTES, 'UTF-8'); ?></p>
+                    <p class="stat-value text-nowrap">RWF <?= number_format($fc['available']); ?></p>
                     <p class="fund-note">
-                        Available for normal business expenses
-                        <?php if ($operatingPending > 0) { ?>
-                        &middot; includes RWF <?= number_format($operatingPending, 2); ?> reserved for pending approval
-                        <?php } ?>
+                        <?= htmlspecialchars($fc['note'], ENT_QUOTES, 'UTF-8'); ?>
+                        <?php if ($fc['pending'] > 0) { ?>&middot; RWF <?= number_format($fc['pending']); ?> pending<?php } ?>
                     </p>
                 </div>
-                <div class="stat-icon" style="background:var(--accent-teal-bg); color:var(--accent-teal)">
-                    <i class="bi bi-wallet2"></i>
+                <div class="stat-icon" style="background:var(--accent-<?= $fc['tint']; ?>-bg); color:var(--accent-<?= $fc['tint']; ?>)">
+                    <i class="bi <?= $fc['icon']; ?>"></i>
                 </div>
             </div>
         </a>
     </div>
-</div>
-<?php } ?>
-
-<div class="row g-3 mb-4">
+    <?php } ?>
     <div class="col-6 col-xl-4">
         <div class="rm-card stat-card">
             <div>
                 <p class="stat-label">Employees</p>
-                <p class="stat-value"><?= $activeEmployees ?></p>
+                <p class="stat-value"><?= (int) $activeEmployees ?></p>
             </div>
             <div class="stat-icon" style="background:var(--accent-blue-bg); color:var(--accent-blue)">
                 <i class="bi bi-people-fill"></i>
@@ -168,7 +184,7 @@ $activityFeed = array_slice($activityFeed, 0, 6);
         <div class="rm-card stat-card">
             <div>
                 <p class="stat-label">Departments</p>
-                <p class="stat-value"><?= $activeDepartments ?></p>
+                <p class="stat-value"><?= (int) $activeDepartments ?></p>
             </div>
             <div class="stat-icon" style="background:var(--accent-teal-bg); color:var(--accent-teal)">
                 <i class="bi bi-building"></i>
@@ -179,7 +195,7 @@ $activityFeed = array_slice($activityFeed, 0, 6);
         <div class="rm-card stat-card">
             <div>
                 <p class="stat-label">Projects</p>
-                <p class="stat-value"><?= $totalProjects ?></p>
+                <p class="stat-value"><?= (int) $totalProjects ?></p>
             </div>
             <div class="stat-icon" style="background:var(--accent-amber-bg); color:var(--accent-amber)">
                 <i class="bi bi-folder-fill"></i>
@@ -190,30 +206,31 @@ $activityFeed = array_slice($activityFeed, 0, 6);
         <div class="rm-card stat-card">
             <div>
                 <p class="stat-label">Products</p>
-                <p class="stat-value"><?= $totalProducts ?></p>
+                <p class="stat-value"><?= (int) $totalProducts ?></p>
             </div>
             <div class="stat-icon" style="background:var(--accent-cyan-bg); color:var(--accent-cyan)">
                 <i class="bi bi-box-seam"></i>
             </div>
         </div>
-    </div><div class="col-6 col-xl-4">
-    <a href="../products/index.php" class="text-decoration-none">
-        <div class="rm-card stat-card">
-            <div>
-                <p class="stat-label">Low stock items</p>
-                <p class="stat-value" style="color:<?= $lowStockCount > 0 ? 'var(--accent-red)' : 'var(--ink)'; ?>"><?= $lowStockCount ?></p>
+    </div>
+    <div class="col-6 col-xl-4">
+        <a href="../products/index.php" class="text-decoration-none">
+            <div class="rm-card stat-card">
+                <div>
+                    <p class="stat-label">Low stock items</p>
+                    <p class="stat-value" style="color:<?= $lowStockCount > 0 ? 'var(--accent-red)' : 'var(--ink)'; ?>"><?= (int) $lowStockCount ?></p>
+                </div>
+                <div class="stat-icon" style="background:var(--accent-red-bg); color:var(--accent-red)">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                </div>
             </div>
-            <div class="stat-icon" style="background:var(--accent-red-bg); color:var(--accent-red)">
-                <i class="bi bi-exclamation-triangle-fill"></i>
-            </div>
-        </div>
-    </a>
-</div>
+        </a>
+    </div>
     <div class="col-6 col-xl-4">
         <div class="rm-card stat-card">
             <div>
                 <p class="stat-label">Today's attendance</p>
-                <p class="stat-value"><?= $todayAttendance ?></p>
+                <p class="stat-value"><?= (int) $todayAttendance ?></p>
             </div>
             <div class="stat-icon" style="background:var(--accent-purple-bg); color:var(--accent-purple)">
                 <i class="bi bi-calendar-check"></i>
@@ -224,7 +241,7 @@ $activityFeed = array_slice($activityFeed, 0, 6);
         <div class="rm-card stat-card">
             <div>
                 <p class="stat-label">Open tasks</p>
-                <p class="stat-value"><?= $openTasks ?></p>
+                <p class="stat-value"><?= (int) $openTasks ?></p>
             </div>
             <div class="stat-icon" style="background:var(--accent-red-bg); color:var(--accent-red)">
                 <i class="bi bi-list-check"></i>
@@ -236,7 +253,7 @@ $activityFeed = array_slice($activityFeed, 0, 6);
 <div class="row g-3 mb-4">
     <div class="col-lg-8">
         <div class="rm-card h-100">
-            <div class="card-header">📈 Financial overview</div>
+            <div class="card-header">📈 Financial overview <span class="text-muted fw-normal">· this month, approved</span></div>
             <div class="card-body">
                 <canvas id="financeChart" height="110"></canvas>
             </div>
@@ -256,10 +273,18 @@ $activityFeed = array_slice($activityFeed, 0, 6);
                 </div>
                 <div class="summary-figure d-flex align-items-center justify-content-between p-3 rounded-3" style="background:var(--accent-red-bg)">
                     <div>
-                        <h6 style="color:var(--accent-red)">Expense</h6>
+                        <h6 style="color:var(--accent-red)">Running costs</h6>
                         <p class="amt mb-0">RWF <?= number_format($monthlyExpense) ?></p>
                     </div>
                     <i class="bi bi-arrow-down-circle-fill fs-2" style="color:var(--accent-red)"></i>
+                </div>
+                <!-- NEW: stock bought from the RM Capital Fund, kept apart from running costs. -->
+                <div class="summary-figure d-flex align-items-center justify-content-between p-3 rounded-3" style="background:var(--accent-cyan-bg)">
+                    <div>
+                        <h6 style="color:var(--accent-cyan)">Stock purchases</h6>
+                        <p class="amt mb-0">RWF <?= number_format($monthlyStockPurchases) ?></p>
+                    </div>
+                    <i class="bi bi-box-arrow-in-down fs-2" style="color:var(--accent-cyan)"></i>
                 </div>
             </div>
         </div>
@@ -312,7 +337,7 @@ $activityFeed = array_slice($activityFeed, 0, 6);
                     <div class="d-flex align-items-center justify-content-between" style="font-size:12px;">
                         <div class="d-flex align-items-center gap-2 text-truncate">
                             <span style="width:8px;height:8px;border-radius:50%;background:<?= $categoryPalette[$i % 4] ?>; flex-shrink:0;"></span>
-                            <span class="text-muted text-truncate"><?= htmlspecialchars($cat['category_name'], ENT_QUOTES, 'UTF-8'); ?></span>
+                            <span class="text-muted text-truncate"><?= htmlspecialchars($cat['category_name'] ?? '', ENT_QUOTES, 'UTF-8'); ?></span>
                         </div>
                         <span class="fw-semibold flex-shrink-0">RWF <?= number_format((float) $cat['total']) ?></span>
                     </div>
@@ -361,11 +386,12 @@ const ctx = document.getElementById('financeChart');
 new Chart(ctx, {
     type: 'bar',
     data: {
-        labels: ['Income', 'Expense'],
+        // CHANGED: running costs and stock purchases shown separately.
+        labels: ['Income', 'Running costs', 'Stock purchases'],
         datasets: [{
             label: 'Amount (RWF)',
-            data: [<?= $monthlyIncome ?>, <?= $monthlyExpense ?>],
-            backgroundColor: ['#0FA968', '#E24B4A'],
+            data: [<?= json_encode($monthlyIncome) ?>, <?= json_encode($monthlyExpense) ?>, <?= json_encode($monthlyStockPurchases) ?>],
+            backgroundColor: ['#0FA968', '#E24B4A', '#159AA8'],
             borderRadius: 8,
             barThickness: 64
         }]
@@ -386,7 +412,7 @@ new Chart(ctx, {
 new Chart(document.getElementById('categoryChart'), {
     type: 'doughnut',
     data: {
-        labels: <?= json_encode(array_column($topCategories, 'category_name')) ?>,
+        labels: <?= json_encode(array_column($topCategories, 'category_name'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
         datasets: [{
             data: <?= json_encode(array_map('floatval', array_column($topCategories, 'total'))) ?>,
             backgroundColor: <?= json_encode($categoryPalette) ?>,

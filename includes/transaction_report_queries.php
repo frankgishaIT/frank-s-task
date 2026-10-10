@@ -10,10 +10,24 @@
  *  - Employee = the user in transactions.recorded_by.
  *  - Party = the business party in transactions.party_id (RM Payee on expenses, RM Partner on income).
  *  - `category` is Product or Service for transactions entered on the Add Transaction form; transactions the
- *    system posts itself use other values, e.g. 'Purchase (Re-stock)' when a purchase order is received.
+ *    system posts itself use other values, e.g. 'Purchase (Re-stock)' when a purchase order is ordered
+ *    or stock is re-stocked, 'Asset Gain' / 'Asset Loss' when an asset is removed.
+ *
+ * CHANGED (spec section 14):
+ *  - "All statuses" no longer includes DELETED transactions. They are kept only for the audit
+ *    trail and appear only when "Deleted" is chosen on purpose.
+ *  - Totals count APPROVED transactions only. Pending, rejected and deleted rows can still be
+ *    listed, but never add to Total Income / Total Expenses.
+ *  - New "Source" column: Manual, Sale #, Stock purchase, Asset or Automatic.
+ *  - Stock purchases (paid from the RM Capital Fund) are shown separately from running costs,
+ *    and "Net" is labelled as cash flow: buying stock is not a loss, so Income - Expenses here
+ *    is not profit. Profit is in the Sales reports and the Fund reports.
  */
 require_once __DIR__ . '/report_helpers.php';
 require_once __DIR__ . '/sales_report_queries.php'; // reuses sales_report_fetch()
+
+// NEW: the category used for stock bought from the RM Capital Fund (purchase orders, re-stock).
+const TRANSACTION_STOCK_PURCHASE_CATEGORY = 'Purchase (Re-stock)';
 
 function transaction_report_types(): array
 {
@@ -103,7 +117,9 @@ function transaction_report_build(mysqli $conn, string $type, array $req): array
         $params[] = $status;
         $filters[] = ['Status', ucfirst($status)];
     } else {
-        $filters[] = ['Status', 'All statuses'];
+        // CHANGED: "All statuses" leaves out deleted transactions.
+        $where[] = "t.status <> 'deleted'";
+        $filters[] = ['Status', 'All statuses (except deleted)'];
     }
 
     // Category
@@ -115,31 +131,59 @@ function transaction_report_build(mysqli $conn, string $type, array $req): array
         $filters[] = ['Category', $cat];
     }
 
+    // CHANGED: also reads where the transaction came from (Source).
     $rows = sales_report_fetch($conn,
         "SELECT t.id, t.transaction_date, t.transaction_type, t.category, t.description, t.amount, t.status, u.names AS employee,
-                COALESCE(NULLIF(bp.name, ''), NULLIF(bp.business_name, '')) AS party_name
+                COALESCE(NULLIF(bp.name, ''), NULLIF(bp.business_name, '')) AS party_name,
+                CASE
+                    WHEN s.id IS NOT NULL THEN CONCAT('Sale #', s.id)
+                    WHEN t.category = '" . TRANSACTION_STOCK_PURCHASE_CATEGORY . "' THEN 'Stock purchase'
+                    WHEN t.category IN ('Asset Gain', 'Asset Loss') THEN 'Asset'
+                    WHEN t.is_automatic = 1 THEN 'Automatic'
+                    ELSE 'Manual'
+                END AS source
            FROM transactions t LEFT JOIN users u ON u.id = t.recorded_by
            LEFT JOIN business_parties bp ON bp.id = t.party_id
+           LEFT JOIN sales s ON s.transaction_id = t.id
           WHERE " . implode(' AND ', $where) . " ORDER BY t.transaction_date, t.id", $bt, $params);
 
-    $income = 0.0; $expense = 0.0; $byCategory = [];
+    // CHANGED: totals count APPROVED rows only; stock purchases are kept apart from running costs.
+    $income = 0.0; $expense = 0.0; $stockPurchases = 0.0; $notCounted = 0; $byCategory = [];
     foreach ($rows as &$r) {
+        $isApproved = strtolower((string) $r['status']) === 'approved';
         $r['status'] = ucfirst((string) $r['status']);
         $isIncome = $r['transaction_type'] === 'Income';
         $r['income']  = $isIncome ? (float) $r['amount'] : null;
         $r['expense'] = $isIncome ? null : (float) $r['amount'];
-        if ($isIncome) { $income += (float) $r['amount']; } else { $expense += (float) $r['amount']; }
+        if (!$isApproved) {
+            $notCounted++;
+            continue;
+        }
+        if ($isIncome) {
+            $income += (float) $r['amount'];
+        } else {
+            $expense += (float) $r['amount'];
+            if ($r['category'] === TRANSACTION_STOCK_PURCHASE_CATEGORY) {
+                $stockPurchases += (float) $r['amount'];
+            }
+        }
         $key = $r['category'] !== null && $r['category'] !== '' ? $r['category'] : 'Uncategorised';
         $byCategory[$key] = ($byCategory[$key] ?? 0) + (float) $r['amount'];
     }
     unset($r);
     arsort($byCategory);
+    $runningCosts = $expense - $stockPurchases;
 
     $report = [
         'error' => null, 'type' => $type, 'title' => $types[$type], 'filters' => $filters,
         'summary' => [], 'columns' => [], 'rows' => $rows, 'totals' => [], 'totals_label' => 'TOTAL',
         'footer_summary' => [], 'notes' => [],
     ];
+
+    // NEW: explain what is and is not counted.
+    if ($notCounted > 0) {
+        $report['notes'][] = $notCounted . ' pending, rejected or deleted transaction(s) are listed but not included in the totals. Totals count approved transactions only.';
+    }
 
     $common = [
         ['key' => 'id', 'label' => 'Ref #', 'w' => 5, 'type' => 'int'],
@@ -153,39 +197,53 @@ function transaction_report_build(mysqli $conn, string $type, array $req): array
             [$isInc ? 'Income Transactions' : 'Expense Transactions', number_format(count($rows))],
             [$isInc ? 'Total Income' : 'Total Expenses', report_money($total)],
         ];
+        if (!$isInc) {
+            // NEW: running costs vs stock bought with capital.
+            $report['summary'][] = ['Running Costs', report_money($runningCosts)];
+            $report['summary'][] = ['Stock Purchases (RM Capital Fund)', report_money($stockPurchases)];
+        }
         $report['columns'] = array_merge($common, [
             ['key' => 'category', 'label' => 'Category', 'w' => 9],
-            ['key' => 'party_name', 'label' => 'Party', 'w' => 13],
-            ['key' => 'description', 'label' => 'Description', 'w' => 26],
+            ['key' => 'source', 'label' => 'Source', 'w' => 9],
+            ['key' => 'party_name', 'label' => 'Party', 'w' => 12],
+            ['key' => 'description', 'label' => 'Description', 'w' => 18],
             ['key' => 'amount', 'label' => 'Amount (RWF)', 'w' => 12, 'align' => 'R', 'type' => 'money'],
-            ['key' => 'status', 'label' => 'Status', 'w' => 9],
+            ['key' => 'status', 'label' => 'Status', 'w' => 8],
             ['key' => 'employee', 'label' => 'Recorded By', 'w' => 13],
         ]);
         $report['totals'] = ['amount' => $total];
-        $report['totals_label'] = $isInc ? 'TOTAL INCOME' : 'TOTAL EXPENSES';
+        $report['totals_label'] = $isInc ? 'TOTAL INCOME (APPROVED)' : 'TOTAL EXPENSES (APPROVED)';
         $i = 0;
         foreach ($byCategory as $name => $sum) {
             if (++$i > 8) { break; }
             $report['footer_summary'][] = [$name, report_money($sum)];
+        }
+        if (!$isInc && $stockPurchases > 0) {
+            $report['notes'][] = 'Stock Purchases are paid from the RM Capital Fund and become stock, so they are not a loss. Running Costs are the normal business expenses.';
         }
     } else {
         $report['summary'] = [
             ['Transactions', number_format(count($rows))],
             ['Total Income', report_money($income)],
             ['Total Expenses', report_money($expense)],
-            ['Net (Income - Expenses)', report_money($income - $expense)],
+            ['of which Running Costs', report_money($runningCosts)],
+            ['of which Stock Purchases', report_money($stockPurchases)],
+            // CHANGED: this is cash flow, not profit (buying stock is not a loss).
+            ['Net Cash Flow (Income - Expenses)', report_money($income - $expense)],
         ];
         $report['columns'] = array_merge($common, [
-            ['key' => 'transaction_type', 'label' => 'Type', 'w' => 8],
+            ['key' => 'transaction_type', 'label' => 'Type', 'w' => 7],
             ['key' => 'category', 'label' => 'Category', 'w' => 8],
-            ['key' => 'party_name', 'label' => 'Party', 'w' => 11],
-            ['key' => 'description', 'label' => 'Description', 'w' => 22],
+            ['key' => 'source', 'label' => 'Source', 'w' => 8],
+            ['key' => 'party_name', 'label' => 'Party', 'w' => 10],
+            ['key' => 'description', 'label' => 'Description', 'w' => 16],
             ['key' => 'income', 'label' => 'Income (RWF)', 'w' => 11, 'align' => 'R', 'type' => 'money'],
             ['key' => 'expense', 'label' => 'Expense (RWF)', 'w' => 11, 'align' => 'R', 'type' => 'money'],
-            ['key' => 'status', 'label' => 'Status', 'w' => 8],
-            ['key' => 'employee', 'label' => 'Recorded By', 'w' => 12],
+            ['key' => 'status', 'label' => 'Status', 'w' => 7],
+            ['key' => 'employee', 'label' => 'Recorded By', 'w' => 8],
         ]);
         $report['totals'] = ['income' => $income, 'expense' => $expense];
+        $report['notes'][] = 'Net Cash Flow is money in minus money out. It is not profit: stock purchases become stock, and sale income includes the cost of the goods sold. See the Sales reports for profit.';
     }
     return $report;
 }

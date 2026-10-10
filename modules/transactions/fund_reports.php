@@ -3,8 +3,8 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 require '../../config/db.php';
-require '../../includes/fund_helpers.php';
-require '../../includes/fund_report_queries.php';
+require_once '../../includes/fund_helpers.php';
+require_once '../../includes/fund_report_queries.php';
 
 $role = strtolower($_SESSION['user_role'] ?? '');
 if (!in_array($role, ['admin', 'manager'], true)) {
@@ -30,7 +30,16 @@ if (($_GET['export'] ?? '') === 'csv') {
     $out = fopen('php://output', 'w');
     fwrite($out, "\xEF\xBB\xBF"); // so Excel reads UTF-8 correctly
     fputcsv($out, $cols);
-    foreach ($rows as $r) { fputcsv($out, $r); }
+    // CHANGED: text cells starting with = + - @ are prefixed with ' so Excel never runs them as
+    // formulas ("CSV injection"). Number columns are left alone (negative amounts stay numbers).
+    foreach ($rows as $r) {
+        foreach ($r as $i => $cell) {
+            if (!in_array($i, $numeric, true) && is_string($cell) && $cell !== '' && strpbrk($cell[0], '=+-@') !== false) {
+                $r[$i] = "'" . $cell;
+            }
+        }
+        fputcsv($out, $r);
+    }
     if ($footer) { fputcsv($out, $footer); }
     fclose($out);
     exit;
@@ -61,6 +70,7 @@ $titles = fund_report_titles();
     <div class="card-body">
         <form method="GET" class="row g-2 align-items-end">
             <input type="hidden" name="tab" value="<?= $esc($tab); ?>">
+            <?php if ($tab !== 'capital') { ?>
             <div class="col-lg-4 col-md-6">
                 <label class="form-label small fw-semibold text-muted">Fund</label>
                 <select name="fund_id" class="form-select">
@@ -70,6 +80,7 @@ $titles = fund_report_titles();
                     <?php } ?>
                 </select>
             </div>
+            <?php } ?>
             <div class="col-lg-2 col-md-3 col-6">
                 <label class="form-label small fw-semibold text-muted">From month</label>
                 <input type="month" name="from" class="form-control" value="<?= $esc($fromM); ?>">
@@ -97,7 +108,10 @@ $titles = fund_report_titles();
     <?= $esc($report['fund_label']); ?> &middot;
     <?= date('M Y', strtotime($fromM . '-01')); ?> to <?= date('M Y', strtotime($toM . '-01')); ?>
     <?php if ($tab === 'summary') { ?>
-    &middot; Closing Balance = Opening Balance + Contributions &minus; Amount Used. "Available Now" is today's balance after expenses waiting for approval.
+    <!-- CHANGED: the formula includes stock and asset changes (RM Capital Fund only). -->
+    &middot; Closing Balance = Opening Balance + Contributions &minus; Amount Used + Stock Change + Asset Change. "Available Now" is today's balance after expenses waiting for approval.
+    <?php } elseif ($tab === 'capital') { ?>
+    &middot; Changes in the value of stock and assets held in the RM Capital Fund. See also <a href="capital_check.php">Capital Fund Check</a>.
     <?php } ?>
 </p>
 
@@ -154,7 +168,7 @@ $titles = fund_report_titles();
                     <?php } ?>
                 </tr>
                 <?php if (!$p['rows']) { ?>
-                <tr><td colspan="<?= count($p['cols']); ?>" class="text-center text-muted py-4">No Net Profit has been allocated in this period.</td></tr>
+                <tr><td colspan="<?= count($p['cols']); ?>" class="text-center text-muted py-4">No profit has been allocated in this period.</td></tr>
                 <?php } foreach ($p['rows'] as $r) { ?>
                 <tr>
                     <?php foreach ($r as $i => $cell) { ?>

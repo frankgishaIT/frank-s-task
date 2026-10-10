@@ -4,6 +4,7 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 require '../../config/db.php';
 require '../../includes/fund_helpers.php';
+require_once '../../includes/income_allocation_helpers.php'; // NEW: manual Income -> four Funds
 
 // Admin-only action
 $isAdmin = isset($_SESSION['user_role']) && strtolower($_SESSION['user_role']) === 'admin';
@@ -116,8 +117,19 @@ if (isset($_POST['update'])) {
                 }
             }
 
+            // NEW (spec sections 1 and 3): an APPROVED Income was allocated to the four Funds.
+            // When its amount changes, the old allocation is reversed and the new amount allocated.
+            // (Income recorded before this feature was never allocated, so nothing is re-posted.)
+            $incomeReallocated = false;
+            if ($type === 'Income' && $current['status'] === 'approved' && $amountChanged) {
+                if (reverse_income_allocation($conn, (int) $id, $userId, 'edited') > 0) {
+                    allocate_income_transaction($conn, (int) $id, $amount, $userId);
+                    $incomeReallocated = true;
+                }
+            }
+
             mysqli_commit($conn);
-            header('Location: index.php?success=' . urlencode('Transaction updated successfully.' . ($fundId && $amountChanged ? ' ' . ($fundRow['name'] ?? 'The fund') . ' was updated automatically.' : '')));
+            header('Location: index.php?success=' . urlencode('Transaction updated successfully.' . ($incomeReallocated ? ' The Funds were updated automatically.' : '') . ($fundId && $amountChanged ? ' ' . ($fundRow['name'] ?? 'The fund') . ' was updated automatically.' : '')));
             exit;
         } catch (InsufficientFundException $e) {
             mysqli_rollback($conn);

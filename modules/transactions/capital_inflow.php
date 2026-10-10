@@ -13,7 +13,10 @@ if (!$isAdmin) {
 }
 $userId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
 
-$sources = capital_sources();
+// CHANGED: "Business Loan" is no longer offered here. Loans must be recorded in the Loans module,
+// which puts the money into the RM Capital Fund AND keeps the repayment schedule and the amount
+// still owed. A loan typed here has no schedule and is missing from "Outstanding loans".
+$sources = array_values(array_filter(capital_sources(), function ($s) { return $s !== 'Business Loan'; }));
 
 $capRes = mysqli_query($conn, "SELECT * FROM funds WHERE code = 'CAPITAL' AND is_active = 1 LIMIT 1");
 $capital = mysqli_fetch_assoc($capRes);
@@ -29,7 +32,9 @@ if (isset($_POST['save'])) {
     $date = $_POST['inflow_date'] ?? '';
     $note = trim($_POST['description'] ?? '');
 
-    $error = capital_entry_validate($source, $amount, $date, $note);
+    $error = $source === 'Business Loan'
+        ? 'Please record loans in the Loans module, so their repayments and the amount still owed are tracked.'
+        : capital_entry_validate($source, $amount, $date, $note);
     if ($error === null) {
         try {
             // CHANGED: shared function; the amount is rounded to 2 decimals.
@@ -79,7 +84,7 @@ $modal_subtitle = 'Record money that did not come from business profit.';
 
             <div class="alert alert-info mb-3" style="border-radius:10px; border:none; font-size:13px; padding:10px 14px;">
                 Current RM Capital Fund balance: <strong>RWF <?= number_format($balance, 2); ?></strong>.
-                This money is not income and does not affect Net Profit.
+                This money is not income and does not affect Net Profit. Loans are recorded in the Loans module.
             </div>
 
             <form method="POST">

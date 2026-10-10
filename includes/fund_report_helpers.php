@@ -127,3 +127,49 @@ function capital_post_stock_difference(mysqli $conn, ?int $userId, string $reaso
         return ['ok' => false, 'amount' => 0.0, 'error' => 'Unable to post the stock value. Nothing was changed.'];
     }
 }
+
+/**
+ * NEW: loan figures for the Capital Fund Check.
+ * The Loans module (table `loans`) is the record of what was borrowed, repaid and is still owed.
+ * Cancelled loans are left out.
+ *   received        total borrowed (loan_amount)
+ *   principal_repaid / interest_paid / outstanding (still owed: Active and Defaulted loans)
+ *   in_fund         loan money the RM Capital Fund received through the Loans module
+ *                   (movements with ref_type 'loan', including corrections and reversals)
+ *   manual          'Business Loan' entries typed on the Add Capital page (not linked to any loan)
+ */
+function capital_loan_summary(mysqli $conn): array {
+    $l = mysqli_fetch_assoc(mysqli_query($conn, "SELECT
+            COUNT(*) AS loans,
+            COALESCE(SUM(loan_amount), 0) AS received,
+            COALESCE(SUM(principal_repaid), 0) AS principal_repaid,
+            COALESCE(SUM(interest_paid), 0) AS interest_paid,
+            COALESCE(SUM(CASE WHEN status IN ('Active', 'Defaulted') THEN outstanding_balance ELSE 0 END), 0) AS outstanding,
+            COALESCE(SUM(CASE WHEN status IN ('Active', 'Defaulted') THEN 1 ELSE 0 END), 0) AS open_loans
+        FROM loans WHERE status <> 'Cancelled'"));
+
+    $inFund = mysqli_fetch_assoc(mysqli_query($conn, "SELECT
+            COALESCE(SUM(CASE WHEN m.direction = 'IN' THEN m.amount ELSE -m.amount END), 0) AS v
+        FROM fund_movements m JOIN funds f ON f.id = m.fund_id AND f.code = 'CAPITAL'
+        WHERE m.ref_type = 'loan'"));
+
+    // Manual "Business Loan" entries still active (not deleted or corrected away).
+    $manual = mysqli_fetch_assoc(mysqli_query($conn, "SELECT COUNT(*) AS n, COALESCE(SUM(m.amount), 0) AS v
+        FROM fund_movements m
+        JOIN funds f ON f.id = m.fund_id AND f.code = 'CAPITAL'
+        LEFT JOIN fund_movements r ON r.reverses_movement_id = m.id
+        WHERE m.movement_type = 'CAPITAL_INFLOW' AND (m.ref_type IS NULL OR m.ref_type = 'CAPITAL_EDIT')
+          AND m.source_type = 'Business Loan' AND r.id IS NULL"));
+
+    return [
+        'loans' => (int) $l['loans'],
+        'open_loans' => (int) $l['open_loans'],
+        'received' => round((float) $l['received'], 2),
+        'principal_repaid' => round((float) $l['principal_repaid'], 2),
+        'interest_paid' => round((float) $l['interest_paid'], 2),
+        'outstanding' => round((float) $l['outstanding'], 2),
+        'in_fund' => round((float) $inFund['v'], 2),
+        'manual_count' => (int) $manual['n'],
+        'manual_amount' => round((float) $manual['v'], 2),
+    ];
+}

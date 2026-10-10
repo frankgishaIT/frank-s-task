@@ -47,6 +47,10 @@ $balance = $fund ? round(fund_balance($conn, (int) $fund['id']), 2) : 0.0;
 $stockDiff = round($stockActual - $stockInFund, 2);
 $assetDiff = round($assetActual - $assetInFund, 2);
 $hasOpening = capital_has_opening_stock($conn);
+// NEW: loans (what was borrowed, repaid and is still owed).
+$loans = capital_loan_summary($conn);
+$ownerCapital = round($balance - $loans['outstanding'], 2);
+$loanFundDiff = round($loans['in_fund'] - $loans['received'], 2);
 
 include '../../includes/header.php'; include '../../includes/sidebar.php';
 
@@ -107,6 +111,65 @@ function cc_diff_cell(float $d): string {
                 </tfoot>
             </table>
         </div>
+    </div>
+</div>
+
+<!-- NEW: Loans -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+        <h6 class="mb-1">Loans</h6>
+        <p class="text-muted small mb-3">
+            Part of the RM Capital Fund is borrowed money. What is still owed to lenders is not the business's own capital.
+            Figures come from the Loans module (cancelled loans are left out).
+        </p>
+        <div class="table-responsive">
+            <table class="table align-middle mb-0">
+                <tbody>
+                    <tr>
+                        <td>Loans received <div class="small text-muted"><?= (int) $loans['loans']; ?> loan(s), <?= (int) $loans['open_loans']; ?> still open</div></td>
+                        <td class="text-end">RWF <?= number_format($loans['received'], 2); ?></td>
+                    </tr>
+                    <tr>
+                        <td>Principal repaid</td>
+                        <td class="text-end">&minus; RWF <?= number_format($loans['principal_repaid'], 2); ?></td>
+                    </tr>
+                    <tr class="fw-semibold">
+                        <td>Outstanding loans <div class="small text-muted fw-normal">Still owed to lenders (Active and Defaulted loans)</div></td>
+                        <td class="text-end text-danger">RWF <?= number_format($loans['outstanding'], 2); ?></td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Interest paid so far <div class="small">A cost of borrowing, not a repayment of the loan</div></td>
+                        <td class="text-end text-muted">RWF <?= number_format($loans['interest_paid'], 2); ?></td>
+                    </tr>
+                </tbody>
+                <tfoot>
+                    <tr class="fw-bold">
+                        <td>Owner's capital <div class="small text-muted fw-normal">RM Capital Fund balance &minus; outstanding loans</div></td>
+                        <td class="text-end">RWF <?= number_format($ownerCapital, 2); ?></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <?php if (abs($loanFundDiff) >= 0.01) { ?>
+        <div class="alert alert-warning mt-3 mb-0 small" style="border-radius:10px;">
+            <i class="bi bi-exclamation-triangle-fill me-1"></i>
+            The Loans module shows RWF <?= number_format($loans['received'], 2); ?> borrowed, but the RM Capital Fund received
+            RWF <?= number_format($loans['in_fund'], 2); ?> through it (difference RWF <?= number_format($loanFundDiff, 2); ?>).
+            Check that every loan was received into the fund, and that cancelled or corrected loans were taken back out.
+        </div>
+        <?php } ?>
+
+        <?php if ($loans['manual_count'] > 0) { ?>
+        <div class="alert alert-warning mt-3 mb-0 small" style="border-radius:10px;">
+            <i class="bi bi-exclamation-triangle-fill me-1"></i>
+            <strong><?= (int) $loans['manual_count']; ?> "Business Loan" entr<?= $loans['manual_count'] === 1 ? 'y' : 'ies'; ?> (RWF <?= number_format($loans['manual_amount'], 2); ?>)</strong>
+            were typed on the Add Capital page, not recorded in the Loans module. They have no repayment schedule and are not counted in Outstanding loans.
+            If the same loan is also in the Loans module, it is counted twice in the fund: delete the Add Capital entry.
+            If it is a real loan that is only here, record it in the Loans module instead, then delete the Add Capital entry.
+            <?php if ($isAdmin) { ?><a href="capital_inflow.php">Review capital entries &rarr;</a><?php } ?>
+        </div>
+        <?php } ?>
     </div>
 </div>
 

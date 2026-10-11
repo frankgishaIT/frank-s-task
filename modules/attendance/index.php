@@ -1,34 +1,44 @@
 <?php
 $pageSearchScope = 'attendance'; // tells the topbar search what module we're in
 require '../../config/db.php';
+// NEW: this page had no role check of its own (every other page has one).
+require_role(['Admin', 'Manager', 'Employee']);
 require '../../includes/pagination.php';
 include '../../includes/header.php';
 include '../../includes/sidebar.php';
 
 const PER_PAGE = 15;
 $role = current_user_role();
+$isManager = in_array($role, ['Admin', 'Manager'], true);
 
 $date = $_GET['date'] ?? '';
-$where = '';
+$conditions = [];
+$types = '';
+$params = [];
 
 if ($date !== '') {
     $dateValue = DateTime::createFromFormat('Y-m-d', $date);
     if ($dateValue && $dateValue->format('Y-m-d') === $date) {
-        $where = ' WHERE attendance.attendance_date = ?';
+        $conditions[] = 'attendance.attendance_date = ?';
+        $types .= 's';
+        $params[] = $date;
     } else {
         $date = '';
     }
 }
-
-$countSql = 'SELECT COUNT(*) AS c FROM attendance' . $where;
-if ($where !== '') {
-    $countStatement = mysqli_prepare($conn, $countSql);
-    mysqli_stmt_bind_param($countStatement, 's', $date);
-    mysqli_stmt_execute($countStatement);
-    $totalRows = mysqli_fetch_assoc(mysqli_stmt_get_result($countStatement))['c'];
-} else {
-    $totalRows = mysqli_fetch_assoc(mysqli_query($conn, $countSql))['c'];
+// NEW: employees only see their own attendance (before, everyone saw everyone's records).
+if (!$isManager) {
+    $conditions[] = 'attendance.user_id = ?';
+    $types .= 'i';
+    $params[] = (int) current_user_id();
 }
+$where = $conditions ? ' WHERE ' . implode(' AND ', $conditions) : '';
+
+$countStatement = mysqli_prepare($conn, 'SELECT COUNT(*) AS c FROM attendance' . $where);
+if ($types !== '') { mysqli_stmt_bind_param($countStatement, $types, ...$params); }
+mysqli_stmt_execute($countStatement);
+$totalRows = mysqli_fetch_assoc(mysqli_stmt_get_result($countStatement))['c'];
+
 $currentPage = get_current_page();
 $totalPages = max(1, (int) ceil($totalRows / PER_PAGE));
 $currentPage = min($currentPage, $totalPages);
@@ -41,17 +51,13 @@ $sql = "SELECT attendance.*, users.names AS employee_name, departments.name AS d
         ORDER BY attendance.attendance_date DESC, users.names
         LIMIT ' . PER_PAGE . ' OFFSET ' . $offset;
 $statement = mysqli_prepare($conn, $sql);
-
-if ($where !== '') {
-    mysqli_stmt_bind_param($statement, 's', $date);
-}
-
+if ($types !== '') { mysqli_stmt_bind_param($statement, $types, ...$params); }
 mysqli_stmt_execute($statement);
 $records = mysqli_stmt_get_result($statement);
 
 // Managers/Admins: records waiting on their action today.
 $pending = null;
-if (in_array($role, ['Manager', 'Admin'], true)) {
+if ($isManager) {
     $pending = mysqli_query($conn, "SELECT attendance.*, users.names AS employee_name
         FROM attendance INNER JOIN users ON attendance.user_id = users.id
         WHERE attendance.workflow_status IN ('Pending Clock-In Approval', 'Pending Clock-Out Confirmation')
@@ -67,7 +73,7 @@ function workflow_badge($status) {
         'Rejected' => 'danger',
     ];
     $class = $map[$status] ?? 'secondary';
-    return '<span class="badge bg-' . $class . '">' . htmlspecialchars($status, ENT_QUOTES, 'UTF-8') . '</span>';
+    return '<span class="badge bg-' . $class . '">' . htmlspecialchars((string) ($status ?: 'Not set'), ENT_QUOTES, 'UTF-8') . '</span>';
 }
 ?>
 
@@ -77,14 +83,23 @@ function workflow_badge($status) {
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     </div>
 <?php } ?>
+<?php if (isset($_GET['error'])) { ?>
+    <!-- NEW: error messages were not shown on this page. -->
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <?= htmlspecialchars($_GET['error'], ENT_QUOTES, 'UTF-8'); ?>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+<?php } ?>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h2>Attendance Management</h2>
+    <h2><?= $isManager ? 'Attendance Management' : 'My Attendance'; ?></h2>
     <div class="d-flex gap-2">
-        <a href="clock.php" class="rm-btn rm-btn-primary"><i class="bi bi-clock-fill me-1"></i> My Clock In/Out</a>
-        <?php if (in_array($role, ['Admin', 'Manager'], true)) { ?>
+        <?php if ($isManager) { ?>
+        <!-- NEW -->
+        <a href="reports.php" class="btn btn-outline-primary">Reports</a>
         <a href="create.php" class="btn btn-outline-primary">+ Record Manually</a>
         <?php } ?>
+        <a href="clock.php" class="rm-btn rm-btn-primary"><i class="bi bi-clock-fill me-1"></i> My Clock In/Out</a>
     </div>
 </div>
 
@@ -137,7 +152,7 @@ function workflow_badge($status) {
                     <th>Check Out</th>
                     <th>Status</th>
                     <th>Workflow</th>
-                    <?php if (in_array($role, ['Admin', 'Manager'], true)) { ?><th>Action</th><?php } ?>
+                    <?php if ($isManager) { ?><th>Action</th><?php } ?>
                 </tr>
                 <?php if (mysqli_num_rows($records) === 0) { ?>
                     <tr><td colspan="8" class="text-center text-muted py-4">No attendance records found.</td></tr>
@@ -151,7 +166,7 @@ function workflow_badge($status) {
                         <td><?= $record['check_out'] ? date('H:i', strtotime($record['check_out'])) : '—'; ?></td>
                         <td><span class="badge bg-<?= $record['status'] === 'Present' ? 'success' : ($record['status'] === 'Late' ? 'warning text-dark' : 'secondary'); ?>"><?= htmlspecialchars($record['status'], ENT_QUOTES, 'UTF-8'); ?></span></td>
                         <td><?= workflow_badge($record['workflow_status']); ?></td>
-                        <?php if (in_array($role, ['Admin', 'Manager'], true)) { ?>
+                        <?php if ($isManager) { ?>
                         <td class="text-nowrap">
                             <a href="edit.php?id=<?= (int) $record['id']; ?>" class="rm-btn rm-btn-warning btn-sm">Edit</a>
                             <form method="POST" action="delete.php" class="d-inline" onsubmit="return confirm('Delete this attendance record?')">

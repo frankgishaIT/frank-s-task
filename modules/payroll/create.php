@@ -32,12 +32,17 @@ function calculate_payroll_preview($conn, $userId, $period) {
     }
 
     // Confirmed attendance for this employee within the month.
+    // CHANGED: only Present, Late and Leave days count as paid days. Before, EVERY confirmed
+    // record was counted, so a confirmed "Absent" day was paid as if the employee had worked.
+    // Leave (approved leave) is paid; unpaid leave must be recorded as Absent.
+    // Overtime only comes from days actually worked (Present or Late).
     $attendanceStatement = mysqli_prepare($conn, "SELECT
-            COUNT(*) AS present_days,
-            COALESCE(SUM(overtime_minutes), 0) AS overtime_minutes
+            COALESCE(SUM(CASE WHEN status IN ('Present', 'Late', 'Leave') THEN 1 ELSE 0 END), 0) AS present_days,
+            COALESCE(SUM(CASE WHEN status IN ('Present', 'Late') THEN overtime_minutes ELSE 0 END), 0) AS overtime_minutes
         FROM attendance
         WHERE user_id = ? AND workflow_status = 'Confirmed'
-            AND DATE_FORMAT(attendance_date, '%Y-%m') = ?");
+            AND DATE_FORMAT(attendance_date, '%Y-%m') = ?
+            AND WEEKDAY(attendance_date) < 5");
     mysqli_stmt_bind_param($attendanceStatement, 'is', $userId, $period);
     mysqli_stmt_execute($attendanceStatement);
     $attendance = mysqli_fetch_assoc(mysqli_stmt_get_result($attendanceStatement));
@@ -269,7 +274,7 @@ $modal_subtitle = 'Basic salary, attendance, and task performance are calculated
                 <div class="row g-2 small">
                     <div class="col-6"><span class="text-muted">Basic Salary:</span> <strong>RWF <?= number_format($preview['basic_salary'], 2); ?></strong></div>
                     <div class="col-6"><span class="text-muted">Expected Working Days:</span> <strong><?= $preview['expected_working_days']; ?></strong></div>
-                    <div class="col-6"><span class="text-muted">Present Days (confirmed):</span> <strong><?= $preview['present_days']; ?></strong></div>
+                    <div class="col-6"><span class="text-muted">Paid Days (present, late or leave; confirmed):</span> <strong><?= $preview['present_days']; ?></strong></div>
                     <div class="col-6"><span class="text-muted">Absent Days:</span> <strong><?= $preview['absent_days']; ?></strong></div>
                     <div class="col-6"><span class="text-muted">Overtime:</span> <strong><?= round($preview['overtime_minutes'] / 60, 1); ?> hrs</strong></div>
                     <div class="col-6"><span class="text-muted">Avg Task Score:</span> <strong><?= $preview['avg_performance_score'] !== null ? $preview['avg_performance_score'] . '/100' : 'No reviewed tasks'; ?></strong></div>

@@ -4,16 +4,17 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 require '../../config/db.php';
 require '../../includes/notification_helper.php';
+// NEW: this page had no role check of its own (every other page has one).
+require_role(['Admin', 'Manager', 'Employee']);
 
+// CHANGED: problems are sent as "error" (they were sent as "success"), and messages are urlencoded.
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
-if (!$id) { header('Location: index.php?success=Invalid customer selected.');
-exit; }
+if (!$id) { header('Location: index.php?error=' . urlencode('Invalid customer selected.')); exit; }
 $statement = mysqli_prepare($conn, 'SELECT * FROM customers WHERE id = ?');
 mysqli_stmt_bind_param($statement, 'i', $id);
 mysqli_stmt_execute($statement);
 $customer = mysqli_fetch_assoc(mysqli_stmt_get_result($statement));
-if (!$customer) { header('Location: index.php?success=Customer not found.');
-exit; }
+if (!$customer) { header('Location: index.php?error=' . urlencode('Customer not found.')); exit; }
 
 if (isset($_POST['update'])) {
     $name = trim($_POST['name'] ?? '');
@@ -24,7 +25,21 @@ if (isset($_POST['update'])) {
     $sector = trim($_POST['sector'] ?? '');
     $address = trim($_POST['address'] ?? '');
 
+    // NEW: the same phone rules as Add Customer. Before, ANY phone (or none) was saved here,
+    // e.g. 079999999999 (12 digits), and such customers could never receive an SMS.
+    $dup = null;
+    if (preg_match('/^07\d{8}$/', $phone)) {
+        $dupStatement = mysqli_prepare($conn, 'SELECT id, name FROM customers WHERE phone = ? AND id <> ?');
+        mysqli_stmt_bind_param($dupStatement, 'si', $phone, $id);
+        mysqli_stmt_execute($dupStatement);
+        $dup = mysqli_fetch_assoc(mysqli_stmt_get_result($dupStatement));
+    }
+
     if ($name === '') { $error = 'Customer name is required.'; }
+    elseif ($phone === '') { $error = 'Phone number is required.'; }
+    elseif (!preg_match('/^\d{10}$/', $phone)) { $error = 'Phone number must be exactly 10 digits.'; }
+    elseif (strpos($phone, '07') !== 0) { $error = 'Please enter a mobile number starting with 07 (e.g. 0788123456).'; }
+    elseif ($dup) { $error = 'This phone number already belongs to another customer (' . $dup['name'] . ').'; }
     elseif ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) { $error = 'Please enter a valid email address.'; }
     elseif ($province === '' || $district === '' || $sector === '') { $error = 'Please select Province, District, and Sector.'; }
     else {
@@ -39,7 +54,7 @@ if (isset($_POST['update'])) {
             $editorName . ' updated customer "' . $name . '".'
         );
 
-        header('Location: index.php?success=Customer updated successfully.'); exit;
+        header('Location: index.php?success=' . urlencode('Customer updated successfully.')); exit;
     }
     $customer = array_merge($customer, ['name' => $name, 'phone' => $phone, 'email' => $email, 'province' => $province, 'district' => $district, 'sector' => $sector, 'address' => $address]);
 }
@@ -47,6 +62,7 @@ if (isset($_POST['update'])) {
 include '../../includes/header.php';
 include '../../includes/sidebar.php';
 $modal_icon = 'bi-person-gear'; $modal_title = 'Edit Customer'; $modal_subtitle = 'Update this customer\'s details.';
+$jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
 ?>
 <div class="rm-modal-backdrop"><div class="rm-modal">
     <?php include '../../includes/model_header.php'; ?>
@@ -62,7 +78,8 @@ $modal_icon = 'bi-person-gear'; $modal_title = 'Edit Customer'; $modal_subtitle 
             <div class="row g-3 mb-3">
                 <div class="col-6">
                     <label class="form-label small fw-semibold text-muted">Phone</label>
-                    <input type="text" name="phone" class="form-control rm-input" value="<?= htmlspecialchars($customer['phone'] ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+                    <!-- CHANGED: same rules as Add Customer (10 digits, starting with 07, required). -->
+                    <input type="text" name="phone" class="form-control rm-input" value="<?= htmlspecialchars($customer['phone'] ?? '', ENT_QUOTES, 'UTF-8'); ?>" inputmode="numeric" pattern="07\d{8}" maxlength="10" placeholder="0788888888" title="A 10-digit mobile number starting with 07" required>
                 </div>
                 <div class="col-6">
                     <label class="form-label small fw-semibold text-muted">Email</label>
@@ -109,9 +126,10 @@ $modal_icon = 'bi-person-gear'; $modal_title = 'Edit Customer'; $modal_subtitle 
     var districtSelect = document.getElementById('districtSelect');
     var sectorSelect = document.getElementById('sectorSelect');
 
-    var selectedProvince = <?= json_encode($customer['province'] ?? '', JSON_UNESCAPED_UNICODE); ?>;
-    var selectedDistrict = <?= json_encode($customer['district'] ?? '', JSON_UNESCAPED_UNICODE); ?>;
-    var selectedSector = <?= json_encode($customer['sector'] ?? '', JSON_UNESCAPED_UNICODE); ?>;
+    // CHANGED: JSON_HEX_* so a stored or typed value can never close this <script> tag.
+    var selectedProvince = <?= json_encode($customer['province'] ?? '', $jsonFlags); ?>;
+    var selectedDistrict = <?= json_encode($customer['district'] ?? '', $jsonFlags); ?>;
+    var selectedSector = <?= json_encode($customer['sector'] ?? '', $jsonFlags); ?>;
 
     function fillSelect(select, options, selectedValue, placeholder) {
         select.innerHTML = '<option value="">' + placeholder + '</option>';

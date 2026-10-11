@@ -40,7 +40,13 @@ $customers = mysqli_query($conn, "SELECT customers.*,
 </div><?php } ?>
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2>Customers</h2>
-    <a href="create.php" class="rm-btn rm-btn-primary">+ Add Customer</a>
+    <div class="d-flex gap-2">
+        <?php if (in_array(current_user_role(), ['Admin', 'Manager'], true)) { ?>
+            <!-- NEW: Customers & Credit reports -->
+            <a href="reports.php" class="btn btn-outline-primary">Reports</a>
+        <?php } ?>
+        <a href="create.php" class="rm-btn rm-btn-primary">+ Add Customer</a>
+    </div>
 </div>
 <div class="card border-0 shadow-sm">
     <div class="card-body p-0">

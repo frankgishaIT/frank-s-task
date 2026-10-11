@@ -98,7 +98,7 @@ function cc_diff_cell(float $d): string {
                         <td class="text-end">RWF <?= number_format($assetActual, 2); ?></td>
                         <td class="text-end">RWF <?= number_format($assetInFund, 2); ?></td>
                         <td class="text-end"><?= cc_diff_cell($assetDiff); ?></td>
-                        <td><?php if (abs($assetDiff) >= 0.01 && $isAdmin) { ?><a href="../assets/sync_capital_fund.php" class="btn btn-sm btn-outline-primary">Fix assets</a><?php } ?></td>
+                        <td><?php if (abs($assetDiff) >= 0.01 && $isAdmin) { ?><a href="../asset_management/sync_capital_fund.php" class="btn btn-sm btn-outline-primary">Fix assets</a><?php } ?></td>
                     </tr>
                     <tr>
                         <td><strong>Cash &amp; other capital</strong><div class="small text-muted">Capital put in, minus money spent, not yet in stock or assets</div></td>

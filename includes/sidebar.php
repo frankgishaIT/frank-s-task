@@ -97,6 +97,13 @@ try {
       <i class="bi bi-building-gear"></i> Assets
      </a>
    <?php } ?>
+    <?php if (in_array(current_user_role(), ['Admin', 'Manager'], true)) { ?>
+    <!-- NEW: Financial Reports module (Profit & Loss, Balance Sheet, ...) -->
+    <a href="../financial_reports/index.php" class="<?= navActive('financial_reports', $currentPath) ?>">
+        <i class="bi bi-graph-up-arrow"></i> Financial Reports
+    </a>
+    <?php } ?>
+
     <?php if (current_user_role() === 'Admin') { ?>
     <a href="../payroll/index.php" class="<?= navActive('payroll', $currentPath) ?>">
         <i class="bi bi-wallet2"></i> Payroll
@@ -264,7 +271,13 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(function (data) {
                 resultsContainer.style.opacity = '1';
                 if (data.empty) {
-                    resultsContainer.innerHTML = '<div class="text-center text-muted py-5">No matches found for "' + query + '".</div>';
+                    // CHANGED: the typed text is inserted as plain text, never as HTML. Before, typing
+                    // something like <img src=x onerror=...> in the search box ran it as code.
+                    const msg = document.createElement('div');
+                    msg.className = 'text-center text-muted py-5';
+                    msg.textContent = 'No matches found for "' + query + '".';
+                    resultsContainer.innerHTML = '';
+                    resultsContainer.appendChild(msg);
                 } else {
                     resultsContainer.innerHTML = data.html;
                 }

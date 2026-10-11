@@ -3,11 +3,13 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 require '../../config/db.php';
+// NEW: only logged-in users can search (the endpoint had no check of its own).
+require_role(['Admin', 'Manager', 'Employee']);
 
 header('Content-Type: application/json');
 
 function esc($v) {
-    return htmlspecialchars($v ?? '', ENT_QUOTES, 'UTF-8');
+    return htmlspecialchars((string) ($v ?? ''), ENT_QUOTES, 'UTF-8');
 }
 
 $q = trim($_GET['q'] ?? '');
@@ -18,17 +20,36 @@ $scope = $_GET['scope'] ?? 'all';
 $exactScopes = ['attendance', 'customers', 'departments', 'notifications', 'projects', 'sales', 'transactions', 'employees', 'leave', 'products', 'tasks'];
 
 $role = function_exists('current_user_role') ? current_user_role() : null;
-$canManageAttendance = in_array($role, ['Admin', 'Manager'], true);
+$isManager = in_array($role, ['Admin', 'Manager'], true);
+$isAdminRole = $role === 'Admin';
+$canManageAttendance = $isManager;
 $isAdminSession = isset($_SESSION['user_role']) && strtolower($_SESSION['user_role']) === 'admin';
-$userId = function_exists('current_user_id') ? current_user_id() : null;
-$currentUserId = $_SESSION['user_id'] ?? 0;
+$userId = function_exists('current_user_id') ? (int) current_user_id() : 0;
+$currentUserId = (int) ($_SESSION['user_id'] ?? 0);
 
-if ($q === '' || mb_strlen($q) < 1 || !in_array($scope, $exactScopes, true)) {
+// NEW: the same access rules as the pages themselves. A scope this user may not open returns nothing.
+$scopeAllowed = [
+    'departments' => $isAdminRole,   // Departments page: Admin only
+    'employees'   => $isAdminRole,   // Employees page: Admin only
+];
+if ($q === '' || mb_strlen($q) > 100 || !in_array($scope, $exactScopes, true) || (isset($scopeAllowed[$scope]) && !$scopeAllowed[$scope])) {
     echo json_encode(['empty' => true, 'html' => '']);
     exit;
 }
 
 $like = '%' . $q . '%';
+
+// NEW: Customer ID (RMC000025) and receipt number (RM000047) searches.
+$searchCustomerId = 0;
+$searchSaleId = 0;
+if (preg_match('/^RMC0*(\d+)$/i', $q, $m)) {
+    $searchCustomerId = (int) $m[1];
+} elseif (preg_match('/^RM0*(\d+)$/i', $q, $m)) {
+    $searchSaleId = (int) $m[1];
+}
+
+function customer_code_txt(int $id): string { return 'RMC' . str_pad((string) $id, 6, '0', STR_PAD_LEFT); }
+function phone_ok_txt($p): bool { return (bool) preg_match('/^07\d{8}$/', preg_replace('/[\s\-]/', '', (string) $p)); }
 
 /* ---------- shared little helpers, ported from each module's index.php ---------- */
 
@@ -41,7 +62,7 @@ function workflowBadgeHtml($status) {
         'Rejected' => 'danger',
     ];
     $class = $map[$status] ?? 'secondary';
-    return '<span class="badge bg-' . $class . '">' . esc($status) . '</span>';
+    return '<span class="badge bg-' . $class . '">' . esc($status ?: 'Not set') . '</span>';
 }
 
 function attendanceStatusBadgeHtml($status) {
@@ -51,19 +72,21 @@ function attendanceStatusBadgeHtml($status) {
 
 /* ---------- exact-table renderers (mirror the real module page) ---------- */
 
-function renderAttendanceRows(mysqli $conn, string $like, int $limit, bool $canManage): string
+// CHANGED: employees only find their OWN attendance (same as the Attendance page).
+function renderAttendanceRows(mysqli $conn, string $like, int $limit, bool $canManage, int $userId): string
 {
+    $own = $canManage ? '' : ' AND attendance.user_id = ' . (int) $userId;
     $sql = "SELECT attendance.id, attendance.attendance_date, attendance.check_in, attendance.check_out,
                    attendance.status, attendance.workflow_status,
                    users.names AS employee_name, departments.name AS department_name
             FROM attendance
             INNER JOIN users ON attendance.user_id = users.id
             LEFT JOIN departments ON users.department_id = departments.id
-            WHERE users.names LIKE ? OR attendance.status LIKE ?
+            WHERE (users.names LIKE ? OR attendance.status LIKE ? OR attendance.workflow_status LIKE ?)$own
             ORDER BY attendance.attendance_date DESC
             LIMIT $limit";
     $stmt = mysqli_prepare($conn, $sql);
-    mysqli_stmt_bind_param($stmt, 'ss', $like, $like);
+    mysqli_stmt_bind_param($stmt, 'sss', $like, $like, $like);
     mysqli_stmt_execute($stmt);
     $rows = mysqli_fetch_all(mysqli_stmt_get_result($stmt), MYSQLI_ASSOC);
 
@@ -98,41 +121,59 @@ function attendanceHeaderRow(bool $canManage): string
     return $h . '</tr>';
 }
 
-function renderCustomersRows(mysqli $conn, string $like, int $limit): string
+// CHANGED: same columns as the updated Customers page (ID, location, points, credit, SMS), the same
+// balance rule (only Credit and Partially Paid), and search by Customer ID (RMC000025) too.
+function renderCustomersRows(mysqli $conn, string $like, int $limit, int $customerId, bool $isManager): string
 {
-    $sql = "SELECT customers.id, customers.name, customers.phone, customers.email,
-                   COALESCE(SUM(CASE WHEN sales.status != 'Cancelled' THEN sales.total_amount - sales.amount_paid ELSE 0 END), 0) AS balance
+    $sql = "SELECT customers.*,
+                   COALESCE(SUM(CASE WHEN sales.status IN ('Credit', 'Partially Paid') THEN sales.total_amount - sales.amount_paid ELSE 0 END), 0) AS balance
             FROM customers
             LEFT JOIN sales ON sales.customer_id = customers.id
-            WHERE customers.is_active = 1 AND (customers.name LIKE ? OR customers.phone LIKE ?)
+            WHERE customers.is_active = 1 AND (customers.name LIKE ? OR customers.phone LIKE ? OR customers.email LIKE ?
+                  OR customers.district LIKE ? OR customers.sector LIKE ? OR customers.id = ?)
             GROUP BY customers.id
             ORDER BY customers.name
             LIMIT $limit";
     $stmt = mysqli_prepare($conn, $sql);
-    mysqli_stmt_bind_param($stmt, 'ss', $like, $like);
+    mysqli_stmt_bind_param($stmt, 'sssssi', $like, $like, $like, $like, $like, $customerId);
     mysqli_stmt_execute($stmt);
     $rows = mysqli_fetch_all(mysqli_stmt_get_result($stmt), MYSQLI_ASSOC);
 
+    $threshold = defined('LOYALTY_CREDIT_THRESHOLD') ? (int) LOYALTY_CREDIT_THRESHOLD : 500;
     $html = '';
     foreach ($rows as $r) {
+        $id = (int) $r['id'];
+        $points = (int) $r['loyalty_points'];
+        $allowed = $points >= $threshold;
+        $balance = (float) $r['balance'];
+        $phoneOk = phone_ok_txt($r['phone'] ?? '');
+        $location = implode(', ', array_filter([$r['sector'] ?? '', $r['district'] ?? '', $r['province'] ?? '']));
+
         $html .= '<tr>';
+        $html .= '<td class="text-nowrap fw-semibold">' . esc(customer_code_txt($id)) . '</td>';
         $html .= '<td>' . esc($r['name']) . '</td>';
-        $html .= '<td>' . esc($r['phone'] ?? '—') . '</td>';
+        $html .= '<td class="text-nowrap">' . esc($r['phone'] ?? '—')
+            . ($phoneOk ? '' : ' <span class="badge bg-warning text-dark" title="This number cannot receive SMS. It must be 10 digits starting with 07.">Check number</span>') . '</td>';
         $html .= '<td>' . esc($r['email'] ?? '—') . '</td>';
-        if ($r['balance'] > 0) {
-            $html .= '<td><span class="text-danger fw-semibold">RWF ' . number_format($r['balance'], 2) . '</span></td>';
-        } else {
-            $html .= '<td><span class="text-muted">RWF 0.00</span></td>';
+        $html .= '<td>' . ($location !== '' ? esc($location) : '<span class="text-muted">—</span>') . '</td>';
+        $html .= $balance > 0.009
+            ? '<td><span class="text-danger fw-semibold">RWF ' . number_format($balance, 2) . '</span></td>'
+            : '<td><span class="text-muted">RWF 0.00</span></td>';
+        $html .= '<td><span class="fw-semibold">' . $points . '</span></td>';
+        $html .= '<td><span class="badge bg-' . ($allowed ? 'success' : 'danger') . '">' . ($allowed ? 'Allowed' : 'Not Allowed') . '</span></td>';
+        $html .= '<td class="text-nowrap"><a href="../customers/edit.php?id=' . $id . '" class="rm-btn rm-btn-warning rm-btn-sm">Edit</a>';
+        if ($isManager && $phoneOk) {
+            $html .= ' <a href="../sms/sms_compose.php?group=customer&id=' . $id . '&template=' . ($balance > 0.009 ? 'credit' : 'custom')
+                . '" class="btn btn-outline-primary btn-sm" title="Send an SMS to this customer"><i class="bi bi-chat-dots"></i> SMS</a>';
         }
-        $html .= '<td><a href="../customers/edit.php?id=' . (int) $r['id'] . '" class="rm-btn rm-btn-warning rm-btn-sm">Edit</a></td>';
-        $html .= '</tr>';
+        $html .= '</td></tr>';
     }
     return $html;
 }
 
 function customersHeaderRow(): string
 {
-    return '<tr><th>Name</th><th>Phone</th><th>Email</th><th>Outstanding Balance</th><th>Action</th></tr>';
+    return '<tr><th>Customer ID</th><th>Name</th><th>Phone</th><th>Email</th><th>Location</th><th>Outstanding Balance</th><th>Loyalty Points</th><th>Credit Status</th><th>Action</th></tr>';
 }
 
 function renderDepartmentsRows(mysqli $conn, string $like, int $limit, ?string $role): string
@@ -203,16 +244,17 @@ function departmentsHeaderRow(?string $role): string
     return $h . '</tr>';
 }
 
-function renderNotificationsRows(mysqli $conn, string $like, int $limit): string
+// CHANGED: only the user's OWN notifications (before, searching showed everyone's).
+function renderNotificationsRows(mysqli $conn, string $like, int $limit, int $userId): string
 {
     $sql = "SELECT notifications.id, notifications.title, notifications.message, notifications.is_read, notifications.created_at, users.names
             FROM notifications
             LEFT JOIN users ON notifications.user_id = users.id
-            WHERE users.names LIKE ? OR notifications.title LIKE ? OR notifications.message LIKE ?
+            WHERE notifications.user_id = ? AND (notifications.title LIKE ? OR notifications.message LIKE ?)
             ORDER BY notifications.id DESC
             LIMIT $limit";
     $stmt = mysqli_prepare($conn, $sql);
-    mysqli_stmt_bind_param($stmt, 'sss', $like, $like, $like);
+    mysqli_stmt_bind_param($stmt, 'iss', $userId, $like, $like);
     mysqli_stmt_execute($stmt);
     $rows = mysqli_fetch_all(mysqli_stmt_get_result($stmt), MYSQLI_ASSOC);
 
@@ -296,9 +338,11 @@ function saleStatusBadgeHtml($status) {
     return '<span class="badge bg-' . $class . '">' . esc($status) . '</span>';
 }
 
-function renderSalesRows(mysqli $conn, string $like, int $limit, ?string $role, $userId): string
+// CHANGED: same columns and buttons as the updated Sales page (Balance column, SMS button), and
+// search by receipt number (RM000047), Customer ID (RMC000025) and customer phone too.
+function renderSalesRows(mysqli $conn, string $like, int $limit, ?string $role, $userId, int $saleId, int $customerId): string
 {
-    $where = '(customers.name LIKE ? OR sales.payment_method LIKE ? OR sales.status LIKE ?)';
+    $where = '(customers.name LIKE ? OR customers.phone LIKE ? OR sales.payment_method LIKE ? OR sales.status LIKE ? OR sales.id = ? OR sales.customer_id = ?)';
     if ($role === 'Employee') {
         $where .= ' AND sales.recorded_by = ' . (int) $userId;
     }
@@ -311,7 +355,7 @@ function renderSalesRows(mysqli $conn, string $like, int $limit, ?string $role, 
             ORDER BY sales.created_at DESC
             LIMIT $limit";
     $stmt = mysqli_prepare($conn, $sql);
-    mysqli_stmt_bind_param($stmt, 'sss', $like, $like, $like);
+    mysqli_stmt_bind_param($stmt, 'ssssii', $like, $like, $like, $like, $saleId, $customerId);
     mysqli_stmt_execute($stmt);
     $rows = mysqli_fetch_all(mysqli_stmt_get_result($stmt), MYSQLI_ASSOC);
 
@@ -320,20 +364,29 @@ function renderSalesRows(mysqli $conn, string $like, int $limit, ?string $role, 
     $html = '';
     foreach ($rows as $sale) {
         $id = (int) $sale['id'];
+        $balance = (float) $sale['total_amount'] - (float) $sale['amount_paid'];
+        $owes = in_array($sale['status'], ['Credit', 'Partially Paid'], true);
+
         $html .= '<tr>';
         $html .= '<td>' . esc(date('d M Y', strtotime($sale['sale_date']))) . '</td>';
         $html .= '<td>' . esc($sale['customer_name'] ?? 'Walk-in') . '</td>';
         $html .= '<td>' . esc($sale['recorded_by_name'] ?? '—') . '</td>';
         $html .= '<td>' . esc($sale['payment_method']) . '</td>';
-        $html .= '<td>RWF ' . number_format($sale['total_amount'], 2) . '</td>';
-        $html .= '<td>RWF ' . number_format($sale['amount_paid'], 2) . '</td>';
+        $html .= '<td>RWF ' . number_format((float) $sale['total_amount'], 2) . '</td>';
+        $html .= '<td>RWF ' . number_format((float) $sale['amount_paid'], 2) . '</td>';
+        $html .= $balance > 0
+            ? '<td><span class="text-danger fw-semibold">RWF ' . number_format($balance, 2) . '</span></td>'
+            : '<td><span class="text-muted">—</span></td>';
         $html .= '<td>' . saleStatusBadgeHtml($sale['status']) . '</td>';
 
         $html .= '<td class="text-nowrap">';
         $html .= '<a href="../sales/invoice.php?id=' . $id . '" target="_blank" class="btn btn-outline-primary btn-sm">Invoice</a> ';
 
-        if ($sale['status'] === 'Credit' || $sale['status'] === 'Partially Paid') {
+        if ($owes) {
             $html .= '<a href="../sales/pay_credit.php?id=' . $id . '" class="btn btn-outline-success btn-sm">Pay</a> ';
+        }
+        if ($owes && $canManage && !empty($sale['customer_id'])) {
+            $html .= '<a href="../sms/sms_compose.php?group=customer&id=' . (int) $sale['customer_id'] . '&template=credit" class="btn btn-outline-primary btn-sm" title="Send an SMS reminder to this customer"><i class="bi bi-chat-dots"></i> SMS</a> ';
         }
 
         if (in_array($sale['status'], ['Credit', 'Partially Paid', 'Paid'], true)) {
@@ -358,22 +411,26 @@ function renderSalesRows(mysqli $conn, string $like, int $limit, ?string $role, 
 
 function salesHeaderRow(): string
 {
-    return '<tr><th>Date</th><th>Customer</th><th>Recorded By</th><th>Payment</th><th>Total</th><th>Paid</th><th>Status</th><th>Action</th></tr>';
+    return '<tr><th>Date</th><th>Customer</th><th>Recorded By</th><th>Payment</th><th>Total</th><th>Paid</th><th>Balance</th><th>Status</th><th>Action</th></tr>';
 }
 
+// CHANGED: same columns and buttons as the updated Transactions page: Fund column, Auto and
+// Deleted badges, Approve as a POST button, Edit/Delete only on manual, not-deleted transactions.
 function renderTransactionsRows(mysqli $conn, string $like, int $limit, bool $isAdmin, $currentUserId): string
 {
-    $visibilityWhere = $isAdmin ? '1=1' : "(status = 'approved' OR recorded_by = " . (int) $currentUserId . ')';
-    $searchWhere = '(category LIKE ? OR description LIKE ? OR transaction_type LIKE ?)';
+    $visibilityWhere = $isAdmin ? '1=1' : "(transactions.status = 'approved' OR transactions.recorded_by = " . (int) $currentUserId . ')';
+    $searchWhere = '(transactions.category LIKE ? OR transactions.description LIKE ? OR transactions.transaction_type LIKE ? OR transactions.expense_category LIKE ? OR funds.name LIKE ?)';
 
-    $sql = "SELECT transactions.*, users.names AS recorder_name
+    $sql = "SELECT transactions.*, users.names AS recorder_name, funds.name AS fund_name, linked_sale.id AS linked_sale_id
             FROM transactions
             LEFT JOIN users ON transactions.recorded_by = users.id
+            LEFT JOIN funds ON transactions.fund_id = funds.id
+            LEFT JOIN sales linked_sale ON linked_sale.transaction_id = transactions.id
             WHERE $visibilityWhere AND $searchWhere
-            ORDER BY transaction_date DESC, transactions.id DESC
+            ORDER BY transactions.transaction_date DESC, transactions.id DESC
             LIMIT $limit";
     $stmt = mysqli_prepare($conn, $sql);
-    mysqli_stmt_bind_param($stmt, 'sss', $like, $like, $like);
+    mysqli_stmt_bind_param($stmt, 'sssss', $like, $like, $like, $like, $like);
     mysqli_stmt_execute($stmt);
     $rows = mysqli_fetch_all(mysqli_stmt_get_result($stmt), MYSQLI_ASSOC);
 
@@ -381,17 +438,21 @@ function renderTransactionsRows(mysqli $conn, string $like, int $limit, bool $is
         'approved' => 'success',
         'pending' => 'warning text-dark',
         'rejected' => 'danger',
+        'deleted' => 'dark',
     ];
 
     $html = '';
     foreach ($rows as $t) {
         $id = (int) $t['id'];
         $badgeClass = $statusBadgeClass[$t['status']] ?? 'secondary';
+        $isManual = (int) $t['is_automatic'] === 0 && empty($t['linked_sale_id']);
+        $isDeleted = $t['status'] === 'deleted';
 
-        $html .= '<tr>';
+        $html .= '<tr' . ($isDeleted ? ' class="text-muted" style="text-decoration:line-through;"' : '') . '>';
         $html .= '<td>' . esc(date('d M Y', strtotime($t['transaction_date']))) . '</td>';
         $html .= '<td>' . esc($t['category']) . '</td>';
         $html .= '<td><span class="badge bg-' . ($t['transaction_type'] === 'Income' ? 'success' : 'danger') . '">' . esc($t['transaction_type']) . '</span></td>';
+        $html .= '<td>' . esc($t['fund_name'] ?? '—') . '</td>';
         $html .= '<td>RWF ' . number_format((float) $t['amount'], 2) . '</td>';
         $html .= '<td>' . esc($t['description'] ?? '') . '</td>';
         $html .= '<td>' . esc($t['recorder_name'] ?? '—') . '</td>';
@@ -399,13 +460,21 @@ function renderTransactionsRows(mysqli $conn, string $like, int $limit, bool $is
         if ($t['status'] === 'rejected' && !empty($t['rejection_reason'])) {
             $html .= ' <i class="bi bi-info-circle" title="' . esc($t['rejection_reason']) . '"></i>';
         }
+        if (!$isManual) {
+            $html .= ' <span class="badge bg-light text-muted border" title="Created automatically. Change it from its own module (e.g. cancel the sale or purchase order).">Auto</span>';
+        }
         $html .= '</td>';
 
         $html .= '<td class="text-nowrap">';
         $html .= '<a href="../transactions/view.php?id=' . $id . '" class="rm-btn rm-btn-info rm-btn-sm">View</a> ';
+        if (!empty($t['linked_sale_id'])) {
+            $html .= '<a href="../sales/invoice.php?id=' . (int) $t['linked_sale_id'] . '" class="rm-btn rm-btn-light rm-btn-sm">Sale</a> ';
+        }
 
         if ($isAdmin && $t['status'] === 'pending') {
-            $html .= '<a href="../transactions/approve.php?id=' . $id . '" class="rm-btn rm-btn-success rm-btn-sm">Approve</a> ';
+            $html .= '<form method="POST" action="../transactions/approve.php" class="d-inline" onsubmit="return confirm(\'Approve this transaction?\')">';
+            $html .= '<input type="hidden" name="id" value="' . $id . '">';
+            $html .= '<button type="submit" class="rm-btn rm-btn-success rm-btn-sm">Approve</button></form> ';
             $html .= '<button type="button" class="rm-btn rm-btn-danger rm-btn-sm" data-bs-toggle="modal" data-bs-target="#rejectModalLive' . $id . '">Reject</button>';
 
             $html .= '<div class="modal fade" id="rejectModalLive' . $id . '" tabindex="-1"><div class="modal-dialog"><div class="modal-content">';
@@ -416,7 +485,7 @@ function renderTransactionsRows(mysqli $conn, string $like, int $limit, bool $is
             $html .= '</form></div></div></div>';
         }
 
-        if ($isAdmin) {
+        if ($isAdmin && $isManual && !$isDeleted) {
             $html .= '<a href="../transactions/edit.php?id=' . $id . '" class="rm-btn rm-btn-warning rm-btn-sm">Edit</a> ';
             $html .= '<form method="POST" action="../transactions/delete.php" class="d-inline" onsubmit="return confirm(\'Delete this transaction?\')">';
             $html .= '<input type="hidden" name="id" value="' . $id . '">';
@@ -432,7 +501,7 @@ function renderTransactionsRows(mysqli $conn, string $like, int $limit, bool $is
 
 function transactionsHeaderRow(): string
 {
-    return '<tr><th>Date</th><th>Category</th><th>Type</th><th>Amount</th><th>Description</th><th>Recorded By</th><th>Status</th><th>Action</th></tr>';
+    return '<tr><th>Date</th><th>Category</th><th>Type</th><th>Fund</th><th>Amount</th><th>Description</th><th>Recorded By</th><th>Status</th><th>Action</th></tr>';
 }
 
 function renderEmployeesRows(mysqli $conn, string $like, int $limit): string
@@ -595,9 +664,11 @@ function taskStatusBadgeHtml($status) {
     return '<span class="badge bg-' . $class . '">' . esc($status) . '</span>';
 }
 
+// CHANGED: Accept and Start Work are POST buttons (as on the Tasks page; the plain links no longer
+// work), overdue tasks are marked, and the project name is searchable too.
 function renderTasksRows(mysqli $conn, string $like, int $limit, ?string $role, $userId): string
 {
-    $where = '(tasks.title LIKE ? OR tasks.description LIKE ? OR tasks.status LIKE ?)';
+    $where = '(tasks.title LIKE ? OR tasks.description LIKE ? OR tasks.status LIKE ? OR projects.project_name LIKE ?)';
     if ($role === 'Employee') {
         $where .= ' AND tasks.assigned_to = ' . (int) $userId;
     }
@@ -610,23 +681,32 @@ function renderTasksRows(mysqli $conn, string $like, int $limit, ?string $role, 
             ORDER BY CASE WHEN tasks.status IN ('Approved', 'Rejected') THEN 1 ELSE 0 END, tasks.due_date ASC, tasks.created_at DESC
             LIMIT $limit";
     $stmt = mysqli_prepare($conn, $sql);
-    mysqli_stmt_bind_param($stmt, 'sss', $like, $like, $like);
+    mysqli_stmt_bind_param($stmt, 'ssss', $like, $like, $like, $like);
     mysqli_stmt_execute($stmt);
     $rows = mysqli_fetch_all(mysqli_stmt_get_result($stmt), MYSQLI_ASSOC);
 
     $canManage = in_array($role, ['Admin', 'Manager'], true);
+    $postButton = function (string $action, int $id, string $class, string $label) {
+        return '<form method="POST" action="../tasks/' . $action . '" class="d-inline">'
+            . '<input type="hidden" name="id" value="' . $id . '">'
+            . '<button type="submit" class="btn ' . $class . ' btn-sm">' . $label . '</button></form> ';
+    };
 
     $html = '';
     foreach ($rows as $task) {
         $id = (int) $task['id'];
         $priorityClass = $task['priority'] === 'High' ? 'danger' : ($task['priority'] === 'Medium' ? 'warning text-dark' : 'secondary');
+        $isOpen = in_array($task['status'], ['Pending', 'Accepted', 'In Progress'], true);
+        $overdue = $isOpen && $task['due_date'] && strtotime($task['due_date']) < strtotime('today');
 
         $html .= '<tr>';
         $html .= '<td><strong>' . esc($task['title']) . '</strong><br><small class="text-muted">' . esc($task['description'] ?? '') . '</small></td>';
         $html .= '<td>' . esc($task['project_name']) . '</td>';
         $html .= '<td>' . esc($task['assignee_name'] ?? 'Unassigned') . '</td>';
         $html .= '<td><span class="badge bg-' . $priorityClass . '">' . esc($task['priority']) . '</span></td>';
-        $html .= '<td>' . ($task['due_date'] ? esc(date('d M Y', strtotime($task['due_date']))) : '—') . '</td>';
+        $html .= '<td class="text-nowrap"><span class="' . ($overdue ? 'text-danger fw-semibold' : '') . '">'
+            . ($task['due_date'] ? esc(date('d M Y', strtotime($task['due_date']))) : '—') . '</span>'
+            . ($overdue ? ' <span class="badge bg-danger ms-1">Overdue</span>' : '') . '</td>';
         $html .= '<td>' . taskStatusBadgeHtml($task['status']) . '</td>';
         $html .= '<td>' . ($task['performance_score'] !== null ? (int) $task['performance_score'] . '/100' : '—') . '</td>';
 
@@ -635,9 +715,9 @@ function renderTasksRows(mysqli $conn, string $like, int $limit, ?string $role, 
 
         if ($role === 'Employee' && (int) $task['assigned_to'] === (int) $userId) {
             if ($task['status'] === 'Pending') {
-                $html .= '<a href="../tasks/accept.php?id=' . $id . '" class="btn btn-success btn-sm">Accept</a> ';
+                $html .= $postButton('accept.php', $id, 'btn-success', 'Accept');
             } elseif ($task['status'] === 'Accepted') {
-                $html .= '<a href="../tasks/start.php?id=' . $id . '" class="btn btn-primary btn-sm">Start Work</a> ';
+                $html .= $postButton('start.php', $id, 'btn-primary', 'Start Work');
             } elseif ($task['status'] === 'In Progress') {
                 $html .= '<a href="../tasks/submit.php?id=' . $id . '" class="btn btn-warning btn-sm">Submit</a> ';
             }
@@ -670,92 +750,67 @@ function tasksHeaderRow(): string
    that module's table. */
 $rowsHtml = '';
 $html = '';
+$tableOpen = '<table class="table table-bordered table-hover bg-white mb-0">';
 
-switch ($scope) {
-    case 'attendance':
-        $rowsHtml = renderAttendanceRows($conn, $like, 50, $canManageAttendance);
-        if ($rowsHtml !== '') {
-            // #pageResultsContainer IS the .table-responsive div on this page —
-            // just replace its table, don't re-wrap it.
-            $html = '<table class="table table-bordered table-hover bg-white mb-0">'
-                . attendanceHeaderRow($canManageAttendance) . $rowsHtml . '</table>';
-        }
-        break;
-    case 'customers':
-        $rowsHtml = renderCustomersRows($conn, $like, 50);
-        if ($rowsHtml !== '') {
-            $html = '<table class="table table-bordered table-hover bg-white mb-0">'
-                . customersHeaderRow() . $rowsHtml . '</table>';
-        }
-        break;
-    case 'departments':
-        $rowsHtml = renderDepartmentsRows($conn, $like, 50, $role);
-        if ($rowsHtml !== '') {
-            // #pageResultsContainer IS the overflow-x:auto div here too.
-            $html = '<table class="table table-bordered table-hover bg-white mb-0">'
-                . departmentsHeaderRow($role) . $rowsHtml . '</table>';
-        }
-        break;
-    case 'notifications':
-        $rowsHtml = renderNotificationsRows($conn, $like, 50);
-        if ($rowsHtml !== '') {
-            $html = '<table class="table table-bordered table-hover">'
-                . notificationsHeaderRow() . $rowsHtml . '</table>';
-        }
-        break;
-    case 'projects':
-        $rowsHtml = renderProjectsRows($conn, $like, 50, $isAdminSession);
-        if ($rowsHtml !== '') {
-            // #pageResultsContainer IS the .table-responsive div on this page —
-            // just replace its table, don't re-wrap it.
-            $html = '<table class="table table-bordered table-hover bg-white mb-0">'
-                . projectsHeaderRow() . $rowsHtml . '</table>';
-        }
-        break;
-    case 'sales':
-        $rowsHtml = renderSalesRows($conn, $like, 50, $role, $userId);
-        if ($rowsHtml !== '') {
-            $html = '<table class="table table-bordered table-hover bg-white mb-0">'
-                . salesHeaderRow() . $rowsHtml . '</table>';
-        }
-        break;
-    case 'transactions':
-        $rowsHtml = renderTransactionsRows($conn, $like, 50, $isAdminSession, $currentUserId);
-        if ($rowsHtml !== '') {
-            $html = '<table class="table table-bordered table-hover bg-white mb-0">'
-                . transactionsHeaderRow() . $rowsHtml . '</table>';
-        }
-        break;
-    case 'employees':
-        $rowsHtml = renderEmployeesRows($conn, $like, 50);
-        if ($rowsHtml !== '') {
-            $html = '<table class="table table-bordered table-hover bg-white mb-0">'
-                . employeesHeaderRow() . $rowsHtml . '</table>';
-        }
-        break;
-    case 'leave':
-        $rowsHtml = renderLeaveRows($conn, $like, 50, $userId);
-        if ($rowsHtml !== '') {
-            $html = '<table class="table table-bordered table-hover bg-white mb-0">'
-                . leaveHeaderRow() . $rowsHtml . '</table>';
-        }
-        break;
-    case 'products':
-        $rowsHtml = renderProductsRows($conn, $like, 50, $isAdminSession);
-        if ($rowsHtml !== '') {
-            // Note: this page's table uses different classes (no bg-white/mb-0)
-            // than the others — matched exactly here.
-            $html = '<table class="table table-bordered table-hover">'
-                . productsHeaderRow() . $rowsHtml . '</table>';
-        }
-        break;
-    case 'tasks':
-        $rowsHtml = renderTasksRows($conn, $like, 50, $role, $userId);
-        if ($rowsHtml !== '') {
-            $html = '<table class="table table-bordered table-hover bg-white mb-0">'
-                . tasksHeaderRow() . $rowsHtml . '</table>';
-        }
-        break;
+try {
+    switch ($scope) {
+        case 'attendance':
+            $rowsHtml = renderAttendanceRows($conn, $like, 50, $canManageAttendance, $userId);
+            if ($rowsHtml !== '') { $html = $tableOpen . attendanceHeaderRow($canManageAttendance) . $rowsHtml . '</table>'; }
+            break;
+        case 'customers':
+            $rowsHtml = renderCustomersRows($conn, $like, 50, $searchCustomerId, $isManager);
+            if ($rowsHtml !== '') {
+                // The Customers page wraps its table in .table-responsive inside #pageResultsContainer.
+                $html = '<div class="table-responsive">' . $tableOpen . customersHeaderRow() . $rowsHtml . '</table></div>';
+            }
+            break;
+        case 'departments':
+            $rowsHtml = renderDepartmentsRows($conn, $like, 50, $role);
+            if ($rowsHtml !== '') { $html = $tableOpen . departmentsHeaderRow($role) . $rowsHtml . '</table>'; }
+            break;
+        case 'notifications':
+            $rowsHtml = renderNotificationsRows($conn, $like, 50, $userId);
+            if ($rowsHtml !== '') { $html = '<table class="table table-bordered table-hover">' . notificationsHeaderRow() . $rowsHtml . '</table>'; }
+            break;
+        case 'projects':
+            $rowsHtml = renderProjectsRows($conn, $like, 50, $isAdminSession);
+            if ($rowsHtml !== '') { $html = $tableOpen . projectsHeaderRow() . $rowsHtml . '</table>'; }
+            break;
+        case 'sales':
+            $rowsHtml = renderSalesRows($conn, $like, 50, $role, $userId, $searchSaleId, $searchCustomerId);
+            if ($rowsHtml !== '') { $html = '<div class="table-responsive">' . $tableOpen . salesHeaderRow() . $rowsHtml . '</table></div>'; }
+            break;
+        case 'transactions':
+            $rowsHtml = renderTransactionsRows($conn, $like, 50, $isAdminSession, $currentUserId);
+            if ($rowsHtml !== '') { $html = '<div class="table-responsive">' . $tableOpen . transactionsHeaderRow() . $rowsHtml . '</table></div>'; }
+            break;
+        case 'employees':
+            $rowsHtml = renderEmployeesRows($conn, $like, 50);
+            if ($rowsHtml !== '') { $html = $tableOpen . employeesHeaderRow() . $rowsHtml . '</table>'; }
+            break;
+        case 'leave':
+            $rowsHtml = renderLeaveRows($conn, $like, 50, $userId);
+            if ($rowsHtml !== '') { $html = $tableOpen . leaveHeaderRow() . $rowsHtml . '</table>'; }
+            break;
+        case 'products':
+            $rowsHtml = renderProductsRows($conn, $like, 50, $isAdminSession);
+            if ($rowsHtml !== '') {
+                // Note: this page's table uses different classes (no bg-white/mb-0) than the others.
+                $html = '<table class="table table-bordered table-hover">' . productsHeaderRow() . $rowsHtml . '</table>';
+            }
+            break;
+        case 'tasks':
+            $rowsHtml = renderTasksRows($conn, $like, 50, $role, $userId);
+            if ($rowsHtml !== '') { $html = '<div class="table-responsive">' . $tableOpen . tasksHeaderRow() . $rowsHtml . '</table></div>'; }
+            break;
+    }
+} catch (Throwable $e) {
+    // NEW: a failed search shows "Search failed" in the page instead of a broken response.
+    error_log('live search failed (' . $scope . '): ' . $e->getMessage());
+    http_response_code(500);
+    echo json_encode(['empty' => true, 'html' => '', 'error' => 'Search failed']);
+    exit;
 }
 
 echo json_encode(['empty' => $rowsHtml === '', 'html' => $html]);

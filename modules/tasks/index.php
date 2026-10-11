@@ -1,6 +1,8 @@
 <?php
 require '../../config/db.php';
 $pageSearchScope = 'tasks'; // tells the topbar search what module we're in
+// NEW: this page had no role check of its own (every other page has one).
+require_role(['Admin', 'Manager', 'Employee']);
 require '../../includes/pagination.php';
 include '../../includes/header.php';
 include '../../includes/sidebar.php';
@@ -38,11 +40,16 @@ function task_status_badge($status) {
 }
 ?>
 <?php if (isset($_GET['success'])) { ?><div class="alert alert-success alert-dismissible fade show" role="alert"><?= htmlspecialchars($_GET['success'], ENT_QUOTES, 'UTF-8'); ?><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><?php } ?>
+<?php if (isset($_GET['error'])) { ?><div class="alert alert-danger alert-dismissible fade show" role="alert"><?= htmlspecialchars($_GET['error'], ENT_QUOTES, 'UTF-8'); ?><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><?php } ?>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2><?= $role === 'Employee' ? 'My Tasks' : 'Tasks Management'; ?></h2>
     <?php if (in_array($role, ['Admin', 'Manager'], true)) { ?>
-    <a href="create.php" class="btn btn-primary">+ Add Task</a>
+    <!-- NEW: Reports, next to Add Task -->
+    <div class="d-flex gap-2">
+        <a href="reports.php" class="btn btn-outline-primary">Reports</a>
+        <a href="create.php" class="btn btn-primary">+ Add Task</a>
+    </div>
     <?php } ?>
 </div>
 
@@ -58,13 +65,20 @@ function task_status_badge($status) {
             <table class="table table-bordered table-hover bg-white mb-0">
                 <tr><th>Task</th><th>Project</th><th>Assigned To</th><th>Priority</th><th>Due Date</th><th>Status</th><th>Score</th><th>Action</th></tr>
                 <?php if (mysqli_num_rows($tasks) === 0) { ?><tr><td colspan="8" class="text-center text-muted py-4">No tasks found.</td></tr><?php } ?>
-                <?php while ($task = mysqli_fetch_assoc($tasks)) { ?>
+                <?php while ($task = mysqli_fetch_assoc($tasks)) {
+                    // NEW: an open task (not handed in yet) whose due date has passed is marked Overdue.
+                    $isOpen = in_array($task['status'], ['Pending', 'Accepted', 'In Progress'], true);
+                    $overdue = $isOpen && $task['due_date'] && strtotime($task['due_date']) < strtotime('today');
+                ?>
                 <tr>
                     <td><strong><?= htmlspecialchars($task['title'], ENT_QUOTES, 'UTF-8'); ?></strong><br><small class="text-muted"><?= htmlspecialchars($task['description'] ?? '', ENT_QUOTES, 'UTF-8'); ?></small></td>
                     <td><?= htmlspecialchars($task['project_name'], ENT_QUOTES, 'UTF-8'); ?></td>
                     <td><?= htmlspecialchars($task['assignee_name'] ?? 'Unassigned', ENT_QUOTES, 'UTF-8'); ?></td>
-                    <td><span class="badge bg-<?= $task['priority'] === 'High' ? 'danger' : ($task['priority'] === 'Medium' ? 'warning text-dark' : 'secondary'); ?>"><?= $task['priority']; ?></span></td>
-                    <td><?= $task['due_date'] ? date('d M Y', strtotime($task['due_date'])) : '—'; ?></td>
+                    <td><span class="badge bg-<?= $task['priority'] === 'High' ? 'danger' : ($task['priority'] === 'Medium' ? 'warning text-dark' : 'secondary'); ?>"><?= htmlspecialchars($task['priority'], ENT_QUOTES, 'UTF-8'); ?></span></td>
+                    <td class="text-nowrap">
+                        <span class="<?= $overdue ? 'text-danger fw-semibold' : ''; ?>"><?= $task['due_date'] ? date('d M Y', strtotime($task['due_date'])) : '—'; ?></span>
+                        <?php if ($overdue) { ?><span class="badge bg-danger ms-1">Overdue</span><?php } ?>
+                    </td>
                     <td><?= task_status_badge($task['status']); ?></td>
                     <td><?= $task['performance_score'] !== null ? (int) $task['performance_score'] . '/100' : '—'; ?></td>
                     <td class="text-nowrap">
@@ -72,9 +86,17 @@ function task_status_badge($status) {
 
                         <?php if ($role === 'Employee' && (int) $task['assigned_to'] === (int) $userId) { ?>
                             <?php if ($task['status'] === 'Pending') { ?>
-                                <a href="accept.php?id=<?= (int) $task['id']; ?>" class="btn btn-success btn-sm">Accept</a>
+                                <!-- CHANGED: Accept is a POST button (accept.php no longer accepts a plain link). -->
+                                <form method="POST" action="accept.php" class="d-inline">
+                                    <input type="hidden" name="id" value="<?= (int) $task['id']; ?>">
+                                    <button type="submit" class="btn btn-success btn-sm">Accept</button>
+                                </form>
                             <?php } elseif ($task['status'] === 'Accepted') { ?>
-                                <a href="start.php?id=<?= (int) $task['id']; ?>" class="btn btn-primary btn-sm">Start Work</a>
+                                <!-- CHANGED: Start Work is a POST button (start.php no longer accepts a plain link). -->
+                                <form method="POST" action="start.php" class="d-inline">
+                                    <input type="hidden" name="id" value="<?= (int) $task['id']; ?>">
+                                    <button type="submit" class="btn btn-primary btn-sm">Start Work</button>
+                                </form>
                             <?php } elseif ($task['status'] === 'In Progress') { ?>
                                 <a href="submit.php?id=<?= (int) $task['id']; ?>" class="btn btn-warning btn-sm">Submit</a>
                             <?php } ?>

@@ -331,3 +331,107 @@ function po_receive($conn, $poId, $userId) {
         return ['ok' => false, 'error' => 'Unable to receive Purchase Order. Please try again.'];
     }
 }
+
+/**
+ * NEW: deletes a Purchase Order (own transaction). Returns ['ok' => bool, 'error' => string, 'message' => string].
+ *   Draft      nothing happened yet: removed.
+ *   Cancelled  its money was already returned to the fund: removed.
+ *   Ordered    money left the RM Capital Fund: must be Cancelled first (which returns it).
+ *   Received   allowed only while ALL its goods are still in stock: the stock is taken back out, the
+ *              average buying price is restored, the fund entries are reversed (linked) and its expense
+ *              transaction is marked Deleted. If some goods were already sold, it cannot be deleted.
+ * The fund history always keeps the original entries and their reversals.
+ */
+function po_delete($conn, $poId, $userId) {
+    mysqli_begin_transaction($conn);
+    try {
+        $lock = mysqli_prepare($conn, 'SELECT * FROM purchase_orders WHERE id = ? FOR UPDATE');
+        mysqli_stmt_bind_param($lock, 'i', $poId);
+        mysqli_stmt_execute($lock);
+        $po = mysqli_fetch_assoc(mysqli_stmt_get_result($lock));
+        if (!$po) {
+            mysqli_rollback($conn);
+            return ['ok' => false, 'error' => 'Purchase Order not found.'];
+        }
+        if ($po['status'] === 'Ordered') {
+            mysqli_rollback($conn);
+            return ['ok' => false, 'error' => 'This Purchase Order is Ordered: its money left the RM Capital Fund. Cancel it first (the money goes back to the fund), then delete it.'];
+        }
+
+        $returned = 0.0;
+        if ($po['status'] === 'Received') {
+            // 1. Every item must still be in stock in full.
+            $items = mysqli_prepare($conn, 'SELECT poi.*, p.product_name, p.quantity AS stock, p.buying_price
+                FROM purchase_order_items poi JOIN products p ON p.id = poi.product_id
+                WHERE poi.purchase_order_id = ? FOR UPDATE');
+            mysqli_stmt_bind_param($items, 'i', $poId);
+            mysqli_stmt_execute($items);
+            $rows = mysqli_fetch_all(mysqli_stmt_get_result($items), MYSQLI_ASSOC);
+            foreach ($rows as $r) {
+                $base = (int) $r['quantity'] * max(1, (int) $r['pack_size']);
+                if ((int) $r['stock'] < $base) {
+                    mysqli_rollback($conn);
+                    return ['ok' => false, 'error' => 'Cannot delete: "' . $r['product_name'] . '" has only ' . (int) $r['stock']
+                        . ' left in stock, but this order added ' . $base . '. Some of these goods were already sold. Correct the stock on the Capital Fund Check instead.'];
+                }
+            }
+
+            // 2. Take the stock back out and restore the average buying price.
+            $upd = mysqli_prepare($conn, 'UPDATE products SET quantity = ?, buying_price = ? WHERE id = ?');
+            foreach ($rows as $r) {
+                $base = (int) $r['quantity'] * max(1, (int) $r['pack_size']);
+                $oldQty = (int) $r['stock'];
+                $newQty = $oldQty - $base;
+                $newPrice = $newQty > 0
+                    ? max(0, round(($oldQty * (float) $r['buying_price'] - (float) $r['line_total']) / $newQty, 2))
+                    : (float) $r['buying_price'];
+                $pid = (int) $r['product_id'];
+                mysqli_stmt_bind_param($upd, 'idi', $newQty, $newPrice, $pid);
+                mysqli_stmt_execute($upd);
+            }
+
+            // 3. The purchase records created when it was received.
+            $dp = mysqli_prepare($conn, 'DELETE FROM purchases WHERE purchase_order_id = ?');
+            mysqli_stmt_bind_param($dp, 'i', $poId);
+            mysqli_stmt_execute($dp);
+        }
+
+        if (in_array($po['status'], ['Received'], true)) {
+            // 4. Its expense transaction(s): kept, marked Deleted. Then reverse every fund entry of the PO
+            //    (the expense comes back, the stock value goes out: the Capital Fund nets to zero).
+            $tx = mysqli_prepare($conn, "SELECT DISTINCT transaction_id FROM fund_movements
+                WHERE ref_type = 'PO' AND ref_id = ? AND movement_type = 'EXPENSE' AND transaction_id IS NOT NULL");
+            mysqli_stmt_bind_param($tx, 'i', $poId);
+            mysqli_stmt_execute($tx);
+            $txRows = mysqli_fetch_all(mysqli_stmt_get_result($tx), MYSQLI_ASSOC); // read before the next statement
+            $mark = mysqli_prepare($conn, "UPDATE transactions SET status = 'deleted', deleted_by = ?, deleted_at = NOW() WHERE id = ? AND status <> 'deleted'");
+            foreach ($txRows as $t) {
+                $tid = (int) $t['transaction_id'];
+                mysqli_stmt_bind_param($mark, 'ii', $userId, $tid);
+                mysqli_stmt_execute($mark);
+            }
+            fund_reverse_movements($conn, "m.ref_type = 'PO' AND m.ref_id = ?", 'i', [(int) $poId],
+                $userId ? (int) $userId : null, 'Purchase Order #' . $poId . ' deleted');
+            $returned = (float) $po['total_amount'];
+        }
+
+        // 5. The order itself.
+        $di = mysqli_prepare($conn, 'DELETE FROM purchase_order_items WHERE purchase_order_id = ?');
+        mysqli_stmt_bind_param($di, 'i', $poId);
+        mysqli_stmt_execute($di);
+        $dpo = mysqli_prepare($conn, 'DELETE FROM purchase_orders WHERE id = ?');
+        mysqli_stmt_bind_param($dpo, 'i', $poId);
+        mysqli_stmt_execute($dpo);
+
+        mysqli_commit($conn);
+        $message = 'Purchase Order deleted.';
+        if ($returned > 0) {
+            $message .= ' Its goods were taken back out of stock and RWF ' . number_format($returned, 2) . ' was returned to the RM Capital Fund.';
+        }
+        return ['ok' => true, 'message' => $message];
+    } catch (Throwable $e) {
+        mysqli_rollback($conn);
+        error_log('po_delete failed for PO #' . $poId . ': ' . $e->getMessage());
+        return ['ok' => false, 'error' => 'Unable to delete the Purchase Order. Nothing was changed.'];
+    }
+}

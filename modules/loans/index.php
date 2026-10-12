@@ -4,7 +4,9 @@ require '../../includes/loan_helpers.php';
 require_role(['Admin']);
 
 $totals = loan_report_totals($conn);
-$loansResult = mysqli_query($conn, 'SELECT * FROM loans ORDER BY FIELD(status, "Active","Defaulted","Fully Paid","Cancelled"), created_at DESC');
+// CHANGED: also counts each loan's repayments (only loans without repayments can be deleted).
+$loansResult = mysqli_query($conn, 'SELECT loans.*, (SELECT COUNT(*) FROM loan_payments WHERE loan_payments.loan_id = loans.id) AS payment_count
+    FROM loans ORDER BY FIELD(status, "Active","Defaulted","Fully Paid","Cancelled"), created_at DESC');
 
 function money($v) { return number_format((float) $v, 2); }
 
@@ -113,6 +115,18 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
                     <td class="text-nowrap">
                         <a href="view.php?id=<?= (int) $loan['id']; ?>" class="rm-btn rm-btn-light rm-btn-sm">View</a>
                         <a href="edit.php?id=<?= (int) $loan['id']; ?>" class="rm-btn rm-btn-light rm-btn-sm">Edit</a>
+                        <?php if ((int) $loan['payment_count'] === 0) { ?>
+                        <!-- NEW: Delete, only for loans with no repayments (e.g. entered by mistake). -->
+                        <form method="POST" action="delete.php" class="d-inline"
+                              onsubmit="return confirm('Delete this loan from <?= htmlspecialchars(addslashes($loan['lender']), ENT_QUOTES, 'UTF-8'); ?> (RWF <?= money($loan['loan_amount']); ?>)? Its money will be taken back out of the RM Capital Fund. This cannot be undone.');">
+                            <input type="hidden" name="id" value="<?= (int) $loan['id']; ?>">
+                            <button type="submit" class="rm-btn rm-btn-danger rm-btn-sm">Delete</button>
+                        </form>
+                        <?php } else { ?>
+                        <span class="text-muted small ms-1" title="This loan has repayments, so it cannot be deleted.">
+                            <i class="bi bi-lock-fill"></i>
+                        </span>
+                        <?php } ?>
                     </td>
                 </tr>
                 <?php } ?>

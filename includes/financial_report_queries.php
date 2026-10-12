@@ -343,9 +343,19 @@ function fin_position(mysqli $conn, string $asOf): array
     $fixedAssets = fin_fixed_assets($conn, $asOf);
 
     // --- Liabilities ---
-    $loanPrincipal = fin_value($conn, "SELECT COALESCE(SUM(GREATEST(0, l.loan_amount - COALESCE(
-            (SELECT SUM(lp.principal_portion) FROM loan_payments lp WHERE lp.loan_id = l.id AND lp.payment_date <= ?), 0))), 0)
-        FROM loans l WHERE l.status <> 'Cancelled' AND l.loan_start_date <= ?", 'ss', [$asOf, $asOf]);
+    // CHANGED: for today, the loans' own totals are used (the same figures as the Loans page):
+    // Fully Paid and Cancelled loans owe nothing; open loans owe the amount minus the principal repaid.
+    // Before, the payment rows were added up, and a loan marked paid without a matching payment row
+    // still showed as owed. For a past date the payment rows are the only record of WHEN each payment
+    // was made, so they are used then (a loan already Fully Paid never shows more than it really owed).
+    if ($asOf >= $today) {
+        $loanPrincipal = fin_value($conn, "SELECT COALESCE(SUM(GREATEST(0, loan_amount - principal_repaid)), 0)
+            FROM loans WHERE status IN ('Active', 'Defaulted') AND loan_start_date <= ?", 's', [$asOf]);
+    } else {
+        $loanPrincipal = fin_value($conn, "SELECT COALESCE(SUM(GREATEST(0, l.loan_amount - COALESCE(
+                (SELECT SUM(lp.principal_portion) FROM loan_payments lp WHERE lp.loan_id = l.id AND lp.payment_date <= ?), 0))), 0)
+            FROM loans l WHERE l.status <> 'Cancelled' AND l.loan_start_date <= ?", 'ss', [$asOf, $asOf]);
+    }
     $loanCurrent = fin_value($conn, "SELECT COALESCE(SUM(GREATEST(0, s.principal_due - GREATEST(0, s.paid_amount - s.interest_due))), 0)
         FROM loan_schedule s JOIN loans l ON l.id = s.loan_id
         WHERE l.status IN ('Active', 'Defaulted') AND s.status <> 'Paid' AND s.due_date <= DATE_ADD(?, INTERVAL 12 MONTH)", 's', [$asOf]);

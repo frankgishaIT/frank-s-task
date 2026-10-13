@@ -4,12 +4,12 @@
  * Admin only. Shows which database migrations THIS site's database has, and runs the missing ones,
  * using the site's own connection (so it always changes the database the site really uses).
  * Each migration is checked first and only run when it is missing, so opening this page again is safe.
- * The .sql files live in database/migrations/ (in Git, they contain no passwords).
+ * The .sql files live in the project's database/ folder (in Git, they contain no passwords).
  */
 require '../../config/db.php';
 require_role(['Admin']);
 
-const MIGRATIONS_DIR = __DIR__ . '/../../database/migrations';
+const MIGRATIONS_DIR = __DIR__ . '/../../database'; // CHANGED: the project's existing database/ folder
 
 // In the order they must run. 'check' returns true when the migration is already in the database.
 $migrations = [
@@ -39,7 +39,7 @@ function migration_run(mysqli $conn, string $file): ?string
 {
     $path = MIGRATIONS_DIR . '/' . basename($file);
     if (!is_file($path)) {
-        return 'File not found on this server: database/migrations/' . basename($file) . ' (push it with Git).';
+        return 'File not found on this server: database/' . basename($file) . ' (push it with Git).';
     }
     $sql = file_get_contents($path);
     try {

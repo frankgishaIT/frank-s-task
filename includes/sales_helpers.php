@@ -8,10 +8,15 @@
 // (not plain require), otherwise PHP stops with "Cannot redeclare ...".
 require_once __DIR__ . '/profit_rules.php';
 require_once __DIR__ . '/fund_helpers.php';
+require_once __DIR__ . '/credit_charge_helpers.php'; // NEW: overdue charges ledger
 
 const LOYALTY_CREDIT_THRESHOLD = 500;   // points needed for automatic Credit approval
 const LOYALTY_POINTS_PER_RWF = 50;      // RWF 50 profit = 1 Loyalty Point
 const SERVICE_PROFIT_MARGIN = 0.8;      // Service profit = 80% of amount paid
+
+// NEW (72-hour rule): a credit invoice earns its Loyalty Points only if it is paid in full
+// within this many hours after it is issued.
+const CREDIT_POINTS_WINDOW_HOURS = 72;
 
 function sales_compute_status($amountPaid, $totalAmount) {
     if ($amountPaid >= $totalAmount - 0.01) {
@@ -68,6 +73,7 @@ function calculate_sale_profit($conn, $saleId) {
  * Awards Loyalty Points to a customer based on profit (RWF 50 profit = 1
  * point, rounded down). Returns the number of points actually awarded.
  * Walk-in sales (no customer) and non-positive profit award nothing.
+ * (UNCHANGED: the earning rule stays exactly as it was.)
  */
 function award_loyalty_points($conn, $customerId, $profit) {
     if (!$customerId || $profit <= 0) {
@@ -87,6 +93,17 @@ function award_loyalty_points($conn, $customerId, $profit) {
 }
 
 /**
+ * NEW (72-hour rule): the points a sale WOULD earn, with exactly the same rule as
+ * award_loyalty_points(), but without giving them yet (used for credit invoices).
+ */
+function loyalty_points_for_profit($customerId, $profit) {
+    if (!$customerId || $profit <= 0) {
+        return 0;
+    }
+    return max(0, (int) floor($profit / LOYALTY_POINTS_PER_RWF));
+}
+
+/**
  * NEW: removes the Loyalty Points a sale awarded (used when the sale is cancelled).
  * Never takes a customer below zero points.
  */
@@ -101,6 +118,48 @@ function revoke_loyalty_points($conn, $customerId, $points) {
     mysqli_stmt_execute($update);
 
     return $points;
+}
+
+/**
+ * NEW (72-hour rule): call this inside the transaction of the payment that makes a credit
+ * invoice fully Paid. It decides the invoice's pending points ONCE:
+ *   paid in full on or before the deadline -> the pending points are awarded,
+ *   paid in full after the deadline        -> no points.
+ * The decision, its reason and its time are stored on the sale. Calling it again does nothing.
+ * Returns the points awarded (0 when none).
+ */
+function sales_settle_pending_points($conn, $saleId) {
+    $s = mysqli_prepare($conn, 'SELECT customer_id, points_status, points_pending, payment_deadline,
+            (payment_deadline IS NULL OR NOW() <= payment_deadline) AS in_time
+        FROM sales WHERE id = ? FOR UPDATE');
+    mysqli_stmt_bind_param($s, 'i', $saleId);
+    mysqli_stmt_execute($s);
+    $sale = mysqli_fetch_assoc(mysqli_stmt_get_result($s));
+    if (!$sale || $sale['points_status'] !== 'Pending') {
+        return 0;
+    }
+
+    $points = (int) $sale['points_pending'];
+    $deadline = $sale['payment_deadline'] ? date('d M Y, H:i', strtotime($sale['payment_deadline'])) : 'the deadline';
+
+    if ((int) $sale['in_time'] === 1 && $points > 0 && $sale['customer_id']) {
+        $u = mysqli_prepare($conn, 'UPDATE customers SET loyalty_points = loyalty_points + ? WHERE id = ?');
+        $cid = (int) $sale['customer_id'];
+        mysqli_stmt_bind_param($u, 'ii', $points, $cid);
+        mysqli_stmt_execute($u);
+
+        $reason = 'Paid in full within ' . CREDIT_POINTS_WINDOW_HOURS . ' hours (by ' . $deadline . ')';
+        $upd = mysqli_prepare($conn, "UPDATE sales SET points_status = 'Awarded', loyalty_points_earned = ?, points_reason = ?, points_decided_at = NOW() WHERE id = ?");
+        mysqli_stmt_bind_param($upd, 'isi', $points, $reason, $saleId);
+        mysqli_stmt_execute($upd);
+        return $points;
+    }
+
+    $reason = 'Paid in full after the ' . CREDIT_POINTS_WINDOW_HOURS . '-hour deadline (' . $deadline . '): ' . $points . ' points not awarded';
+    $upd = mysqli_prepare($conn, "UPDATE sales SET points_status = 'Not awarded', loyalty_points_earned = 0, points_reason = ?, points_decided_at = NOW() WHERE id = ?");
+    mysqli_stmt_bind_param($upd, 'si', $reason, $saleId);
+    mysqli_stmt_execute($upd);
+    return 0;
 }
 
 /**
@@ -189,15 +248,46 @@ function sales_finalize($conn, $saleId, $userId = null) {
     mysqli_stmt_execute($transactionStatement);
     $transactionId = mysqli_insert_id($conn);
 
-    // Profit + Loyalty Points: RWF 50 profit = 1 point, added to the
-    // customer's balance automatically once the sale is finalized.
-    $profit = calculate_sale_profit($conn, $saleId);
-    $pointsEarned = award_loyalty_points($conn, $sale['customer_id'], $profit['total_profit']);
-
     $newStatus = sales_compute_status((float) $sale['amount_paid'], (float) $sale['total_amount']);
-    $updateSale = mysqli_prepare($conn, 'UPDATE sales SET status = ?, transaction_id = ?, loyalty_points_earned = ? WHERE id = ?');
-    mysqli_stmt_bind_param($updateSale, 'siii', $newStatus, $transactionId, $pointsEarned, $saleId);
+    $profit = calculate_sale_profit($conn, $saleId);
+
+    // CHANGED (72-hour rule): Loyalty Points (RWF 50 profit = 1 point, unchanged rule).
+    //   Paid at checkout -> awarded now, as before.
+    //   Credit invoice   -> NOT awarded now. The same points are kept Pending and the invoice
+    //                       gets a payment deadline 72 hours from now (when it becomes a real
+    //                       invoice; for a sale that needed approval, that is the approval time).
+    if ($newStatus === 'Paid') {
+        $pointsEarned = award_loyalty_points($conn, $sale['customer_id'], $profit['total_profit']);
+        $pointsPending = 0;
+        $pointsStatus = ($sale['customer_id'] && $pointsEarned > 0) ? 'Awarded' : 'Not applicable';
+        $pointsReason = $sale['customer_id']
+            ? ($pointsEarned > 0 ? 'Paid in full at checkout' : 'No points (profit below RWF ' . LOYALTY_POINTS_PER_RWF . ')')
+            : 'Walk-in sale';
+        $updateSale = mysqli_prepare($conn, 'UPDATE sales SET status = ?, transaction_id = ?, loyalty_points_earned = ?,
+                points_status = ?, points_pending = ?, points_reason = ?, points_decided_at = NOW(), fully_paid_at = NOW()
+            WHERE id = ?');
+        mysqli_stmt_bind_param($updateSale, 'siisisi', $newStatus, $transactionId, $pointsEarned, $pointsStatus, $pointsPending, $pointsReason, $saleId);
+    } else {
+        $pointsEarned = 0;
+        $pointsPending = loyalty_points_for_profit($sale['customer_id'], $profit['total_profit']);
+        $pointsStatus = $pointsPending > 0 ? 'Pending' : 'Not applicable';
+        $pointsReason = $pointsPending > 0
+            ? 'Credit invoice: ' . $pointsPending . ' points pending until paid in full within ' . CREDIT_POINTS_WINDOW_HOURS . ' hours'
+            : 'No points (profit below RWF ' . LOYALTY_POINTS_PER_RWF . ')';
+        $hours = (int) CREDIT_POINTS_WINDOW_HOURS;
+        $updateSale = mysqli_prepare($conn, "UPDATE sales SET status = ?, transaction_id = ?, loyalty_points_earned = ?,
+                points_status = ?, points_pending = ?, points_reason = ?,
+                invoice_issued_at = NOW(), payment_deadline = DATE_ADD(NOW(), INTERVAL $hours HOUR)
+            WHERE id = ?");
+        mysqli_stmt_bind_param($updateSale, 'siisisi', $newStatus, $transactionId, $pointsEarned, $pointsStatus, $pointsPending, $pointsReason, $saleId);
+    }
     mysqli_stmt_execute($updateSale);
+
+    // NEW (overdue charges): a credit invoice opens its ledger with the principal (and any
+    // amount paid at checkout).
+    if ($newStatus !== 'Paid') {
+        credit_issue_invoice($conn, (int) $saleId, $userId !== null ? (int) $userId : null);
+    }
 
     // NEW (spec section 1): a fully Paid sale puts its profit into the Funds right now.
     // Credit / Partially Paid sales are allocated later, by the payment that makes them Paid
@@ -258,13 +348,23 @@ function sales_cancel($conn, $saleId, $userId, $reason, $returnToStock = false) 
             mysqli_stmt_execute($deleteTx);
         }
 
-        // NEW: take back the Loyalty Points this sale awarded.
+        // NEW (overdue charges): unpaid charges are waived with the sale (kept in the ledger).
+        // Charges already paid stay as income; a refund to the customer is recorded separately.
+        credit_waive($conn, (int) $saleId, null, 'Sale cancelled: unpaid charges waived', $userId !== null ? (int) $userId : null);
+
+        // NEW: take back the Loyalty Points this sale awarded (pending points were never given).
         revoke_loyalty_points($conn, $sale['customer_id'], $sale['loyalty_points_earned'] ?? 0);
 
-        $updateSale = mysqli_prepare($conn, 'UPDATE sales
-        SET status = "Cancelled", transaction_id = NULL, amount_paid = 0, cancelled_by = ?, cancelled_at = NOW(), cancel_reason = ?,
-            cancel_requested_by = NULL, cancel_requested_at = NULL, cancel_request_reason = NULL
-        WHERE id = ?');
+        // CHANGED (72-hour rule): the points decision is recorded as well.
+        $updateSale = mysqli_prepare($conn, "UPDATE sales
+        SET status = 'Cancelled', transaction_id = NULL, amount_paid = 0, cancelled_by = ?, cancelled_at = NOW(), cancel_reason = ?,
+            cancel_requested_by = NULL, cancel_requested_at = NULL, cancel_request_reason = NULL,
+            points_reason = CASE WHEN points_status = 'Pending' THEN 'Sale cancelled before full payment: pending points not awarded'
+                                 WHEN points_status = 'Awarded' THEN CONCAT('Sale cancelled: ', loyalty_points_earned, ' points taken back')
+                                 ELSE points_reason END,
+            points_status = CASE WHEN points_status IN ('Pending', 'Awarded') THEN 'Not awarded' ELSE points_status END,
+            points_decided_at = NOW()
+        WHERE id = ?");
         mysqli_stmt_bind_param($updateSale, 'isi', $userId, $reason, $saleId);
         mysqli_stmt_execute($updateSale);
 

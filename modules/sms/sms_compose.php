@@ -25,7 +25,7 @@ function compose_recipients(mysqli $conn): array {
     $cPhone = sms_phone_column($conn, 'customers');
     $cPhoneSql = $cPhone ? "c.`$cPhone`" : 'NULL';
     $rows = mysqli_fetch_all(mysqli_query($conn, "SELECT c.id, c.name, $cPhoneSql AS phone, c.loyalty_points,
-            COALESCE((SELECT SUM(s.total_amount - s.amount_paid) FROM sales s
+            COALESCE((SELECT SUM(s.total_amount - s.amount_paid + s.charges_accrued - s.charges_paid) FROM sales s
                       WHERE s.customer_id = c.id AND s.status IN ('Credit', 'Partially Paid')), 0) AS balance
         FROM customers c WHERE c.is_active = 1 ORDER BY c.name"), MYSQLI_ASSOC);
     foreach ($rows as $r) {

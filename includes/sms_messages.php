@@ -74,7 +74,7 @@ function sms_already_sent(mysqli $conn, string $event, string $refType, int $ref
  * amount they owe, not only what is left on this one invoice.
  */
 function sms_customer_outstanding(mysqli $conn, int $customerId): float {
-    $s = mysqli_prepare($conn, "SELECT COALESCE(SUM(total_amount - amount_paid), 0) AS owed
+    $s = mysqli_prepare($conn, "SELECT COALESCE(SUM(total_amount - amount_paid + charges_accrued - charges_paid), 0) AS owed
         FROM sales WHERE customer_id = ? AND status IN ('Credit', 'Partially Paid')");
     mysqli_stmt_bind_param($s, 'i', $customerId);
     mysqli_stmt_execute($s);
@@ -199,7 +199,7 @@ function sms_send_credit_reminders(mysqli $conn): int {
         $phoneCol = sms_phone_column($conn, 'customers');
         if (!$phoneCol) { return 0; }
         $rows = mysqli_fetch_all(mysqli_query($conn, "SELECT c.id, c.name, c.`$phoneCol` AS phone,
-                SUM(s.total_amount - s.amount_paid) AS balance
+                SUM(s.total_amount - s.amount_paid + s.charges_accrued - s.charges_paid) AS balance
             FROM customers c JOIN sales s ON s.customer_id = c.id
             WHERE s.status IN ('Credit', 'Partially Paid') AND c.`$phoneCol` IS NOT NULL AND c.`$phoneCol` <> ''
             GROUP BY c.id, c.name, c.`$phoneCol`
@@ -351,5 +351,35 @@ function sms_notify_customer_welcome(mysqli $conn, int $customerId, ?int $userId
         sms_send($conn, $c['phone'], $text, 'CUSTOMER_WELCOME', 'CUSTOMER', $customerId, $userId);
     } catch (Throwable $e) {
         error_log('sms_notify_customer_welcome failed for customer #' . $customerId . ': ' . $e->getMessage());
+    }
+}
+
+/* =====================================================================
+ * NEW: Loyalty Reward fulfilled
+ * "Dear [Name] You have received a Loyalty Reward: [Reward Details]. Points Redeemed: [Points].
+ *  Unredeemed Points Balance: [Points Balance]. Thank you for choosing RISE MOTIVE!"
+ * ===================================================================== */
+function sms_notify_reward_fulfilled(mysqli $conn, int $rewardId, ?int $userId = null): void
+{
+    try {
+        $phoneCol = sms_phone_column($conn, 'customers');
+        if (!$phoneCol) { return; }
+        $s = mysqli_prepare($conn, "SELECT r.reward_details, r.points_redeemed, r.status, t.name AS type_name,
+                c.name, c.`$phoneCol` AS phone, c.loyalty_points
+            FROM customer_rewards r JOIN reward_types t ON t.id = r.reward_type_id JOIN customers c ON c.id = r.customer_id
+            WHERE r.id = ?");
+        mysqli_stmt_bind_param($s, 'i', $rewardId);
+        mysqli_stmt_execute($s);
+        $r = mysqli_fetch_assoc(mysqli_stmt_get_result($s));
+        if (!$r || $r['status'] !== 'Fulfilled' || trim((string) $r['phone']) === '') { return; }
+        if (sms_already_sent($conn, 'REWARD_FULFILLED', 'REWARD', $rewardId)) { return; }
+
+        $text = sms_greet($r['name'], 'Customer', 'en') . ' You have received a Loyalty Reward: ' . $r['type_name'] . ' - ' . $r['reward_details']
+            . '. Points Redeemed: ' . number_format((int) $r['points_redeemed'])
+            . '. Unredeemed Points Balance: ' . number_format((int) $r['loyalty_points'])
+            . '. Thank you for choosing RISE MOTIVE!';
+        sms_send($conn, $r['phone'], $text, 'REWARD_FULFILLED', 'REWARD', $rewardId, $userId);
+    } catch (Throwable $e) {
+        error_log('sms_notify_reward_fulfilled failed for reward #' . $rewardId . ': ' . $e->getMessage());
     }
 }

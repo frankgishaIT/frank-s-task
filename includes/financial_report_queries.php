@@ -177,6 +177,16 @@ function fin_other_income(mysqli $conn, ?string $start, ?string $end): array
     return $out;
 }
 
+/** NEW: overdue charges on credit invoices, by the day they apply (charges minus waivers). */
+function fin_overdue_charges(mysqli $conn, ?string $start, ?string $end): float
+{
+    [$r1, $t1, $p1] = fin_range('charge_date', $start, $end);
+    [$r2, $t2, $p2] = fin_range('DATE(created_at)', $start, $end);
+    $charged = fin_value($conn, "SELECT COALESCE(SUM(amount), 0) FROM credit_ledger WHERE entry_type = 'CHARGE'" . $r1, $t1, $p1);
+    $waived = fin_value($conn, "SELECT COALESCE(SUM(amount), 0) FROM credit_ledger WHERE entry_type = 'WAIVER'" . $r2, $t2, $p2);
+    return round($charged - $waived, 2);
+}
+
 /** Gains and losses on assets sold / stolen / damaged / disposed (Remove Asset page). */
 function fin_asset_results(mysqli $conn, ?string $start, ?string $end): array
 {
@@ -208,6 +218,14 @@ function fin_manual_expenses(mysqli $conn, ?string $start, ?string $end): array
     $out = [];
     foreach ($rows as $row) { $out[$row['cat']] = round((float) $row['amount'], 2); }
     return $out;
+}
+
+/** NEW: Loyalty rewards paid to customers (Operating Fund expenses, category 'Loyalty Reward'). */
+function fin_rewards_paid(mysqli $conn, ?string $start, ?string $end): float
+{
+    [$r, $t, $p] = fin_range('transaction_date', $start, $end);
+    return fin_value($conn, "SELECT COALESCE(SUM(amount), 0) FROM transactions
+        WHERE transaction_type = 'Expense' AND status = 'approved' AND category = 'Loyalty Reward'" . $r, $t, $p);
 }
 
 function fin_depreciation(mysqli $conn, ?string $start, ?string $end): float
@@ -258,10 +276,13 @@ function fin_pnl(mysqli $conn, ?string $start, ?string $end): array
     $gross = round($revenue - $cos, 2);
 
     $otherIncome = $other;
+    $charges = fin_overdue_charges($conn, $start, $end);
+    if (abs($charges) > 0.009) { $otherIncome['Overdue credit charges'] = $charges; }
     if ($assets['gains'] > 0) { $otherIncome['Gain on assets sold'] = $assets['gains']; }
     $otherTotal = round(array_sum($otherIncome), 2);
 
     $opex = ['Salaries & wages (payroll)' => $payroll['total']] + $manual;
+    $opex['Customer loyalty rewards'] = fin_rewards_paid($conn, $start, $end);
     $opex['Depreciation of assets'] = fin_depreciation($conn, $start, $end);
     $opex['Loss on assets removed'] = $assets['losses'];
     $opex['Stock corrections (stock lost)'] = fin_stock_corrections($conn, $start, $end);
@@ -329,10 +350,14 @@ function fin_position(mysqli $conn, string $asOf): array
     $assetSaleIn = fin_value($conn, "SELECT COALESCE(SUM($signed), 0) $capitalBase AND $cat = 'contrib' AND m.ref_type = 'ASSET_SALE'", 's', [$asOf]);
     $paidOut = fin_value($conn, "SELECT COALESCE(SUM(amount), 0) FROM transactions
         WHERE transaction_type = 'Expense' AND status = 'approved' AND category <> 'Asset Loss' AND transaction_date <= ?", 's', [$asOf]);
+    // NEW: overdue charges collected (automatic Income "Overdue Charges").
+    $chargesCash = fin_value($conn, "SELECT COALESCE(SUM(amount), 0) FROM transactions
+        WHERE transaction_type = 'Income' AND status = 'approved' AND category = 'Overdue Charges' AND transaction_date <= ?", 's', [$asOf]);
+    $manualIncome = round($manualIncome + $chargesCash, 2);
     $cash = round($salesCash + $manualIncome + $capitalIn - $paidOut, 2);
 
     // --- Receivables, goods ordered, inventory, fixed assets ---
-    $receivables = fin_value($conn, "SELECT COALESCE(SUM(total_amount - amount_paid), 0) FROM sales
+    $receivables = fin_value($conn, "SELECT COALESCE(SUM(total_amount - amount_paid + charges_accrued - charges_paid), 0) FROM sales
         WHERE status IN ('Credit', 'Partially Paid') AND sale_date <= ?", 's', [$asOf]);
     $goodsOrdered = fin_value($conn, "SELECT COALESCE(SUM(total_amount), 0) FROM purchase_orders WHERE status = 'Ordered' AND order_date <= ?", 's', [$asOf]);
     if ($asOf >= $today) {

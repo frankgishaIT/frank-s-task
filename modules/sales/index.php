@@ -38,7 +38,7 @@ $sales = mysqli_query($conn, $sql);
 // current filter, so it's visible whichever tab the user is on) ---------
 $creditScopeWhere = $role === 'Employee' ? ' AND sales.recorded_by = ' . (int) $userId : '';
 $creditSummary = mysqli_fetch_assoc(mysqli_query($conn, "
-    SELECT COUNT(*) AS cnt, COALESCE(SUM(total_amount - amount_paid), 0) AS balance
+    SELECT COUNT(*) AS cnt, COALESCE(SUM(total_amount - amount_paid + charges_accrued - charges_paid), 0) AS balance
     FROM sales
     WHERE status IN ('Credit', 'Partially Paid')" . $creditScopeWhere));
 
@@ -182,7 +182,8 @@ function sale_pending_reason_badges($row) {
                 </td></tr>
             <?php } ?>
             <?php while ($sale = mysqli_fetch_assoc($sales)) {
-                $balance = (float) $sale['total_amount'] - (float) $sale['amount_paid'];
+                // CHANGED: the balance includes unpaid overdue charges.
+                $balance = (float) $sale['total_amount'] - (float) $sale['amount_paid'] + (float) ($sale['charges_accrued'] ?? 0) - (float) ($sale['charges_paid'] ?? 0);
                 $owes = in_array($sale['status'], ['Credit', 'Partially Paid'], true);
             ?>
             <tr>
@@ -204,6 +205,10 @@ function sale_pending_reason_badges($row) {
 
                     <?php if ($owes) { ?>
                         <a href="pay_credit.php?id=<?= (int) $sale['id']; ?>" class="btn btn-outline-success btn-sm">Pay</a>
+                    <?php } ?>
+                    <?php if ($canSendSms && !empty($sale['payment_deadline'])) { ?>
+                        <!-- NEW: the invoice's credit ledger (principal, payments, overdue charges, waivers) -->
+                        <a href="ledger.php?id=<?= (int) $sale['id']; ?>" class="btn btn-outline-secondary btn-sm" title="Credit ledger">Ledger</a>
                     <?php } ?>
 
                     <?php if ($owes && $canSendSms && !empty($sale['customer_id'])) { ?>

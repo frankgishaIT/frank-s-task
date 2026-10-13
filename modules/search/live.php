@@ -126,7 +126,7 @@ function attendanceHeaderRow(bool $canManage): string
 function renderCustomersRows(mysqli $conn, string $like, int $limit, int $customerId, bool $isManager): string
 {
     $sql = "SELECT customers.*,
-                   COALESCE(SUM(CASE WHEN sales.status IN ('Credit', 'Partially Paid') THEN sales.total_amount - sales.amount_paid ELSE 0 END), 0) AS balance
+                   COALESCE(SUM(CASE WHEN sales.status IN ('Credit', 'Partially Paid') THEN sales.total_amount - sales.amount_paid + sales.charges_accrued - sales.charges_paid ELSE 0 END), 0) AS balance
             FROM customers
             LEFT JOIN sales ON sales.customer_id = customers.id
             WHERE customers.is_active = 1 AND (customers.name LIKE ? OR customers.phone LIKE ? OR customers.email LIKE ?
@@ -364,7 +364,7 @@ function renderSalesRows(mysqli $conn, string $like, int $limit, ?string $role, 
     $html = '';
     foreach ($rows as $sale) {
         $id = (int) $sale['id'];
-        $balance = (float) $sale['total_amount'] - (float) $sale['amount_paid'];
+        $balance = (float) $sale['total_amount'] - (float) $sale['amount_paid'] + (float) $sale['charges_accrued'] - (float) $sale['charges_paid'];
         $owes = in_array($sale['status'], ['Credit', 'Partially Paid'], true);
 
         $html .= '<tr>';

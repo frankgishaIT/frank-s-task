@@ -6,7 +6,7 @@
  *
  * Rules (the same everywhere in the system):
  *  - A purchase = a sale that is not 'Pending Discount Approval' and not 'Cancelled'.
- *  - Owed = total_amount - amount_paid on sales that are 'Credit' or 'Partially Paid'.
+ *  - Owed = total_amount - amount_paid + unpaid overdue charges, on 'Credit' or 'Partially Paid' sales.
  *  - Credit age = days since the sale date.
  *  - Customer ID = RMC + the customer number with 6 digits (as in the welcome SMS).
  *  - Invoice No = RM + the sale number with 6 digits (as on receipts and SMS).
@@ -131,7 +131,7 @@ function customer_report_list(mysqli $conn, array $report, array $period, int $c
 
     $rows = sales_report_fetch($conn, "SELECT c.id, c.name, c.phone, c.sector, c.district, c.loyalty_points,
             COUNT(s.id) AS purchases, COALESCE(SUM(s.total_amount), 0) AS bought,
-            COALESCE((SELECT SUM(o.total_amount - o.amount_paid) FROM sales o
+            COALESCE((SELECT SUM(o.total_amount - o.amount_paid + o.charges_accrued - o.charges_paid) FROM sales o
                       WHERE o.customer_id = c.id AND o.status IN " . CUSTOMER_REPORT_OWED_STATUSES . "), 0) AS owed
         FROM customers c
         LEFT JOIN sales s ON s.customer_id = c.id AND s.status IN " . CUSTOMER_REPORT_PURCHASE_STATUSES . $pSql . "
@@ -179,7 +179,7 @@ function customer_report_list(mysqli $conn, array $report, array $period, int $c
 function customer_report_outstanding(mysqli $conn, array $report, int $cid): array
 {
     $rows = sales_report_fetch($conn, "SELECT s.id AS sale_id, s.sale_date, s.payment_method, s.status, s.total_amount, s.amount_paid,
-            (s.total_amount - s.amount_paid) AS balance, DATEDIFF(CURDATE(), s.sale_date) AS days,
+            (s.total_amount - s.amount_paid + s.charges_accrued - s.charges_paid) AS balance, DATEDIFF(CURDATE(), s.sale_date) AS days,
             c.id AS customer_id, c.name, c.phone
         FROM sales s JOIN customers c ON c.id = s.customer_id
         WHERE s.status IN " . CUSTOMER_REPORT_OWED_STATUSES . ($cid ? ' AND c.id = ?' : '') . "
@@ -225,7 +225,7 @@ function customer_report_outstanding(mysqli $conn, array $report, int $cid): arr
 // What each customer owes, by age of the debt.
 function customer_report_aging(mysqli $conn, array $report, int $cid): array
 {
-    $bal = '(s.total_amount - s.amount_paid)';
+    $bal = '(s.total_amount - s.amount_paid + s.charges_accrued - s.charges_paid)';
     $age = 'DATEDIFF(CURDATE(), s.sale_date)';
     $rows = sales_report_fetch($conn, "SELECT c.id AS customer_id, c.name, c.phone,
             SUM(CASE WHEN $age <= 30 THEN $bal ELSE 0 END) AS d0_30,
@@ -274,7 +274,7 @@ function customer_report_statement(mysqli $conn, array $report, array $period, a
 {
     [$pSql, $pTypes, $pParams] = customer_report_period_sql($period);
     $rows = sales_report_fetch($conn, "SELECT s.id AS sale_id, s.sale_date, s.payment_method, s.status, s.total_amount, s.amount_paid,
-            CASE WHEN s.status IN " . CUSTOMER_REPORT_OWED_STATUSES . " THEN s.total_amount - s.amount_paid ELSE 0 END AS balance,
+            CASE WHEN s.status IN " . CUSTOMER_REPORT_OWED_STATUSES . " THEN s.total_amount - s.amount_paid + s.charges_accrued - s.charges_paid ELSE 0 END AS balance,
             s.loyalty_points_earned
         FROM sales s
         WHERE s.customer_id = ? AND s.status <> 'Pending Discount Approval'" . $pSql . "
@@ -297,7 +297,7 @@ function customer_report_statement(mysqli $conn, array $report, array $period, a
     }
     unset($r);
 
-    $owedNow = sales_report_fetch($conn, "SELECT COALESCE(SUM(total_amount - amount_paid), 0) AS owed FROM sales
+    $owedNow = sales_report_fetch($conn, "SELECT COALESCE(SUM(total_amount - amount_paid + charges_accrued - charges_paid), 0) AS owed FROM sales
         WHERE customer_id = ? AND status IN " . CUSTOMER_REPORT_OWED_STATUSES, 'i', [(int) $customer['id']]);
 
     $report['title'] = 'Customer Statement — ' . $customer['name'];

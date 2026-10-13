@@ -22,7 +22,7 @@ $offset = ($currentPage - 1) * PER_PAGE;
 // Before, a sale still waiting for discount/credit approval was also counted as owed, although it
 // is not finalized yet. Now it matches the Sales list, the SMS and the credit reminders.
 $customers = mysqli_query($conn, "SELECT customers.*,
-        COALESCE(SUM(CASE WHEN sales.status IN ('Credit', 'Partially Paid') THEN sales.total_amount - sales.amount_paid ELSE 0 END), 0) AS balance
+        COALESCE(SUM(CASE WHEN sales.status IN ('Credit', 'Partially Paid') THEN sales.total_amount - sales.amount_paid + sales.charges_accrued - sales.charges_paid ELSE 0 END), 0) AS balance
     FROM customers LEFT JOIN sales ON sales.customer_id = customers.id
     WHERE customers.is_active = 1
     GROUP BY customers.id ORDER BY customers.name LIMIT " . PER_PAGE . ' OFFSET ' . $offset);
@@ -44,6 +44,8 @@ $customers = mysqli_query($conn, "SELECT customers.*,
         <?php if (in_array(current_user_role(), ['Admin', 'Manager'], true)) { ?>
             <!-- NEW: Customers & Credit reports -->
             <a href="reports.php" class="btn btn-outline-primary">Reports</a>
+            <!-- NEW: Rewards Management -->
+            <a href="rewards.php" class="btn btn-outline-primary">Rewards</a>
         <?php } ?>
         <a href="create.php" class="rm-btn rm-btn-primary">+ Add Customer</a>
     </div>
@@ -97,6 +99,10 @@ $customers = mysqli_query($conn, "SELECT customers.*,
     </td>
     <td class="text-nowrap">
         <a href="edit.php?id=<?= (int) $customer['id']; ?>" class="rm-btn rm-btn-warning rm-btn-sm">Edit</a>
+        <?php if ($canSendSms) { ?>
+            <!-- NEW: this customer's Rewards section (history, points balance, record a reward) -->
+            <a href="rewards.php?customer_id=<?= (int) $customer['id']; ?>" class="btn btn-outline-success btn-sm" title="Rewards"><i class="bi bi-gift"></i> Rewards</a>
+        <?php } ?>
         <?php if ($canSendSms && $phoneOk) { ?>
             <!-- NEW: SMS to this customer. With a balance it opens the credit reminder; otherwise a blank message. -->
             <a href="../sms/sms_compose.php?group=customer&id=<?= (int) $customer['id']; ?>&template=<?= $balance > 0.009 ? 'credit' : 'custom'; ?>" class="btn btn-outline-primary btn-sm" title="Send an SMS to this customer"><i class="bi bi-chat-dots"></i> SMS</a>

@@ -1,11 +1,21 @@
 <?php
 require '../../config/db.php';
 require '../../vendor/autoload.php'; // adjust path if your vendor folder is elsewhere
+require_once '../../includes/credit_charge_helpers.php'; // NEW: overdue charges
 
 use Mpdf\Mpdf;
 
+// NEW: credit invoices must be paid within this many hours (the 72-hour rule).
+const INVOICE_PAYMENT_HOURS = 72;
+const INVOICE_DAILY_CHARGE_PERCENT = 1;
+const INVOICE_HELP_PHONE = '0795 344 768';
+
+// CHANGED: problems are sent as "error" (they were sent as "success"), and messages are urlencoded.
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
-if (!$id) { header('Location: index.php?success=Invalid invoice requested.'); exit; }
+if (!$id) { header('Location: index.php?error=' . urlencode('Invalid invoice requested.')); exit; }
+
+// NEW: bring the overdue charges up to date before printing.
+credit_accrue_now($conn, (int) $id);
 
 $statement = mysqli_prepare($conn, 'SELECT sales.*, customers.name AS customer_name, customers.phone AS customer_phone, customers.email AS customer_email, customers.address AS customer_address, customers.province AS customer_province, customers.district AS customer_district, customers.sector AS customer_sector, customers.loyalty_points AS customer_loyalty_points, users.names AS recorded_by_name, users.role AS recorded_by_role, users.phone AS recorded_by_phone, roles.name AS recorded_by_position
     FROM sales
@@ -16,7 +26,7 @@ $statement = mysqli_prepare($conn, 'SELECT sales.*, customers.name AS customer_n
 mysqli_stmt_bind_param($statement, 'i', $id);
 mysqli_stmt_execute($statement);
 $sale = mysqli_fetch_assoc(mysqli_stmt_get_result($statement));
-if (!$sale) { header('Location: index.php?success=Sale not found.'); exit; }
+if (!$sale) { header('Location: index.php?error=' . urlencode('Sale not found.')); exit; }
 
 if (current_user_role() === 'Employee' && (int) $sale['recorded_by'] !== (int) current_user_id()) {
     http_response_code(403);
@@ -24,13 +34,17 @@ if (current_user_role() === 'Employee' && (int) $sale['recorded_by'] !== (int) c
     exit;
 }
 
-$itemsStatement = mysqli_prepare($conn, 'SELECT sale_items.*, products.product_name, products.product_code FROM sale_items LEFT JOIN products ON sale_items.product_id = products.id WHERE sale_id = ? ORDER BY sale_items.id');
+$itemsStatement = mysqli_prepare($conn, 'SELECT sale_items.*, products.product_name, products.product_code, products.unit FROM sale_items LEFT JOIN products ON sale_items.product_id = products.id WHERE sale_id = ? ORDER BY sale_items.id');
 mysqli_stmt_bind_param($itemsStatement, 'i', $id);
 mysqli_stmt_execute($itemsStatement);
 $items = mysqli_stmt_get_result($itemsStatement);
 
 $isPending = $sale['status'] === 'Pending Discount Approval';
 $isCancelled = $sale['status'] === 'Cancelled';
+// CHANGED: any sale that is not fully paid is an invoice (Credit AND Partially Paid), as approved.
+// Before, a Partially Paid sale paid partly in cash was printed as a "Receipt" although money was owed.
+$isUnpaidInvoice = in_array($sale['status'], ['Credit', 'Partially Paid'], true);
+$isPaidReceipt = $sale['status'] === 'Paid';
 $showLoyalty = !$isPending && !$isCancelled && $sale['customer_id'];
 
 // Payment methods are shown on every non-cancelled sale.
@@ -38,14 +52,24 @@ $showPaymentMethods = !$isCancelled;
 
 function money($v) { return number_format((float) $v, 2); }
 
+$principalDue = max(0, round((float) $sale['total_amount'] - (float) $sale['amount_paid'], 2));
+$chargesDue = max(0, round((float) ($sale['charges_accrued'] ?? 0) - (float) ($sale['charges_paid'] ?? 0), 2));
+$chargesPaid = round((float) ($sale['charges_paid'] ?? 0), 2);
+$balanceDue = round($principalDue + $chargesDue, 2);
+// NEW: payment deadline = invoice creation time + 72 hours.
+// The deadline stored when the credit invoice was issued (72-hour rule); older sales fall back to created_at + 72h.
+$createdTs = strtotime($sale['invoice_issued_at'] ?? $sale['created_at'] ?? $sale['sale_date']);
+$deadlineTs = !empty($sale['payment_deadline']) ? strtotime($sale['payment_deadline']) : $createdTs + INVOICE_PAYMENT_HOURS * 3600;
+$isOverdue = $isUnpaidInvoice && time() > $deadlineTs;
+
 $customerLocationParts = array_filter([$sale['customer_sector'] ?? '', $sale['customer_district'] ?? '', $sale['customer_province'] ?? '']);
 $customerLocation = $customerLocationParts ? implode(', ', $customerLocationParts) : null;
 
-$docTitle = $isPending ? 'Draft Invoice' : (($sale['status'] === 'Credit' || $sale['payment_method'] === 'Credit') ? 'Invoice' : 'Receipt');
+$docTitle = $isPending ? 'Draft Invoice' : ($isUnpaidInvoice ? 'Invoice' : ($isCancelled ? 'Cancelled Sale' : 'Receipt'));
 $docNumber = 'No. RM' . str_pad($sale['id'], 6, '0', STR_PAD_LEFT);
 $statusLabel = htmlspecialchars($sale['status'], ENT_QUOTES, 'UTF-8');
-$statusColor = $isPending ? '#B8860B' : ($isCancelled ? '#6B7280' : ($sale['status'] === 'Credit' ? '#E24B4A' : '#0FA968'));
-$statusBg    = $isPending ? '#FDF3E3' : ($isCancelled ? '#F1F3F9' : ($sale['status'] === 'Credit' ? '#FCE9E9' : '#E1F7EE'));
+$statusColor = $isPending ? '#B8860B' : ($isCancelled ? '#6B7280' : ($isUnpaidInvoice ? '#E24B4A' : '#0FA968'));
+$statusBg    = $isPending ? '#FDF3E3' : ($isCancelled ? '#F1F3F9' : ($isUnpaidInvoice ? '#FCE9E9' : '#E1F7EE'));
 
 $logoPath = __DIR__ . '/../../assets/images/rise.jpg';
 
@@ -96,6 +120,7 @@ ob_start();
   table.totals td { padding:3px 0; }
   table.totals td.val { text-align:right; }
   table.totals tr.grand td { border-top:2px solid #1E2333; font-size:13px; font-weight:800; color:#1E2FE0; padding-top:6px; }
+  table.totals tr.due td { font-size:12px; font-weight:800; color:#E24B4A; padding-top:4px; }
   .footnote { margin-top:12px; font-size:9px; color:#1E2333; }
   .loyalty-block { margin-bottom:14px; padding:8px 10px; background:#F0F4FF; border:1px solid #D8E0FA; border-radius:6px; font-size:10px; }
   .loyalty-block .label { color:#6B7280; width:120px; display:inline-block; }
@@ -112,6 +137,11 @@ ob_start();
   .pm-detail, .sig-detail { margin-left:14px; color:#1E2333; }
   .pm-detail .pm-label, .sig-detail .pm-label { color:#1E2333; }
   .sig-sub { color:#1E2333; font-weight:600; margin-bottom:6px; }
+  .deadline { margin-bottom:14px; padding:7px 10px; border-radius:6px; font-size:10px; }
+  .terms { margin-top:14px; padding:9px 12px; border:1px solid #E4E8F2; border-radius:6px; font-size:8.5px; page-break-inside: avoid; }
+  .terms .t-heading { font-size:9.5px; font-weight:800; margin-bottom:5px; }
+  .terms ol { margin:0; padding-left:16px; }
+  .terms li { margin-bottom:2px; }
 </style>
 
 <table class="info-grid">
@@ -129,15 +159,40 @@ ob_start();
   </tr>
   <tr>
     <td><span class="label"><strong>Amount Paid:&nbsp;</strong></span>RWF <?= money($sale['amount_paid']); ?></td>
-    <td></td>
+    <td><?php if ($sale['customer_id']) { ?><span class="label"><strong>Customer ID:&nbsp;</strong></span>RMC<?= str_pad((string) $sale['customer_id'], 6, '0', STR_PAD_LEFT); ?><?php } ?></td>
   </tr>
 </table>
+
+<?php if ($isUnpaidInvoice) { ?>
+<!-- NEW: payment deadline (72 hours after the invoice was created) -->
+<div class="deadline" style="background:<?= $isOverdue ? '#FCE9E9' : '#FFF8E6'; ?>; border:1px solid <?= $isOverdue ? '#F3C1C1' : '#F5DFA6'; ?>;">
+  <strong>Payment due by: <?= date('d M Y, H:i', $deadlineTs); ?></strong>
+  (<?= INVOICE_PAYMENT_HOURS; ?> hours after this invoice was issued on <?= date('d M Y, H:i', $createdTs); ?>).
+  <?php if ($isOverdue) { ?>
+    <strong style="color:#E24B4A;">This invoice is overdue.</strong>
+  <?php } else { ?>
+    Pay in full by then to avoid overdue charges.
+  <?php } ?>
+</div>
+<?php } ?>
 
 <?php if ($showLoyalty) { ?>
 <div class="loyalty-block">
   <table>
     <tr>
-      <td><span class="label"><strong>Points Earned:&nbsp;</strong></span><strong><?= (int) ($sale['loyalty_points_earned'] ?? 0); ?></strong></td>
+      <td>
+        <?php $pStatus = $sale['points_status'] ?? null; ?>
+        <?php if ($pStatus === 'Pending') { ?>
+          <!-- NEW (72-hour rule) -->
+          <span class="label"><strong>Points Pending:&nbsp;</strong></span><strong><?= (int) $sale['points_pending']; ?></strong>
+          <span style="color:#6B7280;">&mdash; earned only if paid in full by <?= date('d M Y, H:i', $deadlineTs); ?></span>
+        <?php } elseif ($pStatus === 'Not awarded') { ?>
+          <span class="label"><strong>Points Earned:&nbsp;</strong></span><strong>0</strong>
+          <span style="color:#6B7280;">&mdash; <?= htmlspecialchars((string) $sale['points_reason'], ENT_QUOTES, 'UTF-8'); ?></span>
+        <?php } else { ?>
+          <span class="label"><strong>Points Earned:&nbsp;</strong></span><strong><?= (int) ($sale['loyalty_points_earned'] ?? 0); ?></strong>
+        <?php } ?>
+      </td>
       <td class="right"><span class="label"><strong>Total Loyalty Points:&nbsp;</strong></span><strong><?= (int) ($sale['customer_loyalty_points'] ?? 0); ?></strong></td>
     </tr>
   </table>
@@ -184,6 +239,16 @@ ob_start();
   <tr><td>Subtotal</td><td class="val">RWF <?= money($sale['subtotal']); ?></td></tr>
   <tr><td>Discount</td><td class="val">&minus; RWF <?= money($sale['discount_amount']); ?></td></tr>
   <tr class="grand"><td>Total</td><td class="val">RWF <?= money($sale['total_amount']); ?></td></tr>
+  <?php if ($isUnpaidInvoice) { ?>
+  <!-- NEW: what has been paid and what is still due on this invoice -->
+  <tr><td>Amount Paid</td><td class="val">&minus; RWF <?= money($sale['amount_paid']); ?></td></tr>
+  <?php if ($chargesDue > 0.009 || $chargesPaid > 0.009) { ?>
+  <!-- NEW: overdue charges (1% per day, compounded, after the 72-hour deadline) -->
+  <tr><td>Overdue Charges (<?= (int) ($sale['charge_days'] ?? 0); ?> day<?= (int) ($sale['charge_days'] ?? 0) === 1 ? '' : 's'; ?>)</td><td class="val">+ RWF <?= money($chargesDue + $chargesPaid); ?></td></tr>
+  <?php if ($chargesPaid > 0.009) { ?><tr><td>Charges Paid</td><td class="val">&minus; RWF <?= money($chargesPaid); ?></td></tr><?php } ?>
+  <?php } ?>
+  <tr class="due"><td>Balance Due</td><td class="val">RWF <?= money($balanceDue); ?></td></tr>
+  <?php } ?>
 </table>
 
 <?php if ($showPaymentMethods) { ?>
@@ -203,7 +268,7 @@ ob_start();
 <td class="col-right">
 <?php if (!$isPending) { ?>
   <div class="sig-heading"><strong>For RISE MOTIVE</strong></div>
-  <div class="sig-sub">Invoice Issued and Approved by:</div>
+  <div class="sig-sub"><?= $isPaidReceipt ? 'Receipt' : 'Invoice'; ?> Issued and Approved by:</div>
   <div class="sig-detail"><span class="pm-label">Name:</span> <strong><?= htmlspecialchars($sale['recorded_by_name'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></strong></div>
   <div class="sig-detail"><span class="pm-label">Position:</span> <strong><?= htmlspecialchars($sale['recorded_by_position'] ?? ucfirst($sale['recorded_by_role'] ?? '—'), ENT_QUOTES, 'UTF-8'); ?></strong></div>
   <div class="sig-detail"><span class="pm-label">Contact:</span> <strong><?= htmlspecialchars($sale['recorded_by_phone'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></strong></div>
@@ -211,6 +276,31 @@ ob_start();
 </td>
 </tr>
 </table>
+</div>
+<?php } ?>
+
+<?php if ($isUnpaidInvoice || $isPending) { ?>
+<!-- NEW: Terms & Conditions, on every invoice that is not paid (and on draft invoices) -->
+<div class="terms">
+  <div class="t-heading">TERMS &amp; CONDITIONS</div>
+  <div style="margin-bottom:3px;">By Accepting This Invoice, The Customer Agrees That:</div>
+  <ol>
+    <li>This is not an official RRA/EBM tax invoice. Request an EBM Receipt after payment via <?= INVOICE_HELP_PHONE; ?>.</li>
+    <li>Credit invoices must be paid within <?= INVOICE_PAYMENT_HOURS; ?> hours. Thereafter, a <?= INVOICE_DAILY_CHARGE_PERCENT; ?>% daily compound charge applies.</li>
+    <li>Rise Motive Ltd is not responsible for delays caused by incomplete information or late customer responses.</li>
+    <li>Additional work or changes after confirmation may incur extra charges.</li>
+    <li>Payments are non-refundable once service has started or products have been delivered.</li>
+    <li>This system-generated RM Invoice is valid without a handwritten signature.</li>
+  </ol>
+</div>
+<?php } elseif ($isPaidReceipt) { ?>
+<!-- NEW: Tax & Receipt Notice, on every paid receipt -->
+<div class="terms">
+  <div class="t-heading">TAX &amp; RECEIPT NOTICE</div>
+  <ol>
+    <li>This Receipt is not an official RRA/EBM tax receipt. For an official EBM Receipt, contact <?= INVOICE_HELP_PHONE; ?>.</li>
+    <li>This system-generated RM Receipt is valid without a handwritten signature.</li>
+  </ol>
 </div>
 <?php } ?>
 
@@ -227,6 +317,8 @@ ob_start();
 $bodyHtml = ob_get_clean();
 
 // ---- Build the PDF ----
+$tmp = sys_get_temp_dir() . '/mpdf';
+if (!is_dir($tmp)) { @mkdir($tmp, 0775, true); }
 $mpdf = new Mpdf([
     'format' => 'A4',
     'margin_top' => 55,
@@ -235,6 +327,7 @@ $mpdf = new Mpdf([
     'margin_footer' => 6,
     'margin_left' => 15,
     'margin_right' => 15,
+    'tempDir' => $tmp,
 ]);
 
 // ---- Real, page-covering watermark ----
@@ -250,11 +343,12 @@ if ($isPending) {
     $mpdf->watermarkTextAlpha = 0.15;
 }
 
+$mpdf->SetTitle($docTitle . ' ' . $docNumber);
 $mpdf->SetHTMLHeader($headerHtml);
 $mpdf->SetHTMLFooter($footerHtml);
 $mpdf->WriteHTML($bodyHtml);
 
-$filename = ($isPending ? 'Draft-Invoice' : ($isCancelled ? 'Cancelled-Sale' : (($sale['payment_method'] === 'Credit' || $sale['status'] === 'Credit') ? 'Invoice' : 'Receipt')))
+$filename = ($isPending ? 'Draft-Invoice' : ($isCancelled ? 'Cancelled-Sale' : ($isUnpaidInvoice ? 'Invoice' : 'Receipt')))
     . '-RM' . str_pad($sale['id'], 6, '0', STR_PAD_LEFT) . '.pdf';
 
 $mpdf->Output($filename, \Mpdf\Output\Destination::INLINE);

@@ -174,6 +174,9 @@ if (isset($_POST['save'])) {
                 mysqli_rollback($conn);
                 error_log('new_sale failed: ' . $e->getMessage());
                 $error = 'Unable to record the sale. Nothing was saved. Please try again.';
+                // NEW: an Admin also sees the technical cause (e.g. a missing column), so problems on
+                // the live server can be fixed without access to its error log.
+                if (current_user_role() === 'Admin') { $error .= ' [Technical detail for Admin: ' . $e->getMessage() . ']'; }
             } catch (RuntimeException $e) {
                 mysqli_rollback($conn);
                 $error = $e->getMessage() . ' Nothing was saved.';
@@ -181,6 +184,9 @@ if (isset($_POST['save'])) {
                 mysqli_rollback($conn);
                 error_log('new_sale failed: ' . $e->getMessage());
                 $error = 'Unable to record the sale. Nothing was saved. Please try again.';
+                if (current_user_role() === 'Admin') {
+                    $error .= ' [Technical detail for Admin: ' . $e->getMessage() . ' in ' . basename($e->getFile()) . ' line ' . $e->getLine() . ']';
+                }
             }
 
             if ($saved) {

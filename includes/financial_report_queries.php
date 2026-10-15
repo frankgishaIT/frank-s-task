@@ -170,8 +170,9 @@ function fin_other_income(mysqli $conn, ?string $start, ?string $end): array
     [$r, $t, $p] = fin_range('t.transaction_date', $start, $end);
     $rows = fin_rows($conn, "SELECT COALESCE(NULLIF(t.category, ''), 'Other') AS cat, SUM(t.amount) AS amount
         FROM transactions t LEFT JOIN sales s ON s.transaction_id = t.id
-        WHERE t.transaction_type = 'Income' AND t.status = 'approved' AND t.is_automatic = 0 AND s.id IS NULL" . $r . "
-        GROUP BY cat", $t, $p);
+        WHERE t.transaction_type = 'Income' AND t.status = 'approved' AND t.is_automatic = 0 AND s.id IS NULL
+          AND t.category <> 'Loan Received'" . $r . "
+        GROUP BY cat", $t, $p); // CHANGED: loans received are borrowed money, not income
     $out = [];
     foreach ($rows as $row) { $out['Other income — ' . $row['cat']] = round((float) $row['amount'], 2); }
     return $out;
@@ -218,6 +219,14 @@ function fin_manual_expenses(mysqli $conn, ?string $start, ?string $end): array
     $out = [];
     foreach ($rows as $row) { $out[$row['cat']] = round((float) $row['amount'], 2); }
     return $out;
+}
+
+/** NEW: impairment and revaluation losses of assets (negative = losses reversed). No money moves. */
+function fin_valuation_losses(mysqli $conn, ?string $start, ?string $end): float
+{
+    [$r, $t, $p] = fin_range('valuation_date', $start, $end);
+    $v = -fin_value($conn, "SELECT COALESCE(SUM(to_profit_loss), 0) FROM asset_valuations WHERE 1 = 1" . $r, $t, $p);
+    return abs($v) < 0.005 ? 0.0 : $v;
 }
 
 /** NEW: Loyalty rewards paid to customers (Operating Fund expenses, category 'Loyalty Reward'). */
@@ -283,7 +292,8 @@ function fin_pnl(mysqli $conn, ?string $start, ?string $end): array
 
     $opex = ['Salaries & wages (payroll)' => $payroll['total']] + $manual;
     $opex['Customer loyalty rewards'] = fin_rewards_paid($conn, $start, $end);
-    $opex['Depreciation of assets'] = fin_depreciation($conn, $start, $end);
+    $opex['Depreciation and amortization of assets'] = fin_depreciation($conn, $start, $end);
+    $opex['Impairment and revaluation losses'] = fin_valuation_losses($conn, $start, $end);
     $opex['Loss on assets removed'] = $assets['losses'];
     $opex['Stock corrections (stock lost)'] = fin_stock_corrections($conn, $start, $end);
     $opex['Goods lost on cancelled sales'] = fin_cancelled_sale_losses($conn, $start, $end);
@@ -343,10 +353,26 @@ function fin_position(mysqli $conn, string $asOf): array
     // --- Cash: everything received minus everything paid out, up to the date ---
     $salesCash = fin_value($conn, "SELECT COALESCE(SUM(amount_paid), 0) FROM sales WHERE " . FIN_VALID_SALES . $rd, $td, $pd);
     $manualIncome = fin_value($conn, "SELECT COALESCE(SUM(t.amount), 0) FROM transactions t LEFT JOIN sales s ON s.transaction_id = t.id
-        WHERE t.transaction_type = 'Income' AND t.status = 'approved' AND t.is_automatic = 0 AND s.id IS NULL AND t.transaction_date <= ?", 's', [$asOf]);
-    $capitalIn = fin_value($conn, "SELECT COALESCE(SUM($signed), 0) $capitalBase AND $cat = 'contrib'", 's', [$asOf]);
+        WHERE t.transaction_type = 'Income' AND t.status = 'approved' AND t.is_automatic = 0 AND s.id IS NULL
+          AND t.category <> 'Loan Received' AND t.transaction_date <= ?", 's', [$asOf]);
+    // CHANGED: loan money received is counted ONCE, as financing (not income). The Loans module records
+    // it as a "Loan Received" transaction; when the same loan also put money into the Capital Fund
+    // (ref 'loan'), that fund entry is not counted a second time.
+    $loanTxIn = fin_value($conn, "SELECT COALESCE(SUM(amount), 0) FROM transactions
+        WHERE transaction_type = 'Income' AND status = 'approved' AND category = 'Loan Received' AND transaction_date <= ?", 's', [$asOf]);
+    $loanFundDuplicate = fin_value($conn, "SELECT COALESCE(SUM(CASE WHEN m.direction = 'IN' THEN m.amount ELSE -m.amount END), 0)
+        FROM fund_movements m JOIN funds f ON f.id = m.fund_id AND f.code = 'CAPITAL'
+        WHERE DATE(m.created_at) <= ?
+          AND (m.ref_type = 'LOAN_TX'
+               OR (m.ref_type = 'loan' AND m.ref_id IN (SELECT l.id FROM loans l JOIN transactions t ON t.id = l.received_transaction_id
+                                                         WHERE t.status = 'approved' AND t.category = 'Loan Received')))", 's', [$asOf]);
+    // CHANGED: the cost of goods returned to the Capital Fund by paid sales (SALE_COST) is not new money:
+    // the sale's cash is already counted above, so it is left out here.
+    $capitalIn = fin_value($conn, "SELECT COALESCE(SUM($signed), 0) $capitalBase AND $cat = 'contrib'
+        AND (m.ref_type IS NULL OR m.ref_type <> 'SALE_COST')", 's', [$asOf]);
     $loanIn = fin_value($conn, "SELECT COALESCE(SUM($signed), 0) $capitalBase AND $cat = 'contrib'
-        AND (m.ref_type = 'loan' OR m.source_type = 'Business Loan')", 's', [$asOf]);
+        AND (m.ref_type IN ('loan', 'LOAN_TX') OR m.source_type = 'Business Loan')", 's', [$asOf]);
+    $refundIn = fin_value($conn, "SELECT COALESCE(SUM($signed), 0) $capitalBase AND $cat = 'contrib' AND m.ref_type = 'ASSET_REFUND'", 's', [$asOf]);
     $assetSaleIn = fin_value($conn, "SELECT COALESCE(SUM($signed), 0) $capitalBase AND $cat = 'contrib' AND m.ref_type = 'ASSET_SALE'", 's', [$asOf]);
     $paidOut = fin_value($conn, "SELECT COALESCE(SUM(amount), 0) FROM transactions
         WHERE transaction_type = 'Expense' AND status = 'approved' AND category <> 'Asset Loss' AND transaction_date <= ?", 's', [$asOf]);
@@ -354,7 +380,8 @@ function fin_position(mysqli $conn, string $asOf): array
     $chargesCash = fin_value($conn, "SELECT COALESCE(SUM(amount), 0) FROM transactions
         WHERE transaction_type = 'Income' AND status = 'approved' AND category = 'Overdue Charges' AND transaction_date <= ?", 's', [$asOf]);
     $manualIncome = round($manualIncome + $chargesCash, 2);
-    $cash = round($salesCash + $manualIncome + $capitalIn - $paidOut, 2);
+    $financingIn = round($capitalIn - $loanFundDuplicate + $loanTxIn, 2);
+    $cash = round($salesCash + $manualIncome + $financingIn - $paidOut, 2);
 
     // --- Receivables, goods ordered, inventory, fixed assets ---
     $receivables = fin_value($conn, "SELECT COALESCE(SUM(total_amount - amount_paid + charges_accrued - charges_paid), 0) FROM sales
@@ -366,6 +393,10 @@ function fin_position(mysqli $conn, string $asOf): array
         $inventory = fin_value($conn, "SELECT COALESCE(SUM($signed), 0) $capitalBase AND $cat = 'stock'", 's', [$asOf]);
     }
     $fixedAssets = fin_fixed_assets($conn, $asOf);
+    // NEW: refunds still due from sellers for assets returned to them.
+    $refundsDue = fin_value($conn, "SELECT COALESCE(SUM(proceeds), 0) FROM asset_disposals
+        WHERE disposal_type = 'Returned to Seller' AND proceeds > 0 AND disposal_date <= ?
+          AND (refund_status = 'Receivable' OR (refund_status = 'Received' AND DATE(refund_received_at) > ?))", 'ss', [$asOf, $asOf]);
 
     // --- Liabilities ---
     // CHANGED: for today, the loans' own totals are used (the same figures as the Loans page):
@@ -388,10 +419,12 @@ function fin_position(mysqli $conn, string $asOf): array
     $salariesPayable = fin_value($conn, "SELECT COALESCE(SUM(net_salary), 0) FROM payroll WHERE status = 'Draft' AND pay_period <= ?", 's', [$asOf]);
 
     // --- Equity ---
-    $contributed = round($capitalIn - $loanIn - $assetSaleIn, 2);
+    $contributed = round($capitalIn - $loanIn - $assetSaleIn - $refundIn, 2);
     $retained = fin_pnl($conn, null, $asOf)['net'];
+    // NEW: Revaluation Reserve (equity): asset increases backed by evidence, never profit.
+    $revaluationReserve = fin_value($conn, "SELECT COALESCE(SUM(to_reserve), 0) FROM asset_valuations WHERE valuation_date <= ?", 's', [$asOf]);
 
-    $currentAssets = round($cash + $receivables + $inventory + $goodsOrdered, 2);
+    $currentAssets = round($cash + $receivables + $refundsDue + $inventory + $goodsOrdered, 2);
     $totalAssets = round($currentAssets + $fixedAssets, 2);
     $currentLiabilities = round($salariesPayable + $loanCurrent, 2);
     $totalLiabilities = round($salariesPayable + $loanPrincipal, 2);
@@ -404,15 +437,15 @@ function fin_position(mysqli $conn, string $asOf): array
 
     return [
         'as_of' => $asOf,
-        'cash' => $cash, 'cash_parts' => ['sales' => $salesCash, 'income' => $manualIncome, 'capital' => $capitalIn, 'paid_out' => $paidOut],
+        'cash' => $cash, 'cash_parts' => ['sales' => $salesCash, 'income' => $manualIncome, 'capital' => $financingIn, 'paid_out' => $paidOut, 'loans_in' => $loanTxIn],
         'receivables' => $receivables, 'inventory' => round($inventory, 2), 'goods_ordered' => $goodsOrdered,
         'current_assets' => $currentAssets, 'fixed_assets' => $fixedAssets, 'total_assets' => $totalAssets,
         'salaries_payable' => $salariesPayable, 'loan_current' => round($loanCurrent, 2),
         'loan_long' => round($loanPrincipal - $loanCurrent, 2), 'loan_principal' => $loanPrincipal,
         'current_liabilities' => $currentLiabilities, 'total_liabilities' => $totalLiabilities,
         'net_assets' => $netAssets,
-        'contributed' => $contributed, 'retained' => $retained,
-        'opening' => round($netAssets - $contributed - $retained, 2),
+        'contributed' => $contributed, 'retained' => $retained, 'revaluation_reserve' => $revaluationReserve, 'refunds_due' => $refundsDue,
+        'opening' => round($netAssets - $contributed - $retained - $revaluationReserve, 2),
         'funds' => $funds,
     ];
 }
@@ -550,6 +583,7 @@ function fin_report_balance(array $report, array $p): array
         $L('Assets', 'Accounts receivable (customers\' credit)', $p['receivables']),
         $L('Assets', 'Inventory (stock at buying price)', $p['inventory']),
         $L('Assets', 'Goods ordered, not yet received (paid)', $p['goods_ordered']),
+        $L('Assets', 'Refunds due from sellers (assets returned)', $p['refunds_due']),
         $L('', 'TOTAL CURRENT ASSETS', $p['current_assets']),
         $L('Assets', 'Property & equipment (net book value)', $p['fixed_assets']),
         $L('', 'TOTAL NON-CURRENT ASSETS', $p['fixed_assets']),
@@ -562,6 +596,7 @@ function fin_report_balance(array $report, array $p): array
         $L('', 'TOTAL LIABILITIES', $p['total_liabilities']),
         $L('Equity', 'Capital put in by the owners', $p['contributed']),
         $L('Equity', 'Retained earnings (accumulated profit / loss)', $p['retained']),
+        $L('Equity', 'Revaluation reserve (asset revaluations)', $p['revaluation_reserve']),
         $L('Equity', 'Opening balances & reconciling items', $p['opening']),
         $L('', 'TOTAL EQUITY', $p['net_assets']),
         $L('', 'TOTAL LIABILITIES & EQUITY', round($p['total_liabilities'] + $p['net_assets'], 2)),

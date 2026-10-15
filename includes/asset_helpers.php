@@ -65,7 +65,15 @@ function asset_run_depreciation_catchup($conn, $assetId) {
         return; // nothing to do — frozen at its last recorded value
     }
 
-    $dailyAmount = asset_daily_depreciation_amount((float) $asset['acquisition_value'], (float) $asset['residual_value'], (int) $asset['useful_life_days']);
+    // NEW (valuation treatment): Depreciation (tangible) and Amortization (finite-life intangible)
+    // reduce the value the same way; "No depreciation" keeps it (e.g. land, indefinite-life items).
+    $noDepreciation = ($asset['valuation_method'] ?? 'Depreciation') === 'No depreciation';
+    $dailyAmount = $noDepreciation ? 0.0
+        : asset_daily_depreciation_amount((float) $asset['acquisition_value'], (float) $asset['residual_value'], (int) $asset['useful_life_days']);
+    // NEW: after an impairment or revaluation, the new value is spread over the remaining life.
+    if (!$noDepreciation && isset($asset['daily_depreciation_override']) && $asset['daily_depreciation_override'] !== null) {
+        $dailyAmount = (float) $asset['daily_depreciation_override'];
+    }
     $residual = (float) $asset['residual_value'];
 
     $lastStmt = mysqli_prepare($conn, 'SELECT valuation_date, value FROM asset_valuation_history WHERE asset_id = ? ORDER BY valuation_date DESC LIMIT 1');
@@ -94,8 +102,8 @@ function asset_run_depreciation_catchup($conn, $assetId) {
     } else {
         $currentValue = (float) $last['value'];
         $cursor = new DateTime($last['valuation_date']);
-        if ($currentValue <= $residual + 0.001) {
-            // Already fully depreciated — nothing further to add or update.
+        if ($currentValue <= $residual + 0.001 || $dailyAmount <= 0) {
+            // Already fully depreciated (or not depreciated at all) — nothing further to add or update.
             // NEW: still make sure the Capital Fund matches (fixes any run that failed earlier).
             asset_sync_depreciation_to_fund($conn, $assetId, $asset['asset_code']);
             return;

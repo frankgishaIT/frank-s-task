@@ -64,6 +64,18 @@ if (isset($_POST['save'])) {
     } elseif (!in_array($asset['status'], ASSET_COUNTED_STATUSES, true) && $status !== $asset['status']) {
         // NEW: a Disposed or Lost asset keeps its status; its disposal record cannot be undone here.
         $error = 'The status of a ' . $asset['status'] . ' asset cannot be changed.';
+    } elseif (($asset['funding_type'] ?? '') === 'Capital Fund purchase'
+              && (abs((float) $asset['acquisition_value'] - (float) $acquisitionValue) > 0.001 || $asset['acquisition_date'] !== $acquisitionDate)) {
+        // NEW (Capital Fund integration): the purchase was PAID from the RM Capital Fund. Changing its price or
+        // date here would change the asset without changing the payment. A wrong purchase is corrected by
+        // returning the asset to the seller (Remove Asset), a value change by an impairment or revaluation.
+        $error = 'This asset was paid from the RM Capital Fund, so its Acquisition Value and Date cannot be changed. '
+            . 'Use "Remove Asset > Returned to Seller" for a wrong purchase, or "Impairment / Revaluation" for a value change.';
+    } elseif ((int) mysqli_fetch_row(mysqli_query($conn, 'SELECT COUNT(*) FROM asset_valuations WHERE asset_id = ' . (int) $assetId))[0] > 0
+              && (abs((float) $asset['acquisition_value'] - (float) $acquisitionValue) > 0.001 || $asset['acquisition_date'] !== $acquisitionDate
+                  || abs((float) $asset['residual_value'] - (float) $residualValue) > 0.001 || (int) $asset['useful_life_days'] !== (int) round($usefulLifeYears * 365))) {
+        // NEW: rebuilding the value history would erase the asset's impairment / revaluation.
+        $error = 'This asset has an impairment or revaluation on record, so its depreciation terms cannot be rebuilt here.';
     } else {
         $acquisitionValue = round($acquisitionValue, 2);
         $residualValue = round($residualValue, 2);

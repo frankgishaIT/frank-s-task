@@ -44,8 +44,30 @@ function fund_pending_total(mysqli $conn, int $fundId): float {
     return (float) mysqli_fetch_assoc(mysqli_stmt_get_result($s))['p'];
 }
 
+/**
+ * NEW: the MONEY in a fund: its ledger without the non-cash parts (the value of stock and of
+ * assets, which only the RM Capital Fund holds). Same rule as fund_movement_category_sql().
+ */
+function fund_cash_balance(mysqli $conn, int $fundId): float {
+    $eff = "(CASE WHEN m.movement_type = 'REVERSAL' THEN o.movement_type ELSE m.movement_type END)";
+    $s = mysqli_prepare($conn, "SELECT COALESCE(SUM(CASE WHEN m.direction = 'IN' THEN m.amount ELSE -m.amount END), 0) AS b
+        FROM fund_movements m LEFT JOIN fund_movements o ON o.id = m.reverses_movement_id
+        WHERE m.fund_id = ?
+          AND NOT (COALESCE(m.ref_type, '') = 'ASSET'
+                   OR COALESCE($eff, '') IN ('STOCK_IN', 'STOCK_OUT')
+                   OR COALESCE(m.ref_type, '') IN ('STOCK_OPENING', 'STOCK_RECONCILE')
+                   OR (COALESCE($eff, '') = 'CAPITAL_INFLOW' AND COALESCE(m.ref_type, '') = 'PO'))");
+    // (COALESCE: an entry with no reference, e.g. an owner's capital, must still count as money.)
+    mysqli_stmt_bind_param($s, 'i', $fundId);
+    mysqli_stmt_execute($s);
+    return (float) mysqli_fetch_assoc(mysqli_stmt_get_result($s))['b'];
+}
+
+// CHANGED (Asset integration, section 1): what can be SPENT is the money in the fund, never the
+// value of stock or assets. Before, the RM Capital Fund counted its whole ledger (stock + assets
+// included) as available.
 function fund_available(mysqli $conn, int $fundId): float {
-    return fund_balance($conn, $fundId) - fund_pending_total($conn, $fundId);
+    return fund_cash_balance($conn, $fundId) - fund_pending_total($conn, $fundId);
 }
 
 // Locks the fund row so two users cannot overspend at the same moment.
@@ -218,6 +240,9 @@ function allocate_sale_profit(mysqli $conn, int $saleId, ?int $userId): void {
     mysqli_stmt_execute($lock);
     mysqli_stmt_get_result($lock);
 
+    // NEW: the paid sale turned its stock back into money: that cost returns to the Capital Fund.
+    capital_recover_sale_cost($conn, $saleId, $userId);
+
     // Already allocated? Do nothing.
     $chk = mysqli_prepare($conn, "SELECT id FROM fund_movements
         WHERE ref_type = 'SALE' AND ref_id = ? AND movement_type = 'ALLOCATION' LIMIT 1");
@@ -282,9 +307,39 @@ function fund_reverse_movements(mysqli $conn, string $whereSql, string $types, a
 // separately by reverse_sale_stock_cost(), and only when the goods really come back into
 // stock — otherwise the Capital Fund would no longer match the stock value.
 function reverse_sale_profit(mysqli $conn, int $saleId, ?int $userId): int {
-    return fund_reverse_movements($conn,
+    // NEW: the cost of goods returned to the Capital Fund goes back out too (the money is refunded).
+    $n = fund_reverse_movements($conn, "m.ref_type = 'SALE_COST' AND m.ref_id = ?", 'i', [$saleId],
+        $userId, 'Sale #' . $saleId . ' cancelled: cost of goods no longer recovered');
+    return $n + fund_reverse_movements($conn,
         "m.ref_type = 'SALE' AND m.ref_id = ? AND m.movement_type = 'ALLOCATION'", 'i', [$saleId],
         $userId, 'Sale #' . $saleId . ' cancelled');
+}
+
+/**
+ * NEW (Asset integration, section 2): when a sale is PAID, the money that pays back the cost of its
+ * goods belongs to the RM Capital Fund (the stock it lost when the goods left). Posts only the
+ * difference with what is already recovered, so calling it again changes nothing.
+ * MUST run inside the caller's transaction. Returns the amount posted.
+ */
+function capital_recover_sale_cost(mysqli $conn, int $saleId, ?int $userId): float {
+    $fund = fund_by_code($conn, 'CAPITAL');
+    if (!$fund) { return 0.0; }
+    $s = mysqli_prepare($conn, "SELECT
+            (SELECT status FROM sales WHERE id = ?) AS status,
+            COALESCE(-SUM(CASE WHEN m.ref_type = 'SALE' AND (m.movement_type = 'STOCK_OUT' OR o.movement_type = 'STOCK_OUT')
+                               THEN (CASE WHEN m.direction = 'IN' THEN m.amount ELSE -m.amount END) END), 0) AS cost,
+            COALESCE(SUM(CASE WHEN m.ref_type = 'SALE_COST' THEN (CASE WHEN m.direction = 'IN' THEN m.amount ELSE -m.amount END) END), 0) AS recovered
+        FROM fund_movements m LEFT JOIN fund_movements o ON o.id = m.reverses_movement_id
+        WHERE m.ref_id = ? AND m.ref_type IN ('SALE', 'SALE_COST')");
+    mysqli_stmt_bind_param($s, 'ii', $saleId, $saleId);
+    mysqli_stmt_execute($s);
+    $r = mysqli_fetch_assoc(mysqli_stmt_get_result($s));
+    if (!$r || $r['status'] !== 'Paid') { return 0.0; }
+    $diff = round((float) $r['cost'] - (float) $r['recovered'], 2);
+    if (abs($diff) < 0.01) { return 0.0; }
+    fund_record_movement($conn, (int) $fund['id'], 'CAPITAL_INFLOW', $diff > 0 ? 'IN' : 'OUT', abs($diff), date('Y-m'), null, $userId,
+        'Sale #' . $saleId . ' paid: cost of goods sold returned to the RM Capital Fund', 'Cost of goods recovered', 'SALE_COST', $saleId);
+    return $diff;
 }
 
 /* =====================================================================

@@ -19,6 +19,7 @@ $migrations = [
     'migration_customer_rewards.sql'         => ['Customer rewards',                              ['table', 'reward_types']],
     'migration_points_72h.sql'               => ['72-hour Loyalty Points rule',                   ['column', 'sales', 'points_status']],
     'migration_credit_charges.sql'           => ['Overdue credit charges and ledger',             ['table', 'credit_ledger']],
+    'migration_asset_capital.sql'            => ['Assets paid from the RM Capital Fund, valuations, returns', ['table', 'capital_reconciliations']],
 ];
 
 function migration_present(mysqli $conn, array $check): bool

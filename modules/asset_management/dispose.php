@@ -16,6 +16,7 @@
  */
 require '../../config/db.php';
 require '../../includes/asset_helpers.php'; // also loads asset_fund_helpers.php and fund_helpers.php
+require_once '../../includes/asset_capital_helpers.php'; // NEW: returned to seller (refund received / receivable)
 require_role(['Admin']);
 
 $assetId = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT) ?: filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
@@ -40,9 +41,10 @@ $disposalTypes = [
     'Stolen'   => 'Stolen: the asset was stolen or lost',
     'Damaged'  => 'Damaged: the asset is broken beyond use',
     'Disposed' => 'Disposed: thrown away, scrapped or given away',
+    'Returned to Seller' => 'Returned to Seller: given back, with a refund received or due', // NEW (section 4)
 ];
-// Money can only be received for a sale, or for scrap when an asset is disposed of.
-$typesWithProceeds = ['Sold', 'Disposed'];
+// Money can only be received for a sale, a refund, or for scrap when an asset is disposed of.
+$typesWithProceeds = ['Sold', 'Disposed', 'Returned to Seller'];
 
 if (isset($_POST['confirm_dispose'])) {
     $type = $_POST['disposal_type'] ?? '';
@@ -50,6 +52,7 @@ if (isset($_POST['confirm_dispose'])) {
     $proceeds = filter_input(INPUT_POST, 'proceeds', FILTER_VALIDATE_FLOAT);
     $proceeds = ($proceeds === false || $proceeds === null) ? 0.0 : round($proceeds, 2);
     $notes = trim($_POST['notes'] ?? '');
+    $refundStatus = $type === 'Returned to Seller' ? ($_POST['refund_status'] ?? '') : 'Not applicable';
     $validDate = DateTime::createFromFormat('Y-m-d', $disposalDate);
 
     if (!isset($disposalTypes[$type])) {
@@ -64,6 +67,11 @@ if (isset($_POST['confirm_dispose'])) {
         $error = 'The amount received cannot be negative.';
     } elseif ($type === 'Sold' && $proceeds <= 0) {
         $error = 'Please enter the amount the asset was sold for.';
+    } elseif ($type === 'Returned to Seller' && mb_strlen($notes) < 5) {
+        // NEW (section 4): the reason for the return is required.
+        $error = 'Please write the reason for the return in the Notes.';
+    } elseif ($type === 'Returned to Seller' && $proceeds > 0 && !in_array($refundStatus, ['Received', 'Receivable'], true)) {
+        $error = 'Please say whether the refund has been received or is still due from the seller.';
     } elseif (!in_array($type, $typesWithProceeds, true) && $proceeds > 0) {
         $error = 'No money can be received for a ' . strtolower($type) . ' asset. Leave the amount at 0.';
     } else {
@@ -96,11 +104,12 @@ if (isset($_POST['confirm_dispose'])) {
             $bookValue = round((float) mysqli_fetch_assoc(mysqli_stmt_get_result($valueStmt))['current_value'], 2);
             $gainLoss = round($proceeds - $bookValue, 2);
 
+            if ($type === 'Returned to Seller' && $proceeds <= 0) { $refundStatus = 'Not applicable'; }
             $insert = mysqli_prepare($conn, 'INSERT INTO asset_disposals
-                (asset_id, disposal_type, disposal_date, book_value, proceeds, gain_loss, notes, recorded_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+                (asset_id, disposal_type, disposal_date, book_value, proceeds, refund_status, refund_received_at, gain_loss, notes, recorded_by)
+                VALUES (?, ?, ?, ?, ?, ?, ' . ($refundStatus === 'Received' ? 'NOW()' : 'NULL') . ', ?, ?, ?)');
             $notesValue = $notes !== '' ? $notes : null;
-            mysqli_stmt_bind_param($insert, 'issdddsi', $assetId, $type, $disposalDate, $bookValue, $proceeds, $gainLoss, $notesValue, $userId);
+            mysqli_stmt_bind_param($insert, 'issddsdsi', $assetId, $type, $disposalDate, $bookValue, $proceeds, $refundStatus, $gainLoss, $notesValue, $userId);
             mysqli_stmt_execute($insert);
             $disposalId = (int) mysqli_insert_id($conn);
 
@@ -117,9 +126,15 @@ if (isset($_POST['confirm_dispose'])) {
 
             // 4. Money received into the Capital Fund. Linked to the disposal ('ASSET_SALE'),
             //    NOT to the asset, so the asset's own fund total stays at 0.
-            if ($proceeds > 0) {
+            if ($proceeds > 0 && $type !== 'Returned to Seller') {
                 fund_record_capital_inflow($conn, $proceeds, $disposalDate, 'Asset sale proceeds',
                     $label . ': amount received', $userId, 'ASSET_SALE', $disposalId);
+            }
+            // NEW (section 4): a refund from the seller enters the fund only when it is actually received.
+            // A refund still due is a receivable (Balance Sheet) and enters the fund when it arrives.
+            if ($proceeds > 0 && $type === 'Returned to Seller' && $refundStatus === 'Received') {
+                fund_record_capital_inflow($conn, $proceeds, $disposalDate, 'Asset refund',
+                    $label . ': refund received from the seller', $userId, 'ASSET_REFUND', $disposalId);
             }
 
             // 5. Gain or loss in Transactions (for the financial reports).
@@ -153,11 +168,6 @@ if (isset($_POST['confirm_dispose'])) {
             if ($gainLoss < 0) { $message .= ' Loss of RWF ' . number_format(abs($gainLoss), 2) . ' recorded.'; }
             header('Location: view.php?id=' . (int) $assetId . '&success=' . urlencode($message));
             exit;
-            
-                } catch (mysqli_sql_exception $e) {
-            mysqli_rollback($conn);
-            error_log('asset dispose failed for asset #' . $assetId . ': ' . $e->getMessage());
-            $error = 'Unable to record this. Nothing was changed. Please try again.';
         } catch (RuntimeException $e) {
             mysqli_rollback($conn);
             $error = $e->getMessage() . ' Nothing was changed.';
@@ -212,6 +222,14 @@ $bookNow = (float) $asset['current_value'];
                 </div>
             </div>
 
+            <div class="mb-3" id="refundGroup" style="display:none;">
+                <label class="form-label small fw-semibold text-muted">Refund</label>
+                <select name="refund_status" class="form-select rm-input">
+                    <option value="Received" <?= ($_POST['refund_status'] ?? '') === 'Received' ? 'selected' : ''; ?>>Received now (goes into the RM Capital Fund today)</option>
+                    <option value="Receivable" <?= ($_POST['refund_status'] ?? '') === 'Receivable' ? 'selected' : ''; ?>>Still due from the seller (recorded as a receivable; mark it received later)</option>
+                </select>
+            </div>
+
             <div class="mb-3" id="proceedsGroup">
                 <label class="form-label small fw-semibold text-muted">Amount received (RWF)</label>
                 <input type="number" name="proceeds" id="proceeds" class="form-control rm-input" min="0" step="0.01" value="<?= htmlspecialchars($_POST['proceeds'] ?? '0', ENT_QUOTES, 'UTF-8'); ?>">
@@ -240,7 +258,10 @@ $bookNow = (float) $asset['current_value'];
     const proceeds = document.getElementById('proceeds');
     const resultBox = document.getElementById('resultBox');
     const book = parseFloat(document.getElementById('bookValue').getAttribute('data-value')) || 0;
-    const withProceeds = ['Sold', 'Disposed'];
+    const withProceeds = ['Sold', 'Disposed', 'Returned to Seller'];
+    const refundGroup = document.getElementById('refundGroup');
+    typeSelect.addEventListener('change', function () { refundGroup.style.display = typeSelect.value === 'Returned to Seller' ? '' : 'none'; });
+    refundGroup.style.display = typeSelect.value === 'Returned to Seller' ? '' : 'none';
     const fmt = function (n) { return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
 
     function refresh() {

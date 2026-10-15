@@ -6,10 +6,30 @@
  * Nothing is posted from this page.
  */
 require '../../config/db.php';
+require_role(['Admin']);
+
+// NEW: if anything stops this page (even a fatal PHP error), the Admin sees the exact reason
+// instead of a blank "HTTP ERROR 500", so problems on the live server can be fixed at once.
+register_shutdown_function(function () {
+    $err = error_get_last();
+    if ($err && in_array($err['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
+        echo '<div style="margin:20px;padding:14px;border:1px solid #E24B4A;background:#FCE9E9;color:#8A1C1B;font-family:sans-serif;">'
+            . '<strong>The reconciliation page stopped with an error.</strong> Nothing was posted.<br>'
+            . 'Technical detail for Admin: ' . htmlspecialchars($err['message'] . ' in ' . basename($err['file']) . ' line ' . $err['line'], ENT_QUOTES, 'UTF-8')
+            . '</div>';
+    }
+});
+set_exception_handler(function (Throwable $e) {
+    error_log('capital_reconciliation: ' . $e->getMessage());
+    echo '<div style="margin:20px;padding:14px;border:1px solid #E24B4A;background:#FCE9E9;color:#8A1C1B;font-family:sans-serif;">'
+        . '<strong>The reconciliation page stopped with an error.</strong> Nothing was posted.<br>'
+        . 'Technical detail for Admin: ' . htmlspecialchars($e->getMessage() . ' in ' . basename($e->getFile()) . ' line ' . $e->getLine(), ENT_QUOTES, 'UTF-8')
+        . '<br><br>If it mentions an unknown column or table, open <a href="../tools/migrations.php">Database Migrations</a> and run the missing migration(s).</div>';
+});
+
 require_once '../../includes/fund_report_helpers.php';
 require_once '../../includes/financial_report_queries.php';
 require_once '../../includes/asset_capital_helpers.php'; // NEW: the opening reconciliation
-require_role(['Admin']);
 
 $installed = asset_capital_installed($conn);
 
@@ -101,7 +121,7 @@ $unexplained = round($difference - $explained, 2);
 
 // ---- 4. Assets and their funding ----
 $assets = mysqli_fetch_all(mysqli_query($conn, "SELECT a.id, a.asset_code, a.asset_name, a.acquisition_date, a.acquisition_value, a.current_value, a.status,
-        a.funding_type, a.funding_transaction_id,
+        " . ($installed ? 'a.funding_type, a.funding_transaction_id,' : "NULL AS funding_type, NULL AS funding_transaction_id,") . "
         (SELECT COUNT(*) FROM fund_movements m WHERE m.ref_type = 'ASSET' AND m.ref_id = a.id AND m.movement_type = 'ASSET_IN') AS in_fund
     FROM assets a ORDER BY a.acquisition_date, a.id"), MYSQLI_ASSOC);
 

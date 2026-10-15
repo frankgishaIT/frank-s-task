@@ -5,6 +5,7 @@
  * the money enters the RM Capital Fund and the receivable is cleared.
  */
 require '../../config/db.php';
+require_once '../../includes/admin_error_guard.php'; // NEW: shows the Admin the exact reason if this page fails
 require_once '../../includes/asset_capital_helpers.php';
 require_role(['Admin']);
 

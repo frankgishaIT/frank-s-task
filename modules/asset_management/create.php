@@ -1,5 +1,6 @@
 <?php
 require '../../config/db.php';
+require_once '../../includes/admin_error_guard.php'; // NEW: shows the Admin the exact reason if this page fails
 require '../../includes/asset_helpers.php';
 require_once '../../includes/asset_fund_helpers.php'; // NEW: keeps the asset's value in the RM Capital Fund
 require_once '../../includes/asset_capital_helpers.php'; // NEW: purchase paid from the RM Capital Fund

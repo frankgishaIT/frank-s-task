@@ -1,5 +1,6 @@
 <?php
 require '../../config/db.php';
+require_once '../../includes/admin_error_guard.php'; // NEW: shows the Admin the exact reason if this page fails
 require '../../includes/asset_helpers.php'; // also loads asset_fund_helpers.php (RM Capital Fund sync)
 require_role(['Admin']);
 

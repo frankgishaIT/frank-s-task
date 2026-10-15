@@ -9,6 +9,7 @@
  * No money moves: only the asset part of the RM Capital Fund follows the new value.
  */
 require '../../config/db.php';
+require_once '../../includes/admin_error_guard.php'; // NEW: shows the Admin the exact reason if this page fails
 require '../../includes/asset_helpers.php';
 require_once '../../includes/asset_capital_helpers.php';
 require_role(['Admin']);

@@ -4,6 +4,7 @@ require_once '../../includes/admin_error_guard.php'; // NEW: shows the Admin the
 require '../../includes/asset_helpers.php';
 require_once '../../includes/asset_fund_helpers.php'; // NEW: keeps the asset's value in the RM Capital Fund
 require_once '../../includes/asset_capital_helpers.php'; // NEW: purchase paid from the RM Capital Fund
+asset_capital_ensure_schema($conn); // NEW: adds any missing table / column of this feature automatically
 require_role(['Admin']);
 
 $departments = mysqli_query($conn, 'SELECT * FROM departments WHERE is_active = 1 ORDER BY name');

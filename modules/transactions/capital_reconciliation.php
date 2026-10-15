@@ -30,6 +30,7 @@ set_exception_handler(function (Throwable $e) {
 require_once '../../includes/fund_report_helpers.php';
 require_once '../../includes/financial_report_queries.php';
 require_once '../../includes/asset_capital_helpers.php'; // NEW: the opening reconciliation
+asset_capital_ensure_schema($conn); // NEW: adds any missing table / column of this feature automatically
 
 $installed = asset_capital_installed($conn);
 

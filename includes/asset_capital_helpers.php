@@ -23,6 +23,72 @@ const ASSET_EVIDENCE_DIR = __DIR__ . '/../storage/asset_valuations';
  * 1. Acquisition
  * ------------------------------------------------------------------------------------------ */
 
+/**
+ * NEW: makes sure this database has everything the asset <-> Capital Fund feature needs, and adds
+ * ONLY what is missing (step by step, each step checked first). Safe to call on every page load:
+ * once everything exists it only reads. Used so the live database is completed automatically,
+ * even when the migrations page cannot be opened.
+ */
+function asset_capital_ensure_schema(mysqli $conn): void
+{
+    static $done = false;
+    if ($done) { return; }
+    $has = function (string $table, ?string $column = null) use ($conn): bool {
+        if ($column === null) {
+            $s = mysqli_prepare($conn, 'SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?');
+            mysqli_stmt_bind_param($s, 's', $table);
+        } else {
+            $s = mysqli_prepare($conn, 'SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?');
+            mysqli_stmt_bind_param($s, 'ss', $table, $column);
+        }
+        mysqli_stmt_execute($s);
+        return (int) mysqli_fetch_row(mysqli_stmt_get_result($s))[0] > 0;
+    };
+    $columns = [
+        ['assets', 'funding_type', "ENUM('Capital Fund purchase','Opening balance') NULL"],
+        ['assets', 'funding_transaction_id', 'INT(11) NULL'],
+        ['assets', 'funding_note', 'VARCHAR(255) NULL'],
+        ['assets', 'asset_class', "ENUM('Tangible','Purchased software','Internally developed software','Capitalized development cost','Other intangible') NOT NULL DEFAULT 'Tangible'"],
+        ['assets', 'valuation_method', "ENUM('Depreciation','Amortization','No depreciation') NOT NULL DEFAULT 'Depreciation'"],
+        ['assets', 'daily_depreciation_override', 'DECIMAL(14,4) NULL'],
+    ];
+    $addedFunding = false;
+    foreach ($columns as [$t, $c, $def]) {
+        if (!$has($t, $c)) {
+            mysqli_query($conn, "ALTER TABLE `$t` ADD COLUMN `$c` $def");
+            if ($c === 'funding_type') { $addedFunding = true; }
+        }
+    }
+    if ($addedFunding || $has('assets', 'funding_type')) {
+        mysqli_query($conn, "UPDATE assets SET funding_type = 'Opening balance',
+            funding_note = 'Registered before the Capital Fund purchase rule (no payment taken from the fund)' WHERE funding_type IS NULL");
+    }
+    if ($has('asset_disposals') && !$has('asset_disposals', 'refund_status')) {
+        mysqli_query($conn, "ALTER TABLE asset_disposals MODIFY disposal_type ENUM('Sold','Stolen','Damaged','Disposed','Returned to Seller') NOT NULL");
+        mysqli_query($conn, "ALTER TABLE asset_disposals ADD COLUMN refund_status ENUM('Not applicable','Received','Receivable') NOT NULL DEFAULT 'Not applicable'");
+    }
+    if ($has('asset_disposals') && !$has('asset_disposals', 'refund_received_at')) {
+        mysqli_query($conn, 'ALTER TABLE asset_disposals ADD COLUMN refund_received_at DATETIME NULL');
+    }
+    if (!$has('asset_valuations')) {
+        mysqli_query($conn, "CREATE TABLE IF NOT EXISTS asset_valuations (
+            id INT(11) NOT NULL AUTO_INCREMENT, asset_id INT(11) NOT NULL,
+            valuation_type ENUM('Impairment','Revaluation') NOT NULL, valuation_date DATE NOT NULL,
+            value_before DECIMAL(14,2) NOT NULL, value_after DECIMAL(14,2) NOT NULL, change_amount DECIMAL(14,2) NOT NULL,
+            to_reserve DECIMAL(14,2) NOT NULL DEFAULT 0, to_profit_loss DECIMAL(14,2) NOT NULL DEFAULT 0,
+            valuer VARCHAR(150) NULL, evidence_file VARCHAR(100) NULL, notes TEXT NULL, created_by INT(11) NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id), KEY asset_id (asset_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    }
+    if (!$has('capital_reconciliations')) {
+        mysqli_query($conn, "CREATE TABLE IF NOT EXISTS capital_reconciliations (
+            id INT(11) NOT NULL AUTO_INCREMENT, posted_by INT(11) NULL,
+            posted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, note TEXT NOT NULL, summary TEXT NOT NULL,
+            PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    }
+    $done = true;
+}
+
 /** NEW: true when migration_asset_capital.sql has been run on this database. */
 function asset_capital_installed(mysqli $conn): bool
 {

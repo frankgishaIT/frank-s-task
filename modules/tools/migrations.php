@@ -7,6 +7,7 @@
  * The .sql files live in the project's database/ folder (in Git, they contain no passwords).
  */
 require '../../config/db.php';
+require_once '../../includes/admin_error_guard.php'; // NEW: shows the exact reason if this page fails
 require_role(['Admin']);
 
 const MIGRATIONS_DIR = __DIR__ . '/../../database'; // CHANGED: the project's existing database/ folder

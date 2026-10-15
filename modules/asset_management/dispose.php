@@ -18,6 +18,7 @@ require '../../config/db.php';
 require_once '../../includes/admin_error_guard.php'; // NEW: shows the Admin the exact reason if this page fails
 require '../../includes/asset_helpers.php'; // also loads asset_fund_helpers.php and fund_helpers.php
 require_once '../../includes/asset_capital_helpers.php'; // NEW: returned to seller (refund received / receivable)
+asset_capital_ensure_schema($conn); // NEW: adds any missing table / column of this feature automatically
 require_role(['Admin']);
 
 $assetId = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT) ?: filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);

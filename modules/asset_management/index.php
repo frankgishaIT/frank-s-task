@@ -1,6 +1,8 @@
 <?php
 require '../../config/db.php';
 require_once '../../includes/admin_error_guard.php'; // NEW: shows the Admin the exact reason if this page fails
+require_once '../../includes/asset_capital_helpers.php';
+asset_capital_ensure_schema($conn); // NEW: adds any missing table / column of this feature automatically
 require '../../includes/asset_helpers.php';
 require_role(['Admin']);
 

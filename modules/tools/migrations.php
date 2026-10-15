@@ -19,11 +19,74 @@ $migrations = [
     'migration_customer_rewards.sql'         => ['Customer rewards',                              ['table', 'reward_types']],
     'migration_points_72h.sql'               => ['72-hour Loyalty Points rule',                   ['column', 'sales', 'points_status']],
     'migration_credit_charges.sql'           => ['Overdue credit charges and ledger',             ['table', 'credit_ledger']],
-    'migration_asset_capital.sql'            => ['Assets paid from the RM Capital Fund, valuations, returns', ['table', 'capital_reconciliations']],
+    'migration_asset_capital.sql'            => ['Assets paid from the RM Capital Fund, valuations, returns', ['steps', 'asset_capital']],
 ];
+
+/**
+ * NEW: migrations that run STEP BY STEP. Each step checks whether it is already done and is skipped
+ * if so, so a migration that stopped half-way can simply be run again to finish what is missing.
+ * Works on MySQL and MariaDB.
+ */
+function migration_steps(string $name): array
+{
+    if ($name !== 'asset_capital') { return []; }
+    return [
+        ['column', 'assets', 'funding_type', "ALTER TABLE assets ADD COLUMN funding_type ENUM('Capital Fund purchase','Opening balance') NULL"],
+        ['column', 'assets', 'funding_transaction_id', 'ALTER TABLE assets ADD COLUMN funding_transaction_id INT(11) NULL'],
+        ['column', 'assets', 'funding_note', 'ALTER TABLE assets ADD COLUMN funding_note VARCHAR(255) NULL'],
+        ['column', 'assets', 'asset_class', "ALTER TABLE assets ADD COLUMN asset_class ENUM('Tangible','Purchased software','Internally developed software','Capitalized development cost','Other intangible') NOT NULL DEFAULT 'Tangible'"],
+        ['column', 'assets', 'valuation_method', "ALTER TABLE assets ADD COLUMN valuation_method ENUM('Depreciation','Amortization','No depreciation') NOT NULL DEFAULT 'Depreciation'"],
+        ['column', 'assets', 'daily_depreciation_override', 'ALTER TABLE assets ADD COLUMN daily_depreciation_override DECIMAL(14,4) NULL'],
+        ['always', null, null, "UPDATE assets SET funding_type = 'Opening balance', funding_note = 'Registered before the Capital Fund purchase rule (no payment taken from the fund)' WHERE funding_type IS NULL"],
+        ['always', null, null, "ALTER TABLE asset_disposals MODIFY disposal_type ENUM('Sold','Stolen','Damaged','Disposed','Returned to Seller') NOT NULL"],
+        ['column', 'asset_disposals', 'refund_status', "ALTER TABLE asset_disposals ADD COLUMN refund_status ENUM('Not applicable','Received','Receivable') NOT NULL DEFAULT 'Not applicable'"],
+        ['column', 'asset_disposals', 'refund_received_at', 'ALTER TABLE asset_disposals ADD COLUMN refund_received_at DATETIME NULL'],
+        ['table', 'asset_valuations', null, "CREATE TABLE IF NOT EXISTS asset_valuations (
+            id INT(11) NOT NULL AUTO_INCREMENT, asset_id INT(11) NOT NULL,
+            valuation_type ENUM('Impairment','Revaluation') NOT NULL, valuation_date DATE NOT NULL,
+            value_before DECIMAL(14,2) NOT NULL, value_after DECIMAL(14,2) NOT NULL, change_amount DECIMAL(14,2) NOT NULL,
+            to_reserve DECIMAL(14,2) NOT NULL DEFAULT 0, to_profit_loss DECIMAL(14,2) NOT NULL DEFAULT 0,
+            valuer VARCHAR(150) NULL, evidence_file VARCHAR(100) NULL, notes TEXT NULL, created_by INT(11) NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id), KEY asset_id (asset_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"],
+        ['table', 'capital_reconciliations', null, "CREATE TABLE IF NOT EXISTS capital_reconciliations (
+            id INT(11) NOT NULL AUTO_INCREMENT, posted_by INT(11) NULL,
+            posted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, note TEXT NOT NULL, summary TEXT NOT NULL,
+            PRIMARY KEY (id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"],
+    ];
+}
+
+/** Is one step already done? ('always' steps are safe to repeat, so they count as done.) */
+function migration_step_done(mysqli $conn, array $step): bool
+{
+    if ($step[0] === 'always') { return true; }
+    return migration_present($conn, $step[0] === 'table' ? ['table', $step[1]] : ['column', $step[1], $step[2]]);
+}
+
+/** Runs the steps that are not done yet. Returns null when everything worked, or the error text. */
+function migration_run_steps(mysqli $conn, string $name): ?string
+{
+    foreach (migration_steps($name) as $i => $step) {
+        if ($step[0] !== 'always' && migration_step_done($conn, $step)) { continue; }
+        try {
+            mysqli_query($conn, $step[3]);
+        } catch (mysqli_sql_exception $e) {
+            return 'Step ' . ($i + 1) . ' failed: ' . $e->getMessage();
+        }
+    }
+    return null;
+}
 
 function migration_present(mysqli $conn, array $check): bool
 {
+    if ($check[0] === 'steps') {
+        foreach (migration_steps($check[1]) as $step) {
+            if (!migration_step_done($conn, $step)) { return false; }
+        }
+        return true;
+    }
     if ($check[0] === 'table') {
         $s = mysqli_prepare($conn, 'SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?');
         mysqli_stmt_bind_param($s, 's', $check[1]);
@@ -65,7 +128,7 @@ $results = [];
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['run_missing'])) {
     foreach ($migrations as $file => [$label, $check]) {
         if (migration_present($conn, $check)) { continue; }
-        $err = migration_run($conn, $file);
+        $err = $check[0] === 'steps' ? migration_run_steps($conn, $check[1]) : migration_run($conn, $file);
         $results[] = [$label, $err];
         if ($err !== null) { break; } // later migrations may depend on this one: stop here
     }

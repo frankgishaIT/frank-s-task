@@ -130,13 +130,16 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
 
 <div class="card border-0 shadow-sm"><div class="card-body p-0">
 <table class="table table-bordered bg-white mb-0 align-middle" style="font-size:13px;">
-    <tr><th>Date</th><th>Type</th><th class="text-end">Before</th><th class="text-end">After</th><th class="text-end">Revaluation Reserve</th><th class="text-end">Profit &amp; Loss</th><th>Valuer</th><th>Reason</th><th>By</th></tr>
-    <?php if (!$rows) { ?><tr><td colspan="9" class="text-center text-muted py-3">No impairment or revaluation recorded.</td></tr><?php } ?>
+    <tr><th>Date</th><th>Type</th><th class="text-end">Before</th><th class="text-end">After</th><th class="text-end">Revaluation Reserve</th><th class="text-end">Profit &amp; Loss</th><th>Valuer</th><th>Evidence</th><th>Reason</th><th>By</th></tr>
+    <?php if (!$rows) { ?><tr><td colspan="10" class="text-center text-muted py-3">No impairment or revaluation recorded.</td></tr><?php } ?>
     <?php foreach ($rows as $r) { ?>
     <tr><td><?= date('d M Y', strtotime($r['valuation_date'])); ?></td><td><?= $e($r['valuation_type']); ?></td>
         <td class="text-end"><?= number_format((float) $r['value_before'], 2); ?></td><td class="text-end"><?= number_format((float) $r['value_after'], 2); ?></td>
         <td class="text-end"><?= number_format((float) $r['to_reserve'], 2); ?></td><td class="text-end"><?= number_format((float) $r['to_profit_loss'], 2); ?></td>
-        <td><?= $e($r['valuer']); ?></td><td><?= $e($r['notes']); ?></td><td><?= $e($r['names']); ?></td></tr>
+        <td><?= $e($r['valuer']); ?></td>
+        <!-- NEW: open the evidence document -->
+        <td><?= $r['evidence_file'] ? '<a href="valuation_evidence.php?id=' . (int) $r['id'] . '" target="_blank" rel="noopener"><i class="bi bi-file-earmark-text"></i> View</a>' : '<span class="text-muted">—</span>'; ?></td>
+        <td><?= $e($r['notes']); ?></td><td><?= $e($r['names']); ?></td></tr>
     <?php } ?>
 </table>
 </div></div>

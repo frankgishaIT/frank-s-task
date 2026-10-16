@@ -16,15 +16,5 @@ if ($id) {
     mysqli_stmt_execute($s);
     $row = mysqli_fetch_assoc(mysqli_stmt_get_result($s));
 }
-$file = $row && $row['evidence_file'] ? basename($row['evidence_file']) : null;
-$path = $file ? ASSET_EVIDENCE_DIR . '/' . $file : null;
-if (!$path || !is_file($path)) { http_response_code(404); echo 'Evidence not found.'; exit; }
-
-$ext = strtolower(pathinfo($file, PATHINFO_EXTENSION));
-$mime = ['jpg' => 'image/jpeg', 'png' => 'image/png', 'pdf' => 'application/pdf'][$ext] ?? 'application/octet-stream';
-header('Content-Type: ' . $mime);
-header('Content-Length: ' . filesize($path));
-header('Content-Disposition: inline; filename="' . preg_replace('/[^A-Za-z0-9_-]/', '', $row['asset_code'] . '-' . $row['valuation_type']) . '.' . $ext . '"');
-header('X-Content-Type-Options: nosniff');
-readfile($path);
-exit;
+// CHANGED: documents are read from the database (older ones from their folder).
+evidence_output($conn, $row['evidence_file'] ?? null, ($row['asset_code'] ?? 'asset') . '-' . ($row['valuation_type'] ?? 'valuation'), ASSET_EVIDENCE_DIR);

@@ -14,6 +14,7 @@
  */
 require_once __DIR__ . '/fund_helpers.php';
 require_once __DIR__ . '/asset_fund_helpers.php';
+require_once __DIR__ . '/evidence_store.php'; // NEW: evidence documents kept in the database
 
 const ASSET_CLASSES = ['Tangible', 'Purchased software', 'Internally developed software', 'Capitalized development cost', 'Other intangible'];
 const ASSET_VALUATION_METHODS = ['Depreciation', 'Amortization', 'No depreciation'];
@@ -153,18 +154,10 @@ function asset_pay_from_capital(mysqli $conn, int $assetId, float $amount, strin
  * 5. Impairment and revaluation (no cash)
  * ------------------------------------------------------------------------------------------ */
 
-function asset_store_valuation_evidence(?array $file): ?string
+// CHANGED: evidence is stored in the database (no folder permissions needed on the server).
+function asset_store_valuation_evidence(mysqli $conn, ?array $file, ?int $userId = null): ?string
 {
-    if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) { return null; }
-    if ($file['error'] !== UPLOAD_ERR_OK || !is_uploaded_file($file['tmp_name'])) { throw new RuntimeException('The evidence file could not be uploaded.'); }
-    if ($file['size'] > 5 * 1024 * 1024) { throw new RuntimeException('The evidence file is too large (maximum 5 MB).'); }
-    $types = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'application/pdf' => 'pdf'];
-    $mime = (new finfo(FILEINFO_MIME_TYPE))->file($file['tmp_name']);
-    if (!isset($types[$mime])) { throw new RuntimeException('Evidence must be a PDF or a photo (JPG, PNG).'); }
-    if (!is_dir(ASSET_EVIDENCE_DIR) && !@mkdir(ASSET_EVIDENCE_DIR, 0775, true)) { throw new RuntimeException('The evidence folder could not be created.'); }
-    $name = bin2hex(random_bytes(16)) . '.' . $types[$mime];
-    if (!move_uploaded_file($file['tmp_name'], ASSET_EVIDENCE_DIR . '/' . $name)) { throw new RuntimeException('The evidence file could not be saved.'); }
-    return $name;
+    return evidence_save($conn, $file, $userId);
 }
 
 /**

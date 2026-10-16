@@ -45,7 +45,7 @@ if (isset($_POST['save'])) {
         $error = 'Please enter a valid date (not in the future).';
     } else {
         try {
-            $evidence = reward_store_evidence($_FILES['evidence'] ?? null);
+            $evidence = reward_store_evidence($conn, $_FILES['evidence'] ?? null, $userId);
             $result = reward_create($conn, [
                 'customer_id' => $v['customer_id'], 'reward_type_id' => $v['reward_type_id'], 'reward_details' => mb_substr($v['reward_details'], 0, 255),
                 'reward_amount' => round($amount, 2), 'points_required' => $required, 'points_redeemed' => $redeemed,
@@ -59,7 +59,6 @@ if (isset($_POST['save'])) {
                 header('Location: rewards.php?customer_id=' . $v['customer_id'] . '&success=' . urlencode($msg));
                 exit;
             }
-            if ($evidence) { @unlink(REWARD_EVIDENCE_DIR . '/' . $evidence); }
             $error = $result['error'];
         } catch (RuntimeException $ex) {
             $error = $ex->getMessage();

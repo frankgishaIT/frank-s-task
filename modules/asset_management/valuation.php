@@ -60,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $inUse) {
             $error = 'Please explain the reason (at least 10 characters).';
         } else {
             try {
-                $evidence = asset_store_valuation_evidence($_FILES['evidence'] ?? null);
+                $evidence = asset_store_valuation_evidence($conn, $_FILES['evidence'] ?? null, $userId);
                 mysqli_begin_transaction($conn);
                 $r = asset_record_valuation($conn, (int) $assetId, $action, (float) $newValue, date('Y-m-d'),
                     $valuer !== '' ? mb_substr($valuer, 0, 150) : null, $evidence, $notes, $userId);
@@ -72,7 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $inUse) {
                 header('Location: valuation.php?id=' . (int) $assetId . '&success=' . urlencode($msg));
                 exit;
             } catch (Throwable $e) {
-                @mysqli_rollback($conn);
+                try { mysqli_rollback($conn); } catch (Throwable $ignored) { /* connection already closed: nothing was saved */ }
                 $error = $e instanceof RuntimeException && !($e instanceof mysqli_sql_exception) ? $e->getMessage() : 'Unable to record the valuation. Nothing was changed.';
                 if ($e instanceof mysqli_sql_exception) { error_log('asset valuation failed: ' . $e->getMessage()); }
             }

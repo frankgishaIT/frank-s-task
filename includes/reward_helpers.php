@@ -13,6 +13,7 @@
  * Every step runs in one database transaction and keeps the full history.
  */
 require_once __DIR__ . '/fund_helpers.php';
+require_once __DIR__ . '/evidence_store.php'; // NEW: evidence documents kept in the database
 
 const REWARD_EVIDENCE_DIR = __DIR__ . '/../storage/rewards';
 const REWARD_EVIDENCE_MAX_BYTES = 5 * 1024 * 1024;
@@ -41,29 +42,10 @@ function reward_get(mysqli $conn, int $id, bool $lock = false): ?array
  * Saves an uploaded evidence file (photo or PDF, max 5 MB) under a random name.
  * Returns the stored file name, null when nothing was uploaded, or throws RuntimeException.
  */
-function reward_store_evidence(?array $file): ?string
+// CHANGED: evidence is stored in the database (no folder permissions needed on the server).
+function reward_store_evidence(mysqli $conn, ?array $file, ?int $userId = null): ?string
 {
-    if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
-        return null;
-    }
-    if ($file['error'] !== UPLOAD_ERR_OK || !is_uploaded_file($file['tmp_name'])) {
-        throw new RuntimeException('The evidence file could not be uploaded. Please try again.');
-    }
-    if ($file['size'] > REWARD_EVIDENCE_MAX_BYTES) {
-        throw new RuntimeException('The evidence file is too large (maximum 5 MB).');
-    }
-    $mime = (new finfo(FILEINFO_MIME_TYPE))->file($file['tmp_name']);
-    if (!isset(REWARD_EVIDENCE_TYPES[$mime])) {
-        throw new RuntimeException('Evidence must be a photo (JPG or PNG) or a PDF.');
-    }
-    if (!is_dir(REWARD_EVIDENCE_DIR) && !@mkdir(REWARD_EVIDENCE_DIR, 0775, true)) {
-        throw new RuntimeException('The evidence folder could not be created on the server.');
-    }
-    $name = bin2hex(random_bytes(16)) . '.' . REWARD_EVIDENCE_TYPES[$mime];
-    if (!move_uploaded_file($file['tmp_name'], REWARD_EVIDENCE_DIR . '/' . $name)) {
-        throw new RuntimeException('The evidence file could not be saved.');
-    }
-    return $name;
+    return evidence_save($conn, $file, $userId);
 }
 
 /**

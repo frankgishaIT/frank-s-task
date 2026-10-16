@@ -115,8 +115,10 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
         <form method="POST" enctype="multipart/form-data" onsubmit="return confirm('Record this <?= strtolower($act); ?>? No money will move.');">
             <input type="hidden" name="id" value="<?= (int) $assetId; ?>"><input type="hidden" name="action" value="<?= $act; ?>">
             <input type="number" name="new_value" class="form-control mb-2" min="0" step="0.01" placeholder="New value (RWF)" required>
-            <input type="text" name="valuer" class="form-control mb-2" maxlength="150" placeholder="Valuer / basis<?= $act === 'Revaluation' ? ' (required)' : ''; ?>">
-            <input type="file" name="evidence" class="form-control mb-2" accept=".pdf,.jpg,.jpeg,.png">
+            <label class="form-label small text-muted mb-1">Valuer / basis<?= $act === 'Revaluation' ? ' <span class="text-danger">*</span>' : ' (optional)'; ?></label>
+            <input type="text" name="valuer" class="form-control mb-2" maxlength="150" placeholder="e.g. ABC Valuers Ltd, supplier quotation" <?= $act === 'Revaluation' ? 'required' : ''; ?>>
+            <label class="form-label small text-muted mb-1">Valuation document (PDF, JPG or PNG, max 5 MB)<?= $act === 'Revaluation' ? ' <span class="text-danger">*</span>' : ' (optional)'; ?></label>
+            <input type="file" name="evidence" class="form-control mb-2" accept=".pdf,.jpg,.jpeg,.png" <?= $act === 'Revaluation' ? 'required' : ''; ?>>
             <textarea name="notes" class="form-control mb-2" rows="2" placeholder="Reason" required></textarea>
             <button class="btn btn-outline-<?= $act === 'Impairment' ? 'danger' : 'primary'; ?> btn-sm">Record <?= strtolower($act); ?></button>
         </form>

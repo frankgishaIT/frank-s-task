@@ -77,15 +77,25 @@ $modal_icon = 'bi-gift-fill'; $modal_title = 'Record Reward'; $modal_subtitle = 
         <?php if (isset($error)) { ?><div class="alert alert-danger" style="border-radius:10px;"><?= $e($error); ?></div><?php } ?>
         <?php if (!$types) { ?><div class="alert alert-warning">No reward types are active. An Admin can switch them on under Reward Types.</div><?php } ?>
         <form method="POST" enctype="multipart/form-data">
-            <div class="mb-3">
+            <?php
+            // NEW: searchable customer field (type a name, phone or Customer ID instead of scrolling).
+            $customerData = [];
+            $selectedLabel = '';
+            foreach ($customers as $c) {
+                $code = 'RMC' . str_pad((string) $c['id'], 6, '0', STR_PAD_LEFT);
+                $label = $code . ' — ' . $c['name'] . ' (' . number_format((int) $c['loyalty_points']) . ' points)';
+                $customerData[] = ['id' => (int) $c['id'], 'label' => $label, 'search' => mb_strtolower($code . ' ' . $c['name'] . ' ' . ($c['phone'] ?? '')),
+                                   'points' => (int) $c['loyalty_points']];
+                if ($v['customer_id'] === (int) $c['id']) { $selectedLabel = $label; }
+            }
+            ?>
+            <div class="mb-3 position-relative">
                 <label class="form-label small fw-semibold text-muted">Customer</label>
-                <select name="customer_id" id="customerSelect" class="form-select rm-input" required>
-                    <option value="">Select customer</option>
-                    <?php foreach ($customers as $c) { ?>
-                    <option value="<?= (int) $c['id']; ?>" data-points="<?= (int) $c['loyalty_points']; ?>" <?= $v['customer_id'] === (int) $c['id'] ? 'selected' : ''; ?>>
-                        <?= $e('RMC' . str_pad((string) $c['id'], 6, '0', STR_PAD_LEFT) . ' — ' . $c['name'] . ' (' . number_format((int) $c['loyalty_points']) . ' points)'); ?></option>
-                    <?php } ?>
-                </select>
+                <input type="text" id="customerSearch" class="form-control rm-input" autocomplete="off"
+                       placeholder="Type a name, phone number or Customer ID (RMC...)" value="<?= $e($selectedLabel); ?>">
+                <input type="hidden" name="customer_id" id="customerId" value="<?= $v['customer_id'] ?: ''; ?>">
+                <div id="customerList" class="list-group shadow position-absolute w-100" style="z-index:1060; max-height:260px; overflow-y:auto; display:none;"></div>
+                <div class="form-text" id="customerHint"></div>
             </div>
             <div class="row g-3 mb-3">
                 <div class="col-6">
@@ -152,12 +162,54 @@ $modal_icon = 'bi-gift-fill'; $modal_title = 'Record Reward'; $modal_subtitle = 
 </div></div>
 <script>
 (function () {
-    var cust = document.getElementById('customerSelect'), type = document.getElementById('typeSelect');
+    var type = document.getElementById('typeSelect');
+    // --- NEW: customer search ---
+    var CUSTOMERS = <?= json_encode($customerData, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    var search = document.getElementById('customerSearch'), hidden = document.getElementById('customerId');
+    var list = document.getElementById('customerList'), hint = document.getElementById('customerHint');
+    var selectedPoints = null, active = -1, shown = [];
+    (function () { var c = CUSTOMERS.find(function (x) { return String(x.id) === hidden.value; }); if (c) { selectedPoints = c.points; } })();
+    function render() {
+        var q = search.value.trim().toLowerCase();
+        shown = q === '' ? CUSTOMERS.slice(0, 8) : CUSTOMERS.filter(function (c) { return c.search.indexOf(q) !== -1; }).slice(0, 8);
+        list.innerHTML = '';
+        shown.forEach(function (c, i) {
+            var a = document.createElement('button');
+            a.type = 'button';
+            a.className = 'list-group-item list-group-item-action' + (i === active ? ' active' : '');
+            a.textContent = c.label;
+            a.addEventListener('mousedown', function (ev) { ev.preventDefault(); choose(c); });
+            list.appendChild(a);
+        });
+        if (!shown.length) {
+            var none = document.createElement('div');
+            none.className = 'list-group-item text-muted small';
+            none.textContent = 'No customer matches "' + search.value + '"';
+            list.appendChild(none);
+        }
+        list.style.display = '';
+    }
+    function choose(c) {
+        hidden.value = c.id; search.value = c.label; selectedPoints = c.points;
+        list.style.display = 'none'; hint.textContent = ''; active = -1; sync();
+    }
+    search.addEventListener('input', function () { hidden.value = ''; selectedPoints = null; active = -1; render(); sync(); });
+    search.addEventListener('focus', function () { if (!hidden.value) { render(); } });
+    search.addEventListener('blur', function () { setTimeout(function () { list.style.display = 'none'; }, 150); });
+    search.addEventListener('keydown', function (ev) {
+        if (list.style.display === 'none' && (ev.key === 'ArrowDown' || ev.key === 'ArrowUp')) { render(); }
+        if (ev.key === 'ArrowDown') { ev.preventDefault(); active = Math.min(active + 1, shown.length - 1); render(); }
+        else if (ev.key === 'ArrowUp') { ev.preventDefault(); active = Math.max(active - 1, 0); render(); }
+        else if (ev.key === 'Enter') { if (shown[active] || shown.length === 1) { ev.preventDefault(); choose(shown[active] || shown[0]); } }
+        else if (ev.key === 'Escape') { list.style.display = 'none'; }
+    });
+    search.form.addEventListener('submit', function (ev) {
+        if (!hidden.value) { ev.preventDefault(); hint.innerHTML = '<span class="text-danger">Choose a customer from the list.</span>'; search.focus(); render(); }
+    });
     var req = document.getElementById('pointsRequired'), red = document.getElementById('pointsRedeemed'), rem = document.getElementById('pointsRemaining');
     var payNote = document.getElementById('payNote');
     function sync() {
-        var opt = cust.options[cust.selectedIndex];
-        var bal = opt && opt.dataset.points ? parseInt(opt.dataset.points, 10) : null;
+        var bal = selectedPoints;
         var used = parseInt(red.value || req.value || 0, 10) || 0;
         rem.value = bal === null ? '' : (bal - used).toLocaleString() + (bal - used < 0 ? ' (not enough points)' : '');
         rem.style.color = bal !== null && bal - used < 0 ? 'var(--accent-red)' : '';
@@ -165,7 +217,7 @@ $modal_icon = 'bi-gift-fill'; $modal_title = 'Record Reward'; $modal_subtitle = 
         payNote.textContent = t && t.dataset.pays === '1' ? 'Paid from the RM Business Operating Fund when fulfilled.' : '';
     }
     req.addEventListener('input', function () { if (!red.value) { red.value = req.value; } sync(); });
-    [cust, type, red].forEach(function (el) { el.addEventListener('input', sync); el.addEventListener('change', sync); });
+    [type, red].forEach(function (el) { el.addEventListener('input', sync); el.addEventListener('change', sync); });
     sync();
 })();
 </script>

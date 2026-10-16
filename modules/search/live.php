@@ -265,12 +265,18 @@ function renderNotificationsRows(mysqli $conn, string $like, int $limit, int $us
         $html .= '<td>' . esc($r['names']) . '</td>';
         $html .= '<td>' . esc($r['title']) . '</td>';
         $html .= '<td>' . esc(mb_strimwidth($r['message'] ?? '', 0, 50, '...')) . '</td>';
-        $html .= '<td>' . ($r['is_read'] ? '<span class="badge bg-success">Read</span>' : '<span class="badge bg-warning text-dark">Unread</span>') . '</td>';
+        $html .= '<td>' . ($r['is_read'] ? '<span class="badge bg-success">Read</span>' : '<span class="badge" style="background:#1E2FE0;">Unread</span>') . '</td>';
         $html .= '<td>' . esc(date('d M Y H:i', strtotime($r['created_at']))) . '</td>';
         $html .= '<td class="text-nowrap">';
         $html .= '<a href="../notifications/view.php?id=' . $id . '" class="rm-btn rm-btn-info btn-sm">View</a> ';
-        $html .= '<a href="../notifications/mark_read.php?id=' . $id . '" class="rm-btn rm-btn-success btn-sm">Mark Read</a> ';
-        $html .= '<a href="../notifications/delete.php?id=' . $id . '" class="rm-btn rm-btn-danger btn-sm" onclick="return confirm(\'Delete this notification?\')">Delete</a>';
+        // CHANGED: POST buttons through action.php (the old plain links are retired).
+        if (!(int) $r['is_read']) {
+            $html .= '<form method="POST" action="../notifications/action.php" class="d-inline"><input type="hidden" name="action" value="mark_one">'
+                . '<input type="hidden" name="id" value="' . $id . '"><button type="submit" class="rm-btn rm-btn-success btn-sm">Mark Read</button></form> ';
+        }
+        $html .= '<form method="POST" action="../notifications/action.php" class="d-inline" onsubmit="return confirm(\'Delete this notification?\')">'
+            . '<input type="hidden" name="action" value="delete_one"><input type="hidden" name="id" value="' . $id . '">'
+            . '<button type="submit" class="rm-btn rm-btn-danger btn-sm">Delete</button></form>';
         $html .= '</td>';
         $html .= '</tr>';
     }

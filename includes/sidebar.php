@@ -178,17 +178,28 @@ try {
                     <?php } ?>
                 </a>
                 <div class="dropdown-menu dropdown-menu-end p-0 shadow" style="width:320px; max-height:400px; overflow-y:auto;">
-                    <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom">
-                        <strong class="small">Notifications</strong>
-                        <a href="../notifications/index.php" class="small">View all</a>
+                    <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom gap-2">
+                        <strong class="small">Notifications<?= $unreadCount > 0 ? ' <span class="badge bg-danger">' . $unreadCount . ' new</span>' : ''; ?></strong>
+                        <span class="d-flex align-items-center gap-2">
+                            <?php if ($unreadCount > 0) { ?>
+                            <!-- NEW: mark all as read, from the bell menu -->
+                            <form method="POST" action="../notifications/action.php" class="d-inline m-0">
+                                <input type="hidden" name="action" value="mark_all">
+                                <button type="submit" class="btn btn-link btn-sm p-0 small text-decoration-none">Mark all as read</button>
+                            </form>
+                            <?php } ?>
+                            <a href="../notifications/index.php" class="small">View all</a>
+                        </span>
                     </div>
                     <?php if (mysqli_num_rows($recentNotifications) === 0) { ?>
                         <div class="text-muted small text-center py-3">No notifications yet.</div>
                     <?php } ?>
                     <?php while ($n = mysqli_fetch_assoc($recentNotifications)) { ?>
                         <a href="../notifications/open.php?id=<?= (int) $n['id']; ?>"
-                           class="dropdown-item py-2 <?= $n['is_read'] ? '' : 'bg-light'; ?>" style="white-space:normal;">
-                            <div class="fw-semibold small"><?= htmlspecialchars($n['title'], ENT_QUOTES, 'UTF-8'); ?></div>
+                           class="dropdown-item py-2" style="white-space:normal; <?= $n['is_read'] ? '' : 'background:#EEF3FF; border-left:3px solid #1E2FE0;'; ?>">
+                            <!-- CHANGED: unread notifications stand out (blue background, bar and dot) -->
+                            <div class="<?= $n['is_read'] ? 'fw-normal' : 'fw-bold'; ?> small">
+                                <?php if (!$n['is_read']) { ?><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#1E2FE0;margin-right:6px;"></span><?php } ?><?= htmlspecialchars($n['title'], ENT_QUOTES, 'UTF-8'); ?></div>
                             <div class="text-muted small"><?= htmlspecialchars(mb_strimwidth($n['message'], 0, 80, '…'), ENT_QUOTES, 'UTF-8'); ?></div>
                             <div class="text-muted" style="font-size:11px;"><?= date('d M, H:i', strtotime($n['created_at'])); ?></div>
                         </a>
@@ -215,6 +226,8 @@ try {
         </div>
     </div>
 
+<!-- NEW: every long dropdown (8+ choices) becomes a type-to-search box, on every page -->
+<script src="<?= BASE_URL ?>/includes/searchable_select.js?v=1"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     // Live-search: types into the topbar box, filters the CURRENT page's own

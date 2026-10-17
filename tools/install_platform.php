@@ -5,6 +5,8 @@
  *   php tools/install_platform.php --company1-code=RM --company1-name="RISE MOTIVE"
  *
  * Optional: --platform-db=mm_platform  --platform-user=mm_platform
+ *           --public-url=https://mymotive.risemotive.rw   (used in the links inside emails)
+ *           --mail-dry-run=1   (emails are written to storage/platform_outbox.log instead of being sent: for staging)
  *
  * What it does:
  *   1. Reads the database login from the CURRENT config/db.php. That database becomes company 1.
@@ -96,6 +98,7 @@ try {
     mysqli_query($admin, 'FLUSH PRIVILEGES');
     mysqli_select_db($admin, $platformDb);
     provision_run_script($admin, (string) file_get_contents($root . '/database/platform_schema.sql'));
+    platform_apply_migrations($admin);
     echo "2/5  Platform database '$platformDb' created, with its own MySQL user.\n";
 
     // ---- 3. config/platform.php
@@ -105,6 +108,8 @@ try {
         'db_user' => $platformUser,
         'db_pass' => $platformPass,
         'key'     => 'base64:' . base64_encode(random_bytes(32)),
+        'public_url'   => rtrim($opt['public-url'] ?? '', '/'),
+        'mail_dry_run' => ($opt['mail-dry-run'] ?? '0') === '1',
     ];
     $text = "<?php\n// MY MOTIVE SaaS platform settings. NOT in git. Keep this file private.\n"
         . "// 'key' encrypts every company's database password. If it is lost, those passwords cannot be recovered: back this file up.\n"

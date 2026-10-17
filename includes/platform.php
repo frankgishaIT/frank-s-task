@@ -41,6 +41,24 @@ function platform_fail(string $logMessage): void
     exit;
 }
 
+/** One optional setting from config/platform.php (for example public_url or mail_dry_run). */
+function platform_setting(string $key, $default = null)
+{
+    $cfg = platform_config();
+    return array_key_exists($key, $cfg) ? $cfg[$key] : $default;
+}
+
+/** The public address of the site, used in links inside emails (no trailing slash). */
+function platform_public_url(): string
+{
+    $configured = (string) platform_setting('public_url', '');
+    if ($configured !== '') {
+        return rtrim($configured, '/');
+    }
+    $host = $_SERVER['HTTP_HOST'] ?? '';
+    return $host !== '' ? ((!empty($_SERVER['HTTPS']) ? 'https://' : 'http://') . $host) : '';
+}
+
 // ---------------------------------------------------------------- secrets (a company's database password)
 
 /** The 32-byte master key. */

@@ -321,6 +321,9 @@ if (!isset($error)) {
 
                 <button type="submit" name="login" class="btn-signin">Sign in</button>
             </form>
+            <p style="text-align:center;margin:18px 0 0;font-size:13px;color:#8A90A3">
+                New company? <a href="signup.php" style="color:#3B4FE0;font-weight:600;text-decoration:none">Open an account</a>
+            </p>
         </div>
 
     </div>

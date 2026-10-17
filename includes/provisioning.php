@@ -204,6 +204,38 @@ function provision_company(string $code, string $name, string $ownerName, string
     ];
 }
 
+/**
+ * Applies the PLATFORM database migrations (database/platform_migrations/*.sql) that have not run yet.
+ * Version 001 is database/platform_schema.sql (made by the installer), so it is marked as done here.
+ *
+ * @return string[] the names of the migrations that were applied
+ */
+function platform_apply_migrations(mysqli $db): array
+{
+    mysqli_query($db, "CREATE TABLE IF NOT EXISTS platform_migrations (migration_name VARCHAR(190) NOT NULL, applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (migration_name)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    mysqli_query($db, "INSERT IGNORE INTO platform_migrations (migration_name) VALUES ('001_initial')");
+    $seen = [];
+    $res = mysqli_query($db, 'SELECT migration_name FROM platform_migrations');
+    while ($row = mysqli_fetch_row($res)) {
+        $seen[$row[0]] = true;
+    }
+    $files = glob(__DIR__ . '/../database/platform_migrations/*.sql') ?: [];
+    sort($files, SORT_STRING);
+    $applied = [];
+    foreach ($files as $file) {
+        $name = basename($file);
+        if (isset($seen[$name])) {
+            continue;
+        }
+        provision_run_script($db, (string) file_get_contents($file));
+        $st = mysqli_prepare($db, 'INSERT INTO platform_migrations (migration_name) VALUES (?)');
+        mysqli_stmt_bind_param($st, 's', $name);
+        mysqli_stmt_execute($st);
+        $applied[] = $name;
+    }
+    return $applied;
+}
+
 /** Changes a company's status (active / suspended / pending) and records who did it. */
 function provision_set_status(string $code, string $status): void
 {

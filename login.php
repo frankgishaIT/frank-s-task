@@ -10,24 +10,45 @@ if (!empty($_SESSION['user_id'])) {
 }
 
 if (isset($_POST['login'])) {
-    $email = trim($_POST['email'] ?? '');
-    $password = $_POST['password'] ?? '';
+    // only text is accepted (a list such as email[]=x would crash trim() and password_verify())
+    $email = is_string($_POST['email'] ?? null) ? trim($_POST['email']) : '';
+    $password = is_string($_POST['password'] ?? null) ? $_POST['password'] : '';
+    $user = null;
 
-    $statement = mysqli_prepare($conn, 'SELECT id, names, email, password_hash, role FROM users WHERE email = ? AND is_active = 1');
-    mysqli_stmt_bind_param($statement, 's', $email);
-    mysqli_stmt_execute($statement);
-    $user = mysqli_fetch_assoc(mysqli_stmt_get_result($statement));
+    // includes/tenant.php has already connected to the company named by the company code,
+    // but only if that code exists and the company is active.
+    if (!empty($MM_COMPANY) && isset($conn)) {
+        $statement = mysqli_prepare($conn, 'SELECT id, names, email, password_hash, role FROM users WHERE email = ? AND is_active = 1');
+        mysqli_stmt_bind_param($statement, 's', $email);
+        mysqli_stmt_execute($statement);
+        $user = mysqli_fetch_assoc(mysqli_stmt_get_result($statement));
+    } else {
+        // A wrong company code takes about as long as a wrong password, so the answer does not reveal which one was wrong.
+        password_verify($password, '$2y$10$exFhmYboBXgQb/y.E/iKMOShJo9fh5hWnhxbjVnViqHiidzLM8rJK');
+    }
 
     if ($user && password_verify($password, $user['password_hash'])) {
         session_regenerate_id(true);
         $_SESSION['user_id'] = $user['id'];
         $_SESSION['user_name'] = $user['names'];
         $_SESSION['user_role'] = $user['role'];
+        $_SESSION['company_id'] = (int) $MM_COMPANY['id'];
+        mm_remember_company($MM_COMPANY['company_code']);
         header('Location: modules/dashboard/index.php');
         exit;
     }
 
-    $error = 'Invalid email or password.';
+    $error = 'Invalid company code, email or password.';
+}
+
+// Why a visitor was sent back to this page (see includes/tenant.php)
+if (!isset($error)) {
+    $why = $_GET['reason'] ?? '';
+    if ($why === 'inactive') {
+        $error = 'Your company account is not active. Please contact your administrator.';
+    } elseif ($why === 'expired') {
+        $error = 'Please sign in again.';
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -273,6 +294,15 @@ if (isset($_POST['login'])) {
             <?php } ?>
 
             <form method="POST">
+                <?php $prefillCompany = $_POST['company_code'] ?? ($_COOKIE['mm_company'] ?? ''); if (!is_string($prefillCompany)) { $prefillCompany = ''; } ?>
+                <div class="mb-3">
+                    <label class="form-label">Company code</label>
+                    <div class="input-group-rm">
+                        <i class="bi bi-building"></i>
+                        <input type="text" name="company_code" value="<?= htmlspecialchars($prefillCompany, ENT_QUOTES, 'UTF-8'); ?>" placeholder="e.g. RM" required maxlength="30" autocomplete="organization" style="text-transform:uppercase" <?= $prefillCompany === '' ? 'autofocus' : ''; ?>>
+                    </div>
+                </div>
+
                 <div class="mb-3">
                     <label class="form-label">Email address</label>
                     <div class="input-group-rm">

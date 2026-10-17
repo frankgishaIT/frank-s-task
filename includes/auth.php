@@ -4,7 +4,9 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 if (empty($_SESSION['user_id'])) {
-    $basePath = dirname($_SERVER['SCRIPT_NAME'], 3);
+    // BASE_URL is set by config/db.php ('' on the server, '/rm_os' on a local XAMPP). The old
+    // dirname() version produced "//login.php" at the root of a domain, which browsers read as another website.
+    $basePath = defined('BASE_URL') ? BASE_URL : '';
     header('Location: ' . $basePath . '/login.php');
     exit;
 }

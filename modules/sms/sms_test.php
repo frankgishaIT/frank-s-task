@@ -30,7 +30,7 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
 $badge = ['sent' => 'success', 'failed' => 'danger', 'skipped' => 'secondary'];
 ?>
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h2>SMS (Pindo)</h2>
+    <h2>SMS</h2>
     <!-- NEW: runs the daily messages (credit reminders, weekly loyalty) by hand. Safe to click twice. -->
     <div class="d-flex gap-2">
     <!-- NEW: write your own message to a person or a group -->
@@ -46,7 +46,8 @@ $badge = ['sent' => 'success', 'failed' => 'danger', 'skipped' => 'secondary'];
     <div class="card-body">
         <div class="small mb-3">
             Status:
-            <?php if (!SMS_ENABLED) { ?><span class="badge bg-secondary">Switched off</span>
+            <?php if (defined('SMS_CONFIG_MISSING')) { ?><span class="badge bg-danger">config/sms.php is missing on this server</span>
+            <?php } elseif (!SMS_ENABLED) { ?><span class="badge bg-secondary">Switched off</span>
             <?php } elseif (!$tokenSet) { ?><span class="badge bg-warning text-dark">API token not set in config/sms.php</span>
             <?php } else { ?><span class="badge bg-success">Ready</span><?php } ?>
             &middot; Sender: <strong><?= htmlspecialchars(PINDO_SENDER, ENT_QUOTES, 'UTF-8'); ?></strong>

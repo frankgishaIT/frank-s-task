@@ -50,11 +50,39 @@ function leave_status_badge($status) {
     $class = $map[$status] ?? 'secondary';
     return '<span class="badge bg-' . $class . '">' . htmlspecialchars($status, ENT_QUOTES, 'UTF-8') . '</span>';
 }
+
+/**
+ * NEW: the dates of a request, readable, with its length.
+ *   Short Leave:  20 Oct 2026, 09:00 – 11:00 (2h)
+ *   Other types:  20 Oct 2026 → 22 Oct 2026 (3 days)
+ */
+function leave_dates_html(array $row): string {
+    $start = strtotime($row['start_date']);
+    $end = strtotime($row['end_date']);
+    $st = $row['start_time'] ?? null;
+    $et = $row['end_time'] ?? null;
+    if ($row['leave_type'] === 'Short Leave' && $st && $et) {
+        $minutes = (int) round((strtotime('2000-01-01 ' . $et) - strtotime('2000-01-01 ' . $st)) / 60);
+        $length = $minutes >= 60 ? intdiv($minutes, 60) . 'h' . ($minutes % 60 ? ' ' . ($minutes % 60) . 'min' : '') : $minutes . 'min';
+        return htmlspecialchars(date('d M Y', $start) . ', ' . substr($st, 0, 5) . ' – ' . substr($et, 0, 5), ENT_QUOTES, 'UTF-8')
+            . ' <span class="text-muted small">(' . $length . ')</span>';
+    }
+    $days = (int) round(($end - $start) / 86400) + 1;
+    $text = $start === $end ? date('d M Y', $start) : date('d M Y', $start) . ' → ' . date('d M Y', $end);
+    return htmlspecialchars($text, ENT_QUOTES, 'UTF-8') . ' <span class="text-muted small">(' . $days . ' day' . ($days === 1 ? '' : 's') . ')</span>';
+}
 ?>
 
 <?php if (isset($_GET['success'])) { ?>
     <div class="alert alert-success alert-dismissible fade show" role="alert">
         <?= htmlspecialchars($_GET['success'], ENT_QUOTES, 'UTF-8'); ?>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+<?php } ?>
+<?php if (isset($_GET['error'])) { ?>
+    <!-- NEW: error messages were not shown on this page. -->
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <?= htmlspecialchars($_GET['error'], ENT_QUOTES, 'UTF-8'); ?>
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     </div>
 <?php } ?>
@@ -68,6 +96,7 @@ function leave_status_badge($status) {
 <div class="card border-0 shadow-sm mb-4">
     <div class="card-header bg-white"><h5 class="mb-0">Awaiting Your Approval</h5></div>
     <div class="card-body p-0">
+        <div class="table-responsive">
         <table class="table table-bordered table-hover bg-white mb-0">
             <tr>
                 <th>Employee</th>
@@ -80,15 +109,16 @@ function leave_status_badge($status) {
             <tr>
                 <td><?= htmlspecialchars($row['employee_name'], ENT_QUOTES, 'UTF-8'); ?></td>
                 <td><?= htmlspecialchars($row['leave_type'], ENT_QUOTES, 'UTF-8'); ?></td>
-                <td><?= htmlspecialchars($row['start_date'], ENT_QUOTES, 'UTF-8'); ?> &rarr; <?= htmlspecialchars($row['end_date'], ENT_QUOTES, 'UTF-8'); ?></td>
+                <td class="text-nowrap"><?= leave_dates_html($row); ?></td>
                 <td><?= leave_status_badge($row['status']); ?></td>
-                <td>
+                <td class="text-nowrap">
                     <a href="approve.php?id=<?= (int) $row['id']; ?>" class="rm-btn rm-btn-primary rm-btn-sm">Review</a>
                     <a href="view.php?id=<?= (int) $row['id']; ?>" class="rm-btn rm-btn-secondary rm-btn-sm">View</a>
                 </td>
             </tr>
             <?php } ?>
         </table>
+        </div>
     </div>
 </div>
 <?php } ?>
@@ -97,6 +127,7 @@ function leave_status_badge($status) {
 <div class="card border-0 shadow-sm mb-4">
     <div class="card-header bg-white"><h5 class="mb-0">All Leave Requests</h5></div>
     <div class="card-body p-0">
+        <div class="table-responsive">
         <table class="table table-bordered table-hover bg-white mb-0">
             <tr>
                 <th>Employee</th>
@@ -110,13 +141,14 @@ function leave_status_badge($status) {
             <tr>
                 <td><?= htmlspecialchars($row['employee_name'], ENT_QUOTES, 'UTF-8'); ?></td>
                 <td><?= htmlspecialchars($row['leave_type'], ENT_QUOTES, 'UTF-8'); ?></td>
-                <td><?= htmlspecialchars($row['start_date'], ENT_QUOTES, 'UTF-8'); ?> &rarr; <?= htmlspecialchars($row['end_date'], ENT_QUOTES, 'UTF-8'); ?></td>
+                <td class="text-nowrap"><?= leave_dates_html($row); ?></td>
                 <td><?= leave_status_badge($row['status']); ?></td>
                 <td><?= date('d M Y', strtotime($row['created_at'])); ?></td>
                 <td><a href="view.php?id=<?= (int) $row['id']; ?>" class="rm-btn rm-btn-secondary rm-btn-sm">View</a></td>
             </tr>
             <?php } ?>
         </table>
+        </div>
     </div>
 </div>
 <?php } ?>
@@ -145,7 +177,7 @@ function leave_status_badge($status) {
             <?php while ($row = mysqli_fetch_assoc($myLeaves)) { ?>
             <tr>
                 <td><?= htmlspecialchars($row['leave_type'], ENT_QUOTES, 'UTF-8'); ?></td>
-                <td><?= htmlspecialchars($row['start_date'], ENT_QUOTES, 'UTF-8'); ?> &rarr; <?= htmlspecialchars($row['end_date'], ENT_QUOTES, 'UTF-8'); ?></td>
+                <td class="text-nowrap"><?= leave_dates_html($row); ?></td>
                 <td><?= htmlspecialchars($row['reason'] ?? '', ENT_QUOTES, 'UTF-8'); ?></td>
                 <td><?= leave_status_badge($row['status']); ?></td>
                 <td><?= date('d M Y', strtotime($row['created_at'])); ?></td>

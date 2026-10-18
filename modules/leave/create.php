@@ -4,13 +4,46 @@ require '../../includes/notification_helper.php';
 // Any logged-in employee can request their own leave.
 
 $userId = current_user_id();
+const LEAVE_TYPES = ['Annual', 'Sick', 'Emergency', 'Unpaid', 'Short Leave', 'Other'];
+
+/**
+ * NEW: makes sure this database can store every leave type (including Short Leave with its start and
+ * end time). Adds ONLY what is missing, and keeps every leave type the database already allows.
+ * Done automatically, so the live database does not need to be changed by hand.
+ */
+function leave_ensure_schema(mysqli $conn): void
+{
+    $col = function (string $name) use ($conn): ?array {
+        $s = mysqli_prepare($conn, "SELECT DATA_TYPE, COLUMN_TYPE FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'leave_requests' AND column_name = ?");
+        mysqli_stmt_bind_param($s, 's', $name);
+        mysqli_stmt_execute($s);
+        return mysqli_fetch_assoc(mysqli_stmt_get_result($s)) ?: null;
+    };
+    if (!$col('start_time')) { mysqli_query($conn, 'ALTER TABLE leave_requests ADD COLUMN start_time TIME NULL'); }
+    if (!$col('end_time')) { mysqli_query($conn, 'ALTER TABLE leave_requests ADD COLUMN end_time TIME NULL'); }
+
+    // If leave_type is a fixed list (ENUM), add any missing type, keeping the existing ones.
+    $type = $col('leave_type');
+    if ($type && strtolower($type['DATA_TYPE']) === 'enum') {
+        preg_match_all("/'((?:[^'\\\\]|\\\\.|'')*)'/", $type['COLUMN_TYPE'], $m);
+        $existing = array_map(function ($v) { return str_replace("''", "'", $v); }, $m[1]);
+        $missing = array_diff(LEAVE_TYPES, $existing);
+        if ($missing) {
+            $all = array_merge($existing, array_values($missing));
+            $list = implode(',', array_map(function ($v) use ($conn) { return "'" . mysqli_real_escape_string($conn, $v) . "'"; }, $all));
+            mysqli_query($conn, "ALTER TABLE leave_requests MODIFY leave_type ENUM($list) NOT NULL");
+        }
+    }
+}
 
 if (isset($_POST['save'])) {
     $leaveType = $_POST['leave_type'] ?? '';
     $startDate = $_POST['start_date'] ?? '';
     $endDate = $_POST['end_date'] ?? '';
-    $startTime = $_POST['start_time'] ?? '';
-    $endTime = $_POST['end_time'] ?? '';
+    // CHANGED: some browsers send "08:30:00" (with seconds): only hours and minutes are used.
+    $startTime = substr(trim($_POST['start_time'] ?? ''), 0, 5);
+    $endTime = substr(trim($_POST['end_time'] ?? ''), 0, 5);
     $reason = trim($_POST['reason'] ?? '');
     $isShortLeave = $leaveType === 'Short Leave';
 
@@ -24,7 +57,7 @@ if (isset($_POST['save'])) {
     $validStartTime = $isShortLeave ? DateTime::createFromFormat('H:i', $startTime) : true;
     $validEndTime = $isShortLeave ? DateTime::createFromFormat('H:i', $endTime) : true;
 
-    if (!in_array($leaveType, ['Annual', 'Sick', 'Emergency', 'Unpaid', 'Short Leave', 'Other'], true)
+    if (!in_array($leaveType, LEAVE_TYPES, true)
         || !$validStart || $validStart->format('Y-m-d') !== $startDate
         || !$validEnd || $validEnd->format('Y-m-d') !== $endDate
         || $startDate > $endDate) {
@@ -35,14 +68,20 @@ if (isset($_POST['save'])) {
         $startTimeToStore = $isShortLeave ? $startTime : null;
         $endTimeToStore = $isShortLeave ? $endTime : null;
 
-        $statement = mysqli_prepare($conn, "INSERT INTO leave_requests (user_id, leave_type, start_date, end_date, start_time, end_time, reason) VALUES (?, ?, ?, ?, ?, ?, ?)");
-        mysqli_stmt_bind_param($statement, 'issssss', $userId, $leaveType, $startDate, $endDate, $startTimeToStore, $endTimeToStore, $reason);
-
-        if (mysqli_stmt_execute($statement)) {
-            header('Location: index.php?success=Leave request submitted successfully.');
+        // CHANGED: protected. A database problem shows a message (with the reason for an Admin)
+        // instead of a crashed page; the database is completed first if anything is missing.
+        try {
+            leave_ensure_schema($conn);
+            $statement = mysqli_prepare($conn, "INSERT INTO leave_requests (user_id, leave_type, start_date, end_date, start_time, end_time, reason) VALUES (?, ?, ?, ?, ?, ?, ?)");
+            mysqli_stmt_bind_param($statement, 'issssss', $userId, $leaveType, $startDate, $endDate, $startTimeToStore, $endTimeToStore, $reason);
+            mysqli_stmt_execute($statement);
+            header('Location: index.php?success=' . urlencode('Leave request submitted successfully.'));
             exit;
+        } catch (Throwable $e) {
+            error_log('leave request failed: ' . $e->getMessage());
+            $error = 'Unable to submit the leave request. Nothing was saved. Please try again.';
+            if (current_user_role() === 'Admin') { $error .= ' [Technical detail for Admin: ' . $e->getMessage() . ']'; }
         }
-        $error = 'Unable to submit the leave request. Please try again.';
     }
 }
 
@@ -71,7 +110,7 @@ $modal_subtitle = 'Submit a leave request for your supervisor and HR to review.'
                     <label class="form-label small fw-semibold text-muted">Leave Type</label>
                     <select name="leave_type" id="leaveTypeSelect" class="form-select rm-input" required>
                         <option value="">Select type</option>
-                        <?php foreach (['Annual', 'Sick', 'Emergency', 'Unpaid', 'Short Leave', 'Other'] as $option) { ?>
+                        <?php foreach (LEAVE_TYPES as $option) { ?>
                             <option value="<?= $option; ?>" <?= ($leaveType ?? '') === $option ? 'selected' : ''; ?>><?= $option; ?></option>
                         <?php } ?>
                     </select>

@@ -17,6 +17,9 @@ function platform_config(): array
     static $cfg = null;
     if ($cfg === null) {
         $file = __DIR__ . '/../config/platform.php';
+        if (function_exists('opcache_invalidate') && is_file($file)) {
+            @opcache_invalidate($file, true);   // the server's code cache must never serve an old copy of the settings
+        }
         $loaded = is_file($file) ? require $file : [];
         if (!is_array($loaded) || empty($loaded['db_name']) || empty($loaded['db_user']) || empty($loaded['key'])) {
             platform_fail('config/platform.php is missing or incomplete. Run tools/install_platform.php once.');

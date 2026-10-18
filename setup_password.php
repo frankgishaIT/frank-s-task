@@ -1,8 +1,8 @@
 <?php
 /**
- * Public page: the owner of a new company sets their own password with the one-time link from the email.
+ * Public page: the owner of a new company chooses their own password with the one-time link from the email.
  */
-require_once __DIR__ . '/includes/platform_web.php';
+require_once __DIR__ . '/includes/public_layout.php';
 require_once __DIR__ . '/includes/signup.php';
 
 platform_session_start('MM_SETUP');
@@ -38,39 +38,41 @@ if ($invite && $_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 }
-?><!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Set your password - MY MOTIVE</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>body{background:#F6F7FB}.card{border:0;border-radius:18px;box-shadow:0 12px 40px rgba(30,35,51,.08)}.brand{color:#2E3FC0;font-weight:800}</style>
-</head>
-<body>
-<div class="container py-5" style="max-width:520px">
-    <div class="text-center mb-4 brand fs-3">MY MOTIVE</div>
-    <div class="card p-4 p-md-5">
-<?php if ($finished) { ?>
-        <h4>Your password is set</h4>
-        <p>You can sign in now. Your company code is <b><?= h($invite['company_code']); ?></b>. Your staff use the same code.</p>
-        <a class="btn btn-primary w-100" href="<?= h(BASE_URL); ?>/login.php">Go to sign in</a>
-<?php } elseif (!$invite) { ?>
-        <h4>This link is not valid</h4>
-        <p class="text-muted">The link was already used, has expired, or is not complete. Please ask for a new one.</p>
-<?php } else { ?>
-        <h4 class="mb-1">Set your password</h4>
-        <p class="text-muted">For <b><?= h($invite['company_name']); ?></b> (<?= h($invite['email']); ?>).</p>
-<?php if ($error !== '') { ?><div class="alert alert-danger"><?= h($error); ?></div><?php } ?>
-        <form method="POST" autocomplete="off">
-            <?= platform_csrf_field(); ?>
-            <input type="hidden" name="token" value="<?= h($token); ?>">
-            <div class="mb-3"><label class="form-label fw-semibold">New password</label><input class="form-control" type="password" name="password" minlength="10" required autofocus><div class="form-text">At least 10 characters, with a letter and a digit.</div></div>
-            <div class="mb-4"><label class="form-label fw-semibold">Repeat the password</label><input class="form-control" type="password" name="password2" minlength="10" required></div>
-            <button class="btn btn-primary w-100 py-2" type="submit">Save my password</button>
-        </form>
-<?php } ?>
+
+mm_public_start('Choose your password', [
+    'width' => 'slim',
+    'shell' => 'narrow',
+    'panel' => [
+        'headline' => 'Welcome aboard.',
+        'lead'     => 'Choose a strong password and your company is ready to use.',
+        'points'   => [['lock', 'Only you know your password: we cannot see it'], ['key', 'You and your staff sign in with your company code'], ['users', 'Add your team once you are in']],
+    ],
+]);
+
+if ($finished) { ?>
+    <div class="mm-center">
+        <div class="mm-bigicon ok"><?= mm_icon('check', 40); ?></div>
+        <h1 class="mm-title">Your password is set</h1>
+        <p class="mm-sub">You can sign in now. Remember your company code: your staff use it too.</p>
+        <div class="mm-summary" style="text-align:left"><div class="row"><span>Company code</span><span style="letter-spacing:.06em;font-size:18px;color:var(--mm-primary-dark)"><?= h($invite['company_code']); ?></span></div></div>
+        <a class="mm-btn" href="<?= h(BASE_URL); ?>/login.php">Go to sign in <?= mm_icon('arrow', 18); ?></a>
     </div>
-</div>
-</body>
-</html>
+<?php } elseif (!$invite) { ?>
+    <div class="mm-center">
+        <div class="mm-bigicon bad"><?= mm_icon('alert', 40); ?></div>
+        <h1 class="mm-title">This link is not valid</h1>
+        <p class="mm-sub">The link was already used, has expired, or was not copied completely. Please ask us to send a new one.</p>
+        <a class="mm-btn mm-ghost mm-sm" href="<?= h(BASE_URL); ?>/forgot_password.php">I forgot my password</a>
+    </div>
+<?php } else { ?>
+    <h1 class="mm-title">Choose your password</h1>
+    <p class="mm-sub">For <b style="color:var(--mm-ink)"><?= h($invite['company_name']); ?></b> (<?= h($invite['email']); ?>).</p>
+<?php if ($error !== '') { ?><div class="mm-alert bad"><?= mm_icon('alert', 18); ?><div><?= h($error); ?></div></div><?php } ?>
+    <form method="POST" autocomplete="off">
+        <?= platform_csrf_field(); ?>
+        <input type="hidden" name="token" value="<?= h($token); ?>">
+        <?= mm_password_fields('Your new password'); ?>
+        <button class="mm-btn" type="submit">Save my password <?= mm_icon('arrow', 18); ?></button>
+    </form>
+<?php }
+mm_public_end($invite && !$finished ? mm_password_script() : '');

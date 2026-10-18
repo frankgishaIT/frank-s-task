@@ -317,6 +317,9 @@ if (!isset($error)) {
                         <i class="bi bi-lock"></i>
                         <input type="password" name="password" placeholder="••••••••" required>
                     </div>
+                    <div style="text-align:right;margin-top:8px">
+                        <a href="forgot_password.php" style="color:#3B4FE0;font-size:13px;font-weight:600;text-decoration:none">Forgot password?</a>
+                    </div>
                 </div>
 
                 <button type="submit" name="login" class="btn-signin">Sign in</button>

@@ -17,6 +17,7 @@
 
 require_once __DIR__ . '/platform.php';
 require_once __DIR__ . '/platform_mail.php';
+require_once __DIR__ . '/payments.php';
 
 class SignupException extends RuntimeException
 {
@@ -296,7 +297,20 @@ function signup_approve(int $id, string $code, string $adminEmail): void
     }
     $req = signup_get($id);
     platform_audit(null, 'admin:' . $adminEmail, 'signup_approved', 'ref=' . $req['reference'] . " code=$code");
-    signup_email_approved($req);
+    [$token, $expires] = payment_issue_token($id);
+    signup_email_approved($req, $token, $expires);
+}
+
+/** Makes a NEW pay link (the old one stops working) and emails it again. For an approved request that has not paid. */
+function signup_resend_pay_link(int $id, string $adminEmail): bool
+{
+    $req = signup_get($id);
+    if (!$req || $req['status'] !== 'approved') {
+        throw new SignupException('Only an approved request that has not paid can get a payment link.');
+    }
+    [$token, $expires] = payment_issue_token($id);
+    platform_audit(null, 'admin:' . $adminEmail, 'pay_link_resent', 'ref=' . $req['reference']);
+    return signup_email_approved($req, $token, $expires);
 }
 
 function signup_reject(int $id, string $reason, string $adminEmail): void
@@ -528,43 +542,27 @@ function signup_send_invite(array $req, array $company): bool
 
 function signup_email_received(array $req): void
 {
-    $body = '<p>Hello ' . h_mail($req['owner_name']) . ',</p>'
-        . '<p>We have received the request to open <b>' . h_mail($req['company_name']) . '</b> on MY MOTIVE.</p>'
-        . '<p>Your reference number is <b>' . h_mail($req['reference']) . '</b>. We will review your request and email you the result.</p>'
-        . '<p>Package: ' . h_mail($req['package_name']) . ' (' . h_mail($req['billing_period']) . '), ' . h_mail(signup_money((int) $req['amount_due'])) . '.</p>';
-    platform_send_email($req['owner_email'], $req['owner_name'], 'We received your request ' . $req['reference'], platform_mail_wrap('Request received', $body));
+    [$subject, $html] = mm_mail_received($req);
+    platform_send_email($req['owner_email'], $req['owner_name'], $subject, $html);
 }
 
-function signup_email_approved(array $req): void
+function signup_email_approved(array $req, string $payToken, string $payExpires): bool
 {
-    $instructions = (string) platform_setting('payment_instructions', 'We will contact you shortly with the payment details.');
-    $body = '<p>Hello ' . h_mail($req['owner_name']) . ',</p>'
-        . '<p>Good news: your request <b>' . h_mail($req['reference']) . '</b> for <b>' . h_mail($req['company_name']) . '</b> is approved.</p>'
-        . '<p>To open your account please pay <b>' . h_mail(signup_money((int) $req['amount_due'])) . '</b> (' . h_mail($req['package_name']) . ', ' . h_mail($req['billing_period']) . ').</p>'
-        . '<p>' . nl2br(h_mail($instructions)) . '</p>'
-        . '<p>Please quote the reference <b>' . h_mail($req['reference']) . '</b> with your payment. Your account is created as soon as we confirm it.</p>';
-    platform_send_email($req['owner_email'], $req['owner_name'], 'Your request ' . $req['reference'] . ' is approved', platform_mail_wrap('Request approved', $body));
+    $req = signup_get((int) $req['id']) ?? $req;   // the company code is fixed now
+    [$subject, $html] = mm_mail_approved($req, payment_pay_url($payToken), date('j F Y', strtotime($payExpires)));
+    return platform_send_email($req['owner_email'], $req['owner_name'], $subject, $html);
 }
 
 function signup_email_rejected(array $req): void
 {
-    $body = '<p>Hello ' . h_mail($req['owner_name']) . ',</p>'
-        . '<p>We are sorry: we could not approve your request <b>' . h_mail($req['reference']) . '</b> for ' . h_mail($req['company_name']) . '.</p>'
-        . '<p><b>Reason:</b> ' . h_mail($req['reject_reason']) . '</p>'
-        . '<p>You are welcome to apply again after fixing this.</p>';
-    platform_send_email($req['owner_email'], $req['owner_name'], 'About your request ' . $req['reference'], platform_mail_wrap('Request not approved', $body));
+    [$subject, $html] = mm_mail_rejected($req);
+    platform_send_email($req['owner_email'], $req['owner_name'], $subject, $html);
 }
 
 function signup_email_invite(array $req, array $company, string $link): bool
 {
-    $body = '<p>Hello ' . h_mail($req['owner_name']) . ',</p>'
-        . '<p>Your payment is confirmed and <b>' . h_mail($company['name']) . '</b> is ready on MY MOTIVE.</p>'
-        . '<p>Your <b>company code</b> is <b style="font-size:18px">' . h_mail($company['company_code']) . '</b>. You and your staff type it on the sign-in page.</p>'
-        . '<p>Set your own password with this one-time link (valid for 7 days):</p>'
-        . '<p><a href="' . h_mail($link) . '" style="background:#3B4FE0;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">Set my password</a></p>'
-        . '<p style="font-size:12px;color:#8A90A3">If the button does not work, copy this address into your browser:<br>' . h_mail($link) . '</p>'
-        . '<p>Sign in at: ' . h_mail(platform_public_url()) . '/login.php</p>';
-    return platform_send_email($req['owner_email'], $req['owner_name'], 'Your MY MOTIVE account is ready', platform_mail_wrap('Welcome to MY MOTIVE', $body));
+    [$subject, $html] = mm_mail_welcome($req, $company, $link);
+    return platform_send_email($req['owner_email'], $req['owner_name'], $subject, $html);
 }
 
 // ---------------------------------------------------------------- companies and the worker, as the admin panel sees them
@@ -613,4 +611,39 @@ function signup_worker_age(): ?int
 {
     $file = signup_worker_heartbeat_file();
     return is_file($file) ? max(0, time() - (int) filemtime($file)) : null;
+}
+
+
+// ---------------------------------------------------------------- what each plan includes, for the sign-up page
+
+/**
+ * @return array<int,array{package:array, items:string[], base:?string}>
+ *   items = the feature names to show; base = the name of the cheaper plan when this one "includes everything in" it
+ */
+function signup_plan_cards(): array
+{
+    $labels = [];
+    if (is_file(__DIR__ . '/features.php')) {
+        require_once __DIR__ . '/features.php';
+        $labels = MM_FEATURE_LABELS;
+    }
+    $cards = [];
+    $prevFeatures = [];
+    $prevName = null;
+    foreach (signup_packages() as $p) {
+        $features = json_decode((string) ($p['features'] ?? ''), true);
+        $features = is_array($features) ? $features : [];
+        $label = static fn(string $k): string => $labels[$k] ?? ucfirst(str_replace('_', ' ', $k));
+        if ($prevFeatures && !array_diff($prevFeatures, $features)) {
+            $items = array_map($label, array_values(array_diff($features, $prevFeatures)));
+            $base = $prevName;
+        } else {
+            $items = array_map($label, $features);
+            $base = null;
+        }
+        $cards[] = ['package' => $p, 'items' => $items, 'base' => $base];
+        $prevFeatures = $features;
+        $prevName = $p['name'];
+    }
+    return $cards;
 }

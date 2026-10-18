@@ -35,6 +35,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 signup_retry($id, $admin['email']);
                 platform_flash('Queued again.');
                 break;
+            case 'resend_pay_link':
+                platform_flash(signup_resend_pay_link($id, $admin['email']) ? 'A new payment link was emailed. The old link no longer works.' : 'The email could not be sent. Check the Emails page.', 'warning');
+                break;
             case 'resend_invite':
                 $company = $req['company_id'] ? platform_company_by_id((int) $req['company_id']) : null;
                 if (!$company || $req['status'] !== 'active') {
@@ -91,7 +94,19 @@ platform_page_start('Request ' . $req['reference'], $admin, 'requests');
     </form>
 <?php } elseif ($req['status'] === 'approved') { ?>
     <h5>Waiting for payment</h5>
-    <p class="text-muted">When the money has arrived, record it. The company is created right after.</p>
+    <div class="alert alert-info py-2 small mb-3">The company got a secure <b>Pay</b> link by email (valid until <?= h($req['pay_token_expires'] ?? '-'); ?>). When it pays with Mobile Money, the company is created <b>automatically</b>: you do nothing.</div>
+    <form method="POST" class="mb-3"><?= platform_csrf_field(); ?><input type="hidden" name="action" value="resend_pay_link"><button class="btn btn-sm btn-outline-primary" type="submit">Send the payment link again</button></form>
+<?php $attempts = payment_attempts_for((int) $req['id']); if ($attempts) { ?>
+    <h6 class="mt-2">Payment attempts</h6>
+    <table class="table table-sm small"><thead><tr><th>When</th><th>Phone</th><th>Amount</th><th>Result</th></tr></thead><tbody>
+<?php foreach ($attempts as $a) { $badge = $a['status'] === 'success' ? 'success' : (in_array($a['status'], ['failed', 'expired'], true) ? 'danger' : 'warning'); ?>
+    <tr><td><?= h($a['created_at']); ?></td><td>+<?= h(substr($a['msisdn'], 0, 6)); ?>***<?= h(substr($a['msisdn'], -3)); ?></td><td><?= h(signup_money((int) $a['amount'])); ?></td><td><span class="badge bg-<?= $badge; ?>"><?= h($a['status']); ?></span><?= $a['failure_reason'] ? ' <span class="text-muted">' . h($a['failure_reason']) . '</span>' : ''; ?></td></tr>
+<?php } ?>
+    </tbody></table>
+<?php } ?>
+    <hr>
+    <h6>The company paid another way (cash, bank)?</h6>
+    <p class="text-muted small">Record it here. The company is created right after.</p>
     <form method="POST"><?= platform_csrf_field(); ?><input type="hidden" name="action" value="payment">
         <label class="form-label">How did they pay?</label>
         <select class="form-select mb-2" name="method" required><?php foreach (SIGNUP_PAYMENT_METHODS as $m) { echo '<option>' . h($m) . '</option>'; } ?></select>

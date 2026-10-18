@@ -27,6 +27,17 @@ try {
     while ($row = mysqli_fetch_row($res)) {
         $ids[] = (int) $row[0];
     }
+    // payments still waiting for the phone: ask XentriPay, so no payment is lost if the customer closed the page
+    foreach (payment_reconcile() as $line) {
+        echo date('Y-m-d H:i:s') . ' payment ' . $line . "\n";
+    }
+
+    // a payment confirmed just now may have queued a company
+    $ids = [];
+    $res = mysqli_query($db, "SELECT id FROM signup_requests WHERE status = 'activating' ORDER BY id LIMIT 20");
+    while ($row = mysqli_fetch_row($res)) {
+        $ids[] = (int) $row[0];
+    }
     foreach ($ids as $id) {
         echo date('Y-m-d H:i:s') . ' ' . signup_activate_one($id) . "\n";
     }

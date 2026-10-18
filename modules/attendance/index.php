@@ -168,10 +168,10 @@ function workflow_badge($status) {
                         <td><?= workflow_badge($record['workflow_status']); ?></td>
                         <?php if ($isManager) { ?>
                         <td class="text-nowrap">
-                            <a href="edit.php?id=<?= (int) $record['id']; ?>" class="rm-btn rm-btn-warning btn-sm">Edit</a>
+                            <a href="edit.php?id=<?= (int) $record['id']; ?>" class="rm-btn rm-btn-warning rm-btn-sm">Edit</a>
                             <form method="POST" action="delete.php" class="d-inline" onsubmit="return confirm('Delete this attendance record?')">
                                 <input type="hidden" name="id" value="<?= (int) $record['id']; ?>">
-                                <button type="submit" class="rm-btn rm-btn-danger btn-sm">Delete</button>
+                                <button type="submit" class="rm-btn rm-btn-danger rm-btn-sm">Delete</button>
                             </form>
                         </td>
                         <?php } ?>

@@ -146,6 +146,7 @@ function platform_page_start(string $title, ?array $admin = null, string $active
         'dashboard' => ['index.php', 'Dashboard'],
         'requests'  => ['requests.php', 'Sign-up requests'],
         'companies' => ['companies.php', 'Companies'],
+        'emails'    => ['emails.php', 'Emails'],
         'password'  => ['password.php', 'My password'],
     ];
     echo '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">'

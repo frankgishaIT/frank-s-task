@@ -32,7 +32,9 @@ $scopeAllowed = [
     'departments' => $isAdminRole,   // Departments page: Admin only
     'employees'   => $isAdminRole,   // Employees page: Admin only
 ];
-if ($q === '' || mb_strlen($q) > 100 || !in_array($scope, $exactScopes, true) || (isset($scopeAllowed[$scope]) && !$scopeAllowed[$scope])) {
+// PACKAGES: a company only searches the parts of the system its package includes.
+$scopeFeature = ['employees' => 'employees', 'products' => 'products', 'customers' => 'customers', 'departments' => 'employees', 'attendance' => 'attendance', 'leave' => 'leave', 'projects' => 'targets', 'tasks' => 'tasks', 'transactions' => 'transactions', 'sales' => 'sales', 'notifications' => 'notifications', 'categories' => 'transactions'];
+if ($q === '' || mb_strlen($q) > 100 || !in_array($scope, $exactScopes, true) || (isset($scopeAllowed[$scope]) && !$scopeAllowed[$scope]) || !mm_has_feature($scopeFeature[$scope] ?? '')) {
     echo json_encode(['empty' => true, 'html' => '']);
     exit;
 }

@@ -50,5 +50,20 @@ if (defined('RM_OS_ALLOW_GUEST')) {
 if ($MM_COMPANY) {
     $conn = tenant_connect($MM_COMPANY);
     unset($MM_COMPANY['db_pass_enc']);   // no page needs the encrypted password, so it is not kept in memory
+
+    // The package: which parts of the system this company has paid for.
+    if (!defined('RM_OS_ALLOW_GUEST')) {
+        require_once __DIR__ . '/features.php';
+        $MM_PACKAGE = platform_package_for_company((int) $MM_COMPANY['id']);
+        $MM_FEATURES = $MM_PACKAGE['features'] ?? [];
+        $mmNeeded = mm_feature_for_script($_SERVER['SCRIPT_NAME'] ?? '');
+        if ($mmNeeded !== null && $mmNeeded !== '*' && !in_array($mmNeeded, $MM_FEATURES, true)) {
+            mm_package_denied($mmNeeded);
+        }
+        unset($mmNeeded);
+        if (!in_array('funds', $MM_FEATURES, true)) {
+            ob_start('mm_neutral_fund_words');   // wording only: "RM Capital Fund" becomes "Capital Fund" for companies without RM Funds
+        }
+    }
 }
 unset($found);

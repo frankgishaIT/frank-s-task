@@ -10,7 +10,7 @@ include '../../includes/header.php';
 include '../../includes/sidebar.php';
 
 const PER_PAGE = 10;
-$canSendSms = in_array(current_user_role(), ['Admin', 'Manager'], true); // NEW: same roles as the Send SMS page
+$canSendSms = in_array(current_user_role(), ['Admin', 'Manager'], true) && mm_has_feature('sms'); // PACKAGES // NEW: same roles as the Send SMS page
 
 $currentPage = get_current_page();
 $totalRows = mysqli_fetch_assoc(mysqli_query($conn, "SELECT COUNT(*) AS c FROM customers WHERE is_active = 1"))['c'];

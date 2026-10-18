@@ -148,7 +148,7 @@ if (isset($_POST['save'])) {
 
 // Shown on the form so the admin can see if the purchase will be blocked.
 $capitalFund = fund_by_code($conn, 'CAPITAL');
-$capitalAvailable = $capitalFund ? fund_available($conn, (int) $capitalFund['id']) : null;
+$capitalAvailable = ($capitalFund && mm_has_feature('funds')) ? fund_available($conn, (int) $capitalFund['id']) : null; // PACKAGES
 
 include '../../includes/header.php';
 include '../../includes/sidebar.php';

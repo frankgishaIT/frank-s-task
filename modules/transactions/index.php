@@ -144,7 +144,7 @@ $statusBadge = [
         <?php if (in_array(current_user_role(), ['Admin', 'Manager'], true)) { ?>
             <a href="transactions_reports.php" class="btn btn-outline-primary">Reports</a>
         <?php } ?>
-        <?php if ($isAdmin || $canSeeFundReports) { ?>
+        <?php if (($isAdmin || $canSeeFundReports) && mm_has_feature('funds')) { ?>
         <div class="dropdown">
             <button class="btn btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">Funds</button>
             <ul class="dropdown-menu dropdown-menu-end">
@@ -164,6 +164,7 @@ $statusBadge = [
     </div>
 </div>
 
+<?php if (mm_has_feature('funds')) { // PACKAGES: RM Funds screens ?>
 <!-- RM FUND CARDS -->
 <?php if ($operatingCard) { $fc = $operatingCard; ?>
 <div class="card rm-fund-card rm-fund-main mb-3" style="--fund-color: <?= $fc['color']; ?>;">
@@ -227,6 +228,7 @@ $statusBadge = [
     <?php } ?>
 </div>
 
+<?php } ?>
 <div class="row mb-4">
     <div class="col-md-4">
         <div class="card border-success">

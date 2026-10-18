@@ -255,8 +255,10 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
                         <option value="Opening balance" <?= ($_POST['funding_type'] ?? '') === 'Opening balance' ? 'selected' : ''; ?>>Already owned before MY MOTIVE (opening balance, no payment)</option>
                     </select>
                     <div class="form-text" id="fundingInfo">
+                        <?php if (mm_has_feature('funds')) { // PACKAGES ?>
                         RM Capital Fund money available now: <strong>RWF <?= number_format($capitalCheck['available'], 2); ?></strong>
                         (stock and asset values are not money and are not counted).
+                        <?php } ?>
                         <?php if (!$reconciled) { ?><span class="text-danger">Purchases are blocked until the opening reconciliation is posted.</span><?php } ?>
                     </div>
                     <input type="text" name="funding_note" id="fundingNote" class="form-control rm-input mt-2" maxlength="255"

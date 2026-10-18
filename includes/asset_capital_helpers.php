@@ -104,6 +104,10 @@ function asset_capital_installed(mysqli $conn): bool
 /** True once the opening reconciliation has been posted (the purchase rule is then active). */
 function asset_capital_reconciled(mysqli $conn): bool
 {
+    // PACKAGES: the opening reconciliation is an RM Funds step. A company without that feature has nothing to reconcile.
+    if (function_exists('mm_has_feature') && !mm_has_feature('funds')) {
+        return true;
+    }
     try {
         return (bool) mysqli_fetch_row(mysqli_query($conn, 'SELECT COUNT(*) FROM capital_reconciliations'))[0];
     } catch (Throwable $e) {

@@ -30,6 +30,7 @@ try {
         MY MOTIVE
     </h3>
 
+    <?php ob_start(); // PACKAGES: menu entries the package does not include are removed below ?>
     <a href="../dashboard/index.php" class="<?= navActive('dashboard', $currentPath) ?>">
         <i class="bi bi-house-door-fill"></i> Dashboard
     </a>
@@ -117,6 +118,8 @@ try {
     <a href="../notifications/index.php" class="<?= navActive('notifications', $currentPath) ?>">
         <i class="bi bi-bell-fill"></i> Notifications
     </a>
+
+    <?php echo mm_filter_menu(ob_get_clean()); ?>
 
     <div style="border-top:1px solid rgba(255,255,255,.08); margin:14px 10px 10px; padding-top:14px;">
 

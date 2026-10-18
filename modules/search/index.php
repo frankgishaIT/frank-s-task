@@ -30,35 +30,35 @@ $categories = [];
 if ($q !== '') {
     $like = '%' . $q . '%';
 
-    if ($scope === 'all' || $scope === 'employees') {
+    if (($scope === 'all' || $scope === 'employees') && mm_has_feature('employees')) {
         $employeeStatement = mysqli_prepare($conn, "SELECT id, names, email, role FROM users WHERE (names LIKE ? OR email LIKE ?) AND is_active = 1 LIMIT $limit");
         mysqli_stmt_bind_param($employeeStatement, 'ss', $like, $like);
         mysqli_stmt_execute($employeeStatement);
         $employees = mysqli_fetch_all(mysqli_stmt_get_result($employeeStatement), MYSQLI_ASSOC);
     }
 
-    if ($scope === 'all' || $scope === 'products') {
+    if (($scope === 'all' || $scope === 'products') && mm_has_feature('products')) {
         $productStatement = mysqli_prepare($conn, "SELECT id, product_name, product_code, item_type FROM products WHERE (product_name LIKE ? OR product_code LIKE ?) AND is_active = 1 LIMIT $limit");
         mysqli_stmt_bind_param($productStatement, 'ss', $like, $like);
         mysqli_stmt_execute($productStatement);
         $products = mysqli_fetch_all(mysqli_stmt_get_result($productStatement), MYSQLI_ASSOC);
     }
 
-    if ($scope === 'all' || $scope === 'customers') {
+    if (($scope === 'all' || $scope === 'customers') && mm_has_feature('customers')) {
         $customerStatement = mysqli_prepare($conn, "SELECT id, name, phone, email FROM customers WHERE (name LIKE ? OR phone LIKE ?) LIMIT $limit");
         mysqli_stmt_bind_param($customerStatement, 'ss', $like, $like);
         mysqli_stmt_execute($customerStatement);
         $customers = mysqli_fetch_all(mysqli_stmt_get_result($customerStatement), MYSQLI_ASSOC);
     }
 
-    if ($scope === 'all' || $scope === 'departments') {
+    if (($scope === 'all' || $scope === 'departments') && mm_has_feature('employees')) {
         $departmentStatement = mysqli_prepare($conn, "SELECT id, name, description, status FROM departments WHERE name LIKE ? OR description LIKE ? LIMIT $limit");
         mysqli_stmt_bind_param($departmentStatement, 'ss', $like, $like);
         mysqli_stmt_execute($departmentStatement);
         $departments = mysqli_fetch_all(mysqli_stmt_get_result($departmentStatement), MYSQLI_ASSOC);
     }
 
-    if ($scope === 'all' || $scope === 'attendance') {
+    if (($scope === 'all' || $scope === 'attendance') && mm_has_feature('attendance')) {
         $attendanceStatement = mysqli_prepare($conn, "SELECT attendance.id, attendance.attendance_date, attendance.status, users.names AS user_name
             FROM attendance LEFT JOIN users ON attendance.user_id = users.id
             WHERE users.names LIKE ? OR attendance.status LIKE ? LIMIT $limit");
@@ -67,7 +67,7 @@ if ($q !== '') {
         $attendance = mysqli_fetch_all(mysqli_stmt_get_result($attendanceStatement), MYSQLI_ASSOC);
     }
 
-    if ($scope === 'all' || $scope === 'leave') {
+    if (($scope === 'all' || $scope === 'leave') && mm_has_feature('leave')) {
         $leaveStatement = mysqli_prepare($conn, "SELECT leave_requests.id, leave_requests.leave_type, leave_requests.start_date, leave_requests.end_date, leave_requests.status, users.names AS user_name
             FROM leave_requests LEFT JOIN users ON leave_requests.user_id = users.id
             WHERE users.names LIKE ? OR leave_requests.leave_type LIKE ? OR leave_requests.reason LIKE ? OR leave_requests.status LIKE ? LIMIT $limit");
@@ -76,14 +76,14 @@ if ($q !== '') {
         $leaveRequests = mysqli_fetch_all(mysqli_stmt_get_result($leaveStatement), MYSQLI_ASSOC);
     }
 
-    if ($scope === 'all' || $scope === 'projects') {
+    if (($scope === 'all' || $scope === 'projects') && mm_has_feature('targets')) {
         $projectStatement = mysqli_prepare($conn, "SELECT id, project_name, description, status FROM projects WHERE project_name LIKE ? OR description LIKE ? LIMIT $limit");
         mysqli_stmt_bind_param($projectStatement, 'ss', $like, $like);
         mysqli_stmt_execute($projectStatement);
         $projects = mysqli_fetch_all(mysqli_stmt_get_result($projectStatement), MYSQLI_ASSOC);
     }
 
-    if ($scope === 'all' || $scope === 'tasks') {
+    if (($scope === 'all' || $scope === 'tasks') && mm_has_feature('tasks')) {
         $taskStatement = mysqli_prepare($conn, "SELECT tasks.id, tasks.title, tasks.status, tasks.priority, projects.project_name
             FROM tasks LEFT JOIN projects ON tasks.project_id = projects.id
             WHERE tasks.title LIKE ? OR tasks.description LIKE ? OR tasks.status LIKE ? LIMIT $limit");
@@ -92,14 +92,14 @@ if ($q !== '') {
         $tasks = mysqli_fetch_all(mysqli_stmt_get_result($taskStatement), MYSQLI_ASSOC);
     }
 
-    if ($scope === 'all' || $scope === 'transactions') {
+    if (($scope === 'all' || $scope === 'transactions') && mm_has_feature('transactions')) {
         $transactionStatement = mysqli_prepare($conn, "SELECT id, category, amount, transaction_type, description, transaction_date FROM transactions WHERE category LIKE ? OR description LIKE ? OR transaction_type LIKE ? LIMIT $limit");
         mysqli_stmt_bind_param($transactionStatement, 'sss', $like, $like, $like);
         mysqli_stmt_execute($transactionStatement);
         $transactions = mysqli_fetch_all(mysqli_stmt_get_result($transactionStatement), MYSQLI_ASSOC);
     }
 
-    if ($scope === 'all' || $scope === 'sales') {
+    if (($scope === 'all' || $scope === 'sales') && mm_has_feature('sales')) {
         $saleStatement = mysqli_prepare($conn, "SELECT sales.id, sales.sale_date, sales.total_amount, sales.status, customers.name AS customer_name
             FROM sales LEFT JOIN customers ON sales.customer_id = customers.id
             WHERE customers.name LIKE ? OR sales.payment_method LIKE ? OR sales.status LIKE ?
@@ -109,7 +109,7 @@ if ($q !== '') {
         $sales = mysqli_fetch_all(mysqli_stmt_get_result($saleStatement), MYSQLI_ASSOC);
     }
 
-    if ($scope === 'all' || $scope === 'notifications') {
+    if (($scope === 'all' || $scope === 'notifications') && mm_has_feature('notifications')) {
         $notificationStatement = mysqli_prepare($conn, "SELECT notifications.id, notifications.title, notifications.message, notifications.is_read, notifications.created_at, users.names
             FROM notifications LEFT JOIN users ON notifications.user_id = users.id
             WHERE users.names LIKE ? OR notifications.title LIKE ? OR notifications.message LIKE ?
@@ -119,7 +119,7 @@ if ($q !== '') {
         $notifications = mysqli_fetch_all(mysqli_stmt_get_result($notificationStatement), MYSQLI_ASSOC);
     }
 
-    if ($scope === 'all' || $scope === 'categories') {
+    if (($scope === 'all' || $scope === 'categories') && mm_has_feature('transactions')) {
         $categoryStatement = mysqli_prepare($conn, "SELECT id, category_name, description, is_active, created_at FROM categories WHERE category_name LIKE ? OR description LIKE ? ORDER BY category_name LIMIT $limit");
         mysqli_stmt_bind_param($categoryStatement, 'ss', $like, $like);
         mysqli_stmt_execute($categoryStatement);

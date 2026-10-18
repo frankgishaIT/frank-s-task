@@ -4,6 +4,7 @@
  *
  *   php tools/companies.php list
  *   php tools/companies.php create --code=ACME --name="Acme Ltd" --owner-name="Jane Doe" --owner-email=jane@acme.test [--owner-phone=0788000000]
+ *   php tools/companies.php package  --code=ACME --package=hasty      (dream, hasty or owner)
  *   php tools/companies.php suspend  --code=ACME
  *   php tools/companies.php activate --code=ACME
  */
@@ -14,6 +15,7 @@ if (PHP_SAPI !== 'cli') {
 }
 
 require_once __DIR__ . '/../includes/provisioning.php';
+require_once __DIR__ . '/../includes/features.php';
 
 $command = $argv[1] ?? '';
 $opt = [];
@@ -27,7 +29,8 @@ function usage(): void
 {
     echo "Usage:\n"
         . "  php tools/companies.php list\n"
-        . "  php tools/companies.php create --code=ACME --name=\"Acme Ltd\" --owner-name=\"Jane Doe\" --owner-email=jane@acme.test [--owner-phone=0788000000]\n"
+        . "  php tools/companies.php create --code=ACME --name=\"Acme Ltd\" --owner-name=\"Jane Doe\" --owner-email=jane@acme.test [--package=dream|hasty] [--owner-phone=0788000000]\n"
+        . "  php tools/companies.php package  --code=ACME --package=hasty\n"
         . "  php tools/companies.php suspend  --code=ACME\n"
         . "  php tools/companies.php activate --code=ACME\n";
 }
@@ -36,9 +39,10 @@ try {
     switch ($command) {
         case 'list':
             $res = mysqli_query(platform_conn(), 'SELECT id, company_code, name, status, db_name, owner_email, created_at FROM companies ORDER BY id');
-            printf("%-4s %-14s %-28s %-10s %-22s %s\n", 'ID', 'CODE', 'NAME', 'STATUS', 'DATABASE', 'OWNER');
+            printf("%-4s %-14s %-26s %-10s %-9s %-20s %s\n", 'ID', 'CODE', 'NAME', 'STATUS', 'PACKAGE', 'DATABASE', 'OWNER');
             while ($r = mysqli_fetch_assoc($res)) {
-                printf("%-4d %-14s %-28s %-10s %-22s %s\n", $r['id'], $r['company_code'], mb_substr($r['name'], 0, 28), $r['status'], $r['db_name'], $r['owner_email']);
+                $pkg = platform_package_for_company((int) $r['id']);
+                printf("%-4d %-14s %-26s %-10s %-9s %-20s %s\n", $r['id'], $r['company_code'], mb_substr($r['name'], 0, 26), $r['status'], $pkg['code'] ?? 'none', $r['db_name'], $r['owner_email']);
             }
             break;
 
@@ -50,12 +54,30 @@ try {
                     exit(2);
                 }
             }
+            $package = strtolower($opt['package'] ?? 'dream');
+            if (!in_array($package, ['dream', 'hasty', 'owner'], true)) {
+                fwrite(STDERR, "The package must be dream, hasty or owner.\n");
+                exit(2);
+            }
             $r = provision_company($opt['code'], $opt['name'], $opt['owner-name'], $opt['owner-email'], $opt['owner-phone'] ?? null);
+            company_set_package((int) $r['company_id'], $package, mm_cli_actor());
             echo "\nCompany created.\n";
             echo "  Company code:       {$r['code']}\n";
             echo "  Database:           {$r['db_name']}\n";
+            echo "  Package:            $package\n";
             echo "  Owner login email:  {$r['owner_email']}\n";
             echo "  Temporary password: {$r['owner_password']}     (shown ONCE: give it to the owner and ask them to change it)\n";
+            break;
+
+        case 'package':
+            $pk = strtolower($opt['package'] ?? '');
+            $co = platform_company_by_code($opt['code'] ?? '');
+            if (!$co || !in_array($pk, ['dream', 'hasty', 'owner'], true)) {
+                fwrite(STDERR, "Give an existing --code and --package=dream|hasty|owner.\n");
+                exit(2);
+            }
+            company_set_package((int) $co['id'], $pk, mm_cli_actor());
+            echo "Company {$co['company_code']} is now on the $pk package.\n";
             break;
 
         case 'suspend':

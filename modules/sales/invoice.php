@@ -116,9 +116,10 @@ ob_start();
   table.items thead td { font-size:9px; text-transform:uppercase; color:#000000; border-bottom:1px solid #E4E8F2; padding:4px 0; font-weight:800; }
   table.items tbody td { padding:5px 0; border-bottom:1px solid #E4E8F2; }
   table.items td.amount { text-align:right; }
-  table.totals { width:45%; margin-left:55%; font-size:10px; page-break-inside: avoid; }
-  table.totals td { padding:3px 0; }
-  table.totals td.val { text-align:right; }
+  /* CHANGED: wider, and labels / amounts never break over two lines */
+  table.totals { width:55%; margin-left:45%; font-size:10px; page-break-inside: avoid; }
+  table.totals td { padding:3px 0; white-space:nowrap; }
+  table.totals td.val { text-align:right; white-space:nowrap; }
   table.totals tr.grand td { border-top:2px solid #1E2333; font-size:13px; font-weight:800; color:#1E2FE0; padding-top:6px; }
   table.totals tr.due td { font-size:12px; font-weight:800; color:#E24B4A; padding-top:4px; }
   .footnote { margin-top:12px; font-size:9px; color:#1E2333; }
@@ -137,7 +138,7 @@ ob_start();
   .pm-detail, .sig-detail { margin-left:14px; color:#1E2333; }
   .pm-detail .pm-label, .sig-detail .pm-label { color:#1E2333; }
   .sig-sub { color:#1E2333; font-weight:600; margin-bottom:6px; }
-  .deadline { margin-bottom:14px; padding:7px 10px; border-radius:6px; font-size:10px; }
+  .deadline { margin-bottom:14px; padding:7px 10px; border-radius:6px; font-size:9.5px; white-space:nowrap; }
   .terms { margin-top:14px; padding:9px 12px; border:1px solid #E4E8F2; border-radius:6px; font-size:8.5px; page-break-inside: avoid; }
   .terms .t-heading { font-size:9.5px; font-weight:800; margin-bottom:5px; }
   .terms ol { margin:0; padding-left:16px; }
@@ -167,11 +168,11 @@ ob_start();
 <!-- NEW: payment deadline (72 hours after the invoice was created) -->
 <div class="deadline" style="background:<?= $isOverdue ? '#FCE9E9' : '#FFF8E6'; ?>; border:1px solid <?= $isOverdue ? '#F3C1C1' : '#F5DFA6'; ?>;">
   <strong>Payment due by: <?= date('d M Y, H:i', $deadlineTs); ?></strong>
-  (<?= INVOICE_PAYMENT_HOURS; ?> hours after this invoice was issued on <?= date('d M Y, H:i', $createdTs); ?>).
+  (<?= INVOICE_PAYMENT_HOURS; ?> hours after issue on <?= date('d M Y, H:i', $createdTs); ?>).
   <?php if ($isOverdue) { ?>
     <strong style="color:#E24B4A;">This invoice is overdue.</strong>
   <?php } else { ?>
-    Pay in full by then to avoid overdue charges.
+    Pay in full to avoid overdue charges.
   <?php } ?>
 </div>
 <?php } ?>

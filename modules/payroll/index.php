@@ -40,7 +40,7 @@ $payrolls = mysqli_query($conn, 'SELECT payroll.*, users.names AS employee_name,
     <td class="text-danger">-<?= number_format((float) $payroll['deductions'], 2); ?></td>
     <td><strong>RWF <?= number_format((float) $payroll['net_salary'], 2); ?></strong></td>
     <td><span class="badge bg-<?= $payroll['status'] === 'Paid' ? 'success' : 'secondary'; ?>"><?= htmlspecialchars($payroll['status'], ENT_QUOTES, 'UTF-8'); ?></span></td>
-    <td class="text-nowrap"><a href="payslip.php?id=<?= (int) $payroll['id']; ?>" target="_blank" class="btn btn-outline-primary btn-sm">Payslip</a> <a href="edit.php?id=<?= (int) $payroll['id']; ?>" class="btn btn-warning btn-sm">Edit</a> <form method="POST" action="delete.php" class="d-inline" onsubmit="return confirm('Delete this payroll record? If it was Paid, the money goes back to the Operating Fund.')"><input type="hidden" name="id" value="<?= (int) $payroll['id']; ?>"><button type="submit" class="btn btn-danger btn-sm">Delete</button></form></td>
+    <td class="text-nowrap"><a href="payslip.php?id=<?= (int) $payroll['id']; ?>" target="_blank" class="btn btn-outline-primary btn-sm">Payslip</a> <a href="edit.php?id=<?= (int) $payroll['id']; ?>" class="rm-btn rm-btn-warning rm-btn-sm">Edit</a> <form method="POST" action="delete.php" class="d-inline" onsubmit="return confirm('Delete this payroll record? If it was Paid, the money goes back to the Operating Fund.')"><input type="hidden" name="id" value="<?= (int) $payroll['id']; ?>"><button type="submit" class="rm-btn rm-btn-danger rm-btn-sm">Delete</button></form></td>
 </tr>
 <?php } ?>
 </table>

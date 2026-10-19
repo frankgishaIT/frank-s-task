@@ -65,7 +65,7 @@ $fundRows = mysqli_fetch_all(mysqli_query($conn, "SELECT id, code, name, allocat
 $fundColor = [
     'FUTURE_PLANS' => '#4f46e5',
     'EMERGENCY'    => '#dc3545',
-    'TEAM_GROWTH'  => '#f59e0b',
+    'TEAM_GROWTH'  => '#7f9eeb',
     'OPERATING'    => '#198754',
     'CAPITAL'      => '#0dcaf0',
 ];
@@ -259,19 +259,19 @@ $statusBadge = [
 <h5 class="mb-3">Profit Overview</h5>
 <div class="row mb-4">
     <div class="col-md-4">
-        <div class="card border-info">
+        <div class="card border-primary">
             <div class="card-body">
                 <small class="text-muted">Product Profit</small>
-                <h4 class="text-info mb-0">RWF <?= number_format($productProfit, 2); ?></h4>
+                <h4 class="text-primary mb-0">RWF <?= number_format($productProfit, 2); ?></h4>
                 <small class="text-muted">Selling Price − Buying Price</small>
             </div>
         </div>
     </div>
     <div class="col-md-4">
-        <div class="card border-warning">
+        <div class="card border-primary">
             <div class="card-body">
                 <small class="text-muted">Service Profit</small>
-                <h4 class="text-warning mb-0">RWF <?= number_format($serviceProfit, 2); ?></h4>
+                <h4 class="text-primary mb-0">RWF <?= number_format($serviceProfit, 2); ?></h4>
                 <small class="text-muted"><?= (int) round(SALES_SERVICE_PROFIT_RATE * 100); ?>% of the service amount (after discount)</small>
             </div>
         </div>

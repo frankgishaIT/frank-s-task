@@ -63,7 +63,7 @@ function sale_status_badge($status) {
 function sale_pending_reason_badges($row) {
     $badges = [];
     if ((float) $row['discount_amount'] > 0) {
-        $badges[] = '<span class="badge bg-info text-dark me-1">Discount</span>';
+        $badges[] = '<span class="badge text-white">Discount</span>';
     }
     if (!empty($row['needs_credit_approval'])) {
         $badges[] = '<span class="badge bg-danger me-1">Credit &lt; 500 pts</span>';

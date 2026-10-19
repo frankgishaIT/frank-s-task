@@ -24,10 +24,10 @@ try {
 <div class="sidebar">
 
     <h3>
-        <img src="<?= BASE_URL ?>/assets/images/logo.jpg"
-             alt="Rise Motive Logo"
+        <img src="<?= htmlspecialchars(company_profile()['logo_url'], ENT_QUOTES, 'UTF-8') ?>"
+             alt="<?= htmlspecialchars(company_profile()['name'], ENT_QUOTES, 'UTF-8') ?> logo"
              style="width:36px; height:36px; object-fit:contain; vertical-align:middle; margin-right:8px; border-radius:8px;">
-        MY MOTIVE
+        <span style="display:inline-block; vertical-align:middle; max-width:150px; font-size:15px; line-height:1.2; white-space:normal;"><?= htmlspecialchars(company_profile()['name'], ENT_QUOTES, 'UTF-8') ?></span>
     </h3>
 
     <?php ob_start(); // PACKAGES: menu entries the package does not include are removed below ?>
@@ -44,6 +44,12 @@ try {
     <?php if (current_user_role() === 'Admin') { ?>
     <a href="../users/index.php" class="<?= navActive('users', $currentPath) ?>">
         <i class="bi bi-people-fill"></i> Employees
+    </a>
+    <?php } ?>
+
+    <?php if (current_user_role() === 'Admin') { ?>
+    <a href="../company/profile.php" class="<?= navActive('company', $currentPath) ?>">
+        <i class="bi bi-sliders"></i> Company profile
     </a>
     <?php } ?>
 

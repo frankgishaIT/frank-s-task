@@ -24,7 +24,7 @@ function pwreset_request(string $companyCode, string $email, string $ip): void
         return;
     }
     try {
-        $tenant = tenant_connect($company);
+        $tenant = tenant_try_connect($company);
         $st = mysqli_prepare($tenant, 'SELECT names FROM users WHERE email = ? AND is_active = 1 LIMIT 1');
         mysqli_stmt_bind_param($st, 's', $email);
         mysqli_stmt_execute($st);
@@ -86,7 +86,7 @@ function pwreset_apply(array $reset, string $newPassword): void
         throw new RuntimeException('This link was already used or has expired.');
     }
     try {
-        $tenant = tenant_connect($company);
+        $tenant = tenant_try_connect($company);
         $hash = password_hash($newPassword, PASSWORD_DEFAULT);
         $st = mysqli_prepare($tenant, 'UPDATE users SET password_hash = ? WHERE email = ? AND is_active = 1 LIMIT 1');
         mysqli_stmt_bind_param($st, 'ss', $hash, $reset['email']);

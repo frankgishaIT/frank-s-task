@@ -82,10 +82,10 @@ $groups = [
     'numbers'   => 'Phone numbers I type',
 ];
 $templates = [
-    'credit' => 'Kuri {name}, ubereyemo RISE MOTIVE {balance}FRW. Ishyura nonaha kuri MTN MoMo Code: ' . SMS_MOMO_CODE
-        . ', wongere Loyalty Points. EBM/Ikibazo: ' . SMS_HELP_PHONE . '. Murakoze!',
-    'thanks' => 'Kuri {name}, murakoze guhitamo RISE MOTIVE! Ubufasha: ' . SMS_HELP_PHONE . '.',
-    'points' => 'Dear {name}, You have {points} Loyalty Points earned from your purchases with us. Use them for eligible discounts. Keep earning with RISE MOTIVE!',
+    'credit' => 'Kuri {name}, ubereyemo ' . sms_company() . ' {balance} FRW.'
+        . (sms_momo_phone() !== '' ? ' Ishyura Ukoresheje Phone: ' . sms_momo_phone() . ',' : '') . ' wongere Loyalty Points. Murakoze!',
+    'thanks' => 'Kuri {name}, murakoze guhitamo ' . sms_company() . '!' . sms_help_tail('Ubufasha'),
+    'points' => 'Dear {name}, You have {points} Loyalty Points earned from your purchases with us. Use them for eligible discounts. Keep earning with ' . sms_company() . '!',
     'custom' => 'Kuri {name}, ',
     'custom_en' => 'Dear {name}, ',
 ];

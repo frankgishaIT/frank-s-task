@@ -13,6 +13,7 @@ if (PHP_SAPI !== 'cli') {
 }
 require_once __DIR__ . '/../includes/provisioning.php';
 require_once __DIR__ . '/../includes/signup.php';
+require_once __DIR__ . '/../includes/daily.php';
 
 try {
     $db = platform_conn();
@@ -40,6 +41,15 @@ try {
     }
     foreach ($ids as $id) {
         echo date('Y-m-d H:i:s') . ' ' . signup_activate_one($id) . "\n";
+    }
+
+    // once a day: renewal reminders, pausing companies that did not renew, and each company's SMS reminders
+    $daily = daily_maybe_run();
+    if ($daily !== null) {
+        echo date('Y-m-d H:i:s') . " daily job:\n";
+        foreach ($daily as $line) {
+            echo '    ' . $line . "\n";
+        }
     }
 } catch (Throwable $e) {
     fwrite(STDERR, date('Y-m-d H:i:s') . ' WORKER ERROR: ' . $e->getMessage() . "\n");

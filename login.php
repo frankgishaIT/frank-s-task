@@ -266,7 +266,7 @@ if (!isset($error)) {
 
         <div class="brand-panel">
             <div class="brand-logo">
-                <img src="assets/images/logo.jpg" alt="Rise Motive Logo" style="width:40px; height:40px; object-fit:contain; border-radius:11px; background:rgba(255,255,255,.16); padding:4px;">
+                <img src="assets/images/logo-badge.png" alt="MY MOTIVE logo" style="width:40px; height:40px; object-fit:contain; border-radius:11px; background:rgba(255,255,255,.16); padding:4px;">
                 <span>MY MOTIVE</span>
             </div>
 
@@ -281,7 +281,7 @@ if (!isset($error)) {
         </div>
 
         <div class="form-panel">
-            <img src="assets/images/logo.jpg" alt="Rise Motive Logo" 
+            <img src="assets/images/logo-badge.png" alt="MY MOTIVE logo" 
             style="width:44px; height:44px; object-fit:contain; border-radius:12px; margin-bottom:20px;">
             <h2>Welcome back</h2>
             <p class="subtitle">Sign in to your account to continue.</p>

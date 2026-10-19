@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../includes/platform_web.php';
+require_once __DIR__ . '/../includes/public_layout.php';
 
 platform_session_start('MM_PLATFORM');
 if (!empty($_SESSION['pa_id']) && platform_admin_by_id((int) $_SESSION['pa_id'])) {
@@ -11,9 +11,11 @@ $error = '';
 if (($_GET['reason'] ?? '') === 'timeout') {
     $error = 'You were signed out because you were inactive. Please sign in again.';
 }
+$emailTyped = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     platform_csrf_check();
     $email = is_string($_POST['email'] ?? null) ? strtolower(trim($_POST['email'])) : '';
+    $emailTyped = $email;
     $password = is_string($_POST['password'] ?? null) ? $_POST['password'] : '';
     $ip = platform_client_ip();
 
@@ -47,16 +49,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Wrong email or password.';
     }
 }
-platform_page_start('Sign in');
+
+mm_public_start('Platform sign in', [
+    'width' => 'slim',
+    'shell' => 'narrow',
+    'panel' => [
+        'headline' => 'The control room.',
+        'lead'     => 'Approve new companies, confirm payments, keep every account healthy, and see the whole platform at a glance.',
+        'points'   => [
+            ['shield', 'Only authorised staff can come in'],
+            ['clock', 'You are signed out after 30 minutes without activity'],
+            ['key', 'Every action you take is recorded'],
+        ],
+        'note'     => 'Not staff? This page is not for you: use the normal sign-in.',
+    ],
+]);
 ?>
-<div class="row justify-content-center"><div class="col-md-5"><div class="card p-4">
-    <h4 class="mb-3">Platform sign in</h4>
-    <?php if ($error !== '') { ?><div class="alert alert-danger"><?= h($error); ?></div><?php } ?>
+    <div class="mm-badge" style="margin-bottom:14px"><?= mm_icon('lock', 14); ?> Staff area</div>
+    <h1 class="mm-title">Platform sign in</h1>
+    <p class="mm-sub">Use your platform admin email and password.</p>
+<?php if ($error !== '') { ?><div class="mm-alert bad"><?= mm_icon('alert', 18); ?><div><?= h($error); ?></div></div><?php } ?>
     <form method="POST" autocomplete="off">
         <?= platform_csrf_field(); ?>
-        <div class="mb-3"><label class="form-label">Email</label><input class="form-control" type="email" name="email" required autofocus></div>
-        <div class="mb-3"><label class="form-label">Password</label><input class="form-control" type="password" name="password" required></div>
-        <button class="btn btn-primary w-100" type="submit">Sign in</button>
+        <div class="mm-field"><label class="mm-label" for="email">Email address</label>
+            <input class="mm-input" type="email" id="email" name="email" value="<?= h($emailTyped); ?>" required<?= $emailTyped === '' ? ' autofocus' : ''; ?> autocomplete="username" placeholder="you@company.com"></div>
+        <div class="mm-field" style="margin-bottom:22px"><label class="mm-label" for="pw">Password</label>
+            <div class="mm-pwwrap"><input class="mm-input" type="password" id="pw" name="password" required<?= $emailTyped !== '' ? ' autofocus' : ''; ?> autocomplete="current-password" placeholder="Your password">
+                <button type="button" class="mm-eye" id="eye" aria-label="Show password"><?= mm_icon('eye', 18); ?></button></div></div>
+        <button class="mm-btn" type="submit"><?= mm_icon('lock', 18); ?> Sign in</button>
     </form>
-</div></div></div>
-<?php platform_page_end();
+<?php
+mm_public_end(<<<'JS'
+(function(){var b=document.getElementById('eye'),i=document.getElementById('pw');if(!b)return;b.addEventListener('click',function(){var s=i.type==='password';i.type=s?'text':'password';b.setAttribute('aria-label',s?'Hide password':'Show password');});})();
+JS);

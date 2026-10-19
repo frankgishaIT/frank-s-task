@@ -15,6 +15,7 @@ if (PHP_SAPI !== 'cli') {
 }
 
 require_once __DIR__ . '/../includes/provisioning.php';
+require_once __DIR__ . '/../includes/subscriptions.php';
 require_once __DIR__ . '/../includes/features.php';
 
 $command = $argv[1] ?? '';
@@ -31,6 +32,8 @@ function usage(): void
         . "  php tools/companies.php list\n"
         . "  php tools/companies.php create --code=ACME --name=\"Acme Ltd\" --owner-name=\"Jane Doe\" --owner-email=jane@acme.test [--package=dream|hasty] [--owner-phone=0788000000]\n"
         . "  php tools/companies.php package  --code=ACME --package=hasty\n"
+        . "  php tools/companies.php renew    --code=ACME --method=\\\"MTN MoMo\\\" --reference=R1 --amount=40000\n"
+        . "  php tools/companies.php setcode  --code=OLD --to=NEWCODE\n"
         . "  php tools/companies.php suspend  --code=ACME\n"
         . "  php tools/companies.php activate --code=ACME\n";
 }
@@ -47,7 +50,7 @@ try {
             break;
 
         case 'create':
-            foreach (['code', 'name', 'owner-name', 'owner-email'] as $need) {
+            foreach (['name', 'owner-name', 'owner-email'] as $need) {
                 if (empty($opt[$need])) {
                     fwrite(STDERR, "Missing --$need\n\n");
                     usage();
@@ -59,7 +62,8 @@ try {
                 fwrite(STDERR, "The package must be dream, hasty or owner.\n");
                 exit(2);
             }
-            $r = provision_company($opt['code'], $opt['name'], $opt['owner-name'], $opt['owner-email'], $opt['owner-phone'] ?? null);
+            $code = !empty($opt['code']) ? $opt['code'] : platform_next_company_code();   // no code given: the next automatic one
+            $r = provision_company($code, $opt['name'], $opt['owner-name'], $opt['owner-email'], $opt['owner-phone'] ?? null);
             company_set_package((int) $r['company_id'], $package, mm_cli_actor());
             echo "\nCompany created.\n";
             echo "  Company code:       {$r['code']}\n";
@@ -78,6 +82,35 @@ try {
             }
             company_set_package((int) $co['id'], $pk, mm_cli_actor());
             echo "Company {$co['company_code']} is now on the $pk package.\n";
+            break;
+
+        case 'renew':
+            $co = platform_company_by_code($opt['code'] ?? '');
+            if (!$co || empty($opt['method']) || empty($opt['reference']) || !isset($opt['amount'])) {
+                fwrite(STDERR, "Give --code, --method=\"MTN MoMo\", --reference and --amount.\n");
+                exit(2);
+            }
+            $end = company_record_renewal((int) $co['id'], $opt['method'], $opt['reference'], (int) $opt['amount'], mm_cli_actor());
+            echo "Company {$co['company_code']} is active until $end.\n";
+            break;
+
+        case 'setcode':
+            $co = platform_company_by_code($opt['code'] ?? '');
+            $to = platform_normalize_code($opt['to'] ?? '');
+            if (!$co || !platform_valid_code($to)) {
+                fwrite(STDERR, "Give an existing --code and a valid --to=NEWCODE.\n");
+                exit(2);
+            }
+            if (platform_company_by_code($to)) {
+                fwrite(STDERR, "The code $to is already used.\n");
+                exit(1);
+            }
+            $st = mysqli_prepare(platform_conn(), 'UPDATE companies SET company_code = ? WHERE id = ?');
+            $cid = (int) $co['id'];
+            mysqli_stmt_bind_param($st, 'si', $to, $cid);
+            mysqli_stmt_execute($st);
+            platform_audit($cid, mm_cli_actor(), 'company_code_changed', $co['company_code'] . ' -> ' . $to);
+            echo "The code of company {$co['name']} is now $to (it was {$co['company_code']}). People must type the new code to sign in.\n";
             break;
 
         case 'suspend':

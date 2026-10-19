@@ -25,12 +25,13 @@ use Mpdf\Mpdf;
 /** Company details shown in the header of every report. */
 function report_company(): array
 {
+    $co = company_profile();   // this company's own details, never another company's
     return [
-        'name'    => 'RISE MOTIVE',
-        'tin'     => '122923513',
-        'website' => 'www.risemotive.rw',
-        'address' => 'Kicukiro District, Kigali, Rwanda',
-        'logo'    => __DIR__ . '/../assets/images/rise.jpg',
+        'name'    => $co['name'],
+        'tin'     => $co['tin'],
+        'website' => $co['website'],
+        'address' => $co['address'],
+        'logo'    => $co['logo_path'],
     ];
 }
 
@@ -158,7 +159,7 @@ function report_render_pdf(array $report): Mpdf
         'tempDir' => $tmp,
     ]);
     $mpdf->SetTitle($report['title']);
-    $mpdf->SetAuthor('Rise Motive Ltd');
+    $mpdf->SetAuthor(report_company()['name']);
     $mpdf->SetHTMLHeader($headerHtml);
     $mpdf->SetHTMLFooter($footerHtml);
     $mpdf->WriteHTML($body);

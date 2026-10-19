@@ -140,7 +140,7 @@ $activityFeed = array_slice($activityFeed, 0, 6);
     Welcome back, <?= htmlspecialchars($_SESSION['user_name'] ?? 'Admin', ENT_QUOTES, 'UTF-8'); ?>
     <i class="bi bi-sun" style="color:var(--accent-amber); font-size:0.8em;"></i>
 </h2>
-        <p class="text-muted mb-0">Here's what's happening in <?= htmlspecialchars(mm_company_name(), ENT_QUOTES, 'UTF-8'); ?> today.</p>
+        <p class="text-muted mb-0">Here's what's happening in <?= htmlspecialchars(company_profile()['name'], ENT_QUOTES, 'UTF-8'); ?> today.</p>
     </div>
     <div class="date-pill">
         <i class="bi bi-calendar3 me-1"></i>

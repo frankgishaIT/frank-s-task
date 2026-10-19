@@ -190,3 +190,44 @@ function mm_mail_test(string $name, bool $dryRun): array
         'rows'      => [['Mode', $dryRun ? 'Test mode (not really sent)' : 'Live'], ['Sent at', mm_e(date('Y-m-d H:i'))]],
     ])];
 }
+
+
+// ---------------------------------------------------------------- subscriptions
+
+/** "Your subscription ends soon" (or "ended"). $days = days left; 0 or less = ends today / already ended. */
+function mm_mail_subscription_notice(array $company, string $packageName, string $endsOn, int $days, int $amount, string $payHelp): array
+{
+    $when = $days > 1 ? 'in ' . $days . ' days' : ($days === 1 ? 'tomorrow' : ($days === 0 ? 'today' : 'on ' . $endsOn));
+    return ['Your MY MOTIVE subscription ends ' . $when, mm_email_layout([
+        'preheader' => 'Renew ' . $company['name'] . ' to keep working without interruption.',
+        'title'     => $days > 0 ? 'Your subscription ends ' . $when : 'Your subscription has ended',
+        'intro'     => mm_mail_p('Hello,')
+            . mm_mail_p($days > 0
+                ? 'The <b>' . mm_e($packageName) . '</b> subscription of <b>' . mm_e($company['name']) . '</b> ends ' . mm_e($when) . ' (' . mm_e($endsOn) . '). Renew it to keep working without interruption.'
+                : 'The <b>' . mm_e($packageName) . '</b> subscription of <b>' . mm_e($company['name']) . '</b> ended on ' . mm_e($endsOn) . '. Renew it now: after a few days of grace the account is paused, and all your data is kept safely.'),
+        'rows'      => [['Company code', mm_e($company['company_code'])], ['Package', mm_e($packageName)], ['Renewal', mm_e(mm_mail_money($amount))]],
+        'after'     => $payHelp !== '' ? mm_mail_p('<span style="color:#6B7285;font-size:13.5px">' . nl2br(mm_e($payHelp)) . '</span>') : '',
+    ])];
+}
+
+function mm_mail_subscription_suspended(array $company, string $endedOn): array
+{
+    return ['Your MY MOTIVE account is paused', mm_email_layout([
+        'preheader' => 'Renew to open it again. Your data is safe.',
+        'title'     => 'Your account is paused',
+        'intro'     => mm_mail_p('Hello,')
+            . mm_mail_p('The subscription of <b>' . mm_e($company['name']) . '</b> ended on ' . mm_e($endedOn) . ' and was not renewed, so the account is paused. <b>Nothing was deleted</b>: as soon as you renew, everything is back exactly as you left it.'),
+        'rows'      => [['Company code', mm_e($company['company_code'])]],
+    ])];
+}
+
+function mm_mail_renewed(array $company, string $packageName, string $newEnd, int $amount): array
+{
+    return ['Subscription renewed until ' . $newEnd, mm_email_layout([
+        'tone'      => 'success',
+        'preheader' => 'Thank you! ' . $company['name'] . ' is active until ' . $newEnd . '.',
+        'title'     => 'Subscription renewed. Thank you!',
+        'intro'     => mm_mail_p('Hello,') . mm_mail_p('We received your payment. <b>' . mm_e($company['name']) . '</b> is active until <b>' . mm_e($newEnd) . '</b>.'),
+        'rows'      => [['Package', mm_e($packageName)], ['Paid', mm_e(mm_mail_money($amount))], ['Active until', mm_e($newEnd)]],
+    ])];
+}

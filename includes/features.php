@@ -38,6 +38,7 @@ const MM_MODULE_FEATURE = [
     'sms'               => 'sms',
     'tools'             => 'tools',
     'search'            => '*',
+    'company'           => '*',   // the company profile page (it is limited to the Admin role inside the page)
 ];
 
 /** Pages inside modules/transactions/ that are the "RM Funds" screens (a feature of their own). */
@@ -74,7 +75,7 @@ function mm_feature_for_script(string $scriptName): ?string
 /** The package of a company: ['code', 'name', 'features' => [...]], or null if it has no active subscription. */
 function platform_package_for_company(int $companyId): ?array
 {
-    $st = mysqli_prepare(platform_conn(), "SELECT p.code, p.name, p.features FROM subscriptions s JOIN packages p ON p.id = s.package_id WHERE s.company_id = ? AND s.status = 'active' ORDER BY s.id DESC LIMIT 1");
+    $st = mysqli_prepare(platform_conn(), "SELECT p.code, p.name, p.features, p.sms_quota FROM subscriptions s JOIN packages p ON p.id = s.package_id WHERE s.company_id = ? AND s.status = 'active' ORDER BY s.id DESC LIMIT 1");
     mysqli_stmt_bind_param($st, 'i', $companyId);
     mysqli_stmt_execute($st);
     $row = mysqli_fetch_assoc(mysqli_stmt_get_result($st));
@@ -88,7 +89,19 @@ function platform_package_for_company(int $companyId): ?array
         $row = mysqli_fetch_assoc(mysqli_stmt_get_result($st)) ?: ['code' => 'owner', 'name' => 'Owner (everything)', 'features' => json_encode(array_keys(MM_FEATURE_LABELS))];
     }
     $features = json_decode((string) $row['features'], true);
-    return ['code' => $row['code'], 'name' => $row['name'], 'features' => is_array($features) ? array_values($features) : []];
+    return [
+        'code'      => $row['code'],
+        'name'      => $row['name'],
+        'features'  => is_array($features) ? array_values($features) : [],
+        'sms_quota' => isset($row['sms_quota']) && $row['sms_quota'] !== null ? (int) $row['sms_quota'] : null,   // null = no limit
+    ];
+}
+
+/** The signed-in company's SMS limit per calendar month, or null when its package has no limit. */
+function mm_sms_quota(): ?int
+{
+    $q = $GLOBALS['MM_PACKAGE']['sms_quota'] ?? null;
+    return $q === null ? null : (int) $q;
 }
 
 /** True if the signed-in company's package includes this feature. */

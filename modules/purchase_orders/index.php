@@ -56,7 +56,7 @@ $lowStockCount = count(po_low_stock_products($conn));
 <tr><td colspan="8" class="text-center text-muted py-4">No purchase orders yet.</td></tr>
 <?php } ?>
 <?php while ($po = mysqli_fetch_assoc($purchaseOrders)) {
-    $poNo = 'RM' . str_pad($po['id'], 5, '0', STR_PAD_LEFT);
+    $poNo = company_profile()['invoice_prefix'] . str_pad($po['id'], 5, '0', STR_PAD_LEFT);
 ?>
 <tr>
     <td><?= $poNo; ?></td>

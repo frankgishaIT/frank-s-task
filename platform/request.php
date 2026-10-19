@@ -56,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     exit;
 }
 
-$suggested = $req['company_code'] ?: signup_suggest_code($req['company_name']);
+$nextCode = $req['company_code'] ?: 'RMCP' . str_pad((string) ((int) mysqli_fetch_row(mysqli_query(platform_conn(), "SELECT value + 1 FROM platform_counters WHERE name = 'company_code'"))[0]), 4, '0', STR_PAD_LEFT);
 platform_page_start('Request ' . $req['reference'], $admin, 'requests');
 ?>
 <p><a href="requests.php">&larr; All requests</a></p>
@@ -83,8 +83,7 @@ platform_page_start('Request ' . $req['reference'], $admin, 'requests');
 <?php if ($req['status'] === 'pending') { ?>
     <h5>Decide</h5>
     <form method="POST" class="mb-3"><?= platform_csrf_field(); ?><input type="hidden" name="action" value="approve">
-        <label class="form-label">Company code (the staff type this to sign in)</label>
-        <input class="form-control mb-2" name="company_code" value="<?= h($suggested); ?>" maxlength="30" style="text-transform:uppercase" required>
+        <div class="alert alert-light border small mb-2">The <b>company code</b> is created automatically (the next one is <b><?= h($nextCode); ?></b>). It is emailed to the company with the payment button.</div>
         <button class="btn btn-success w-100" type="submit">Approve and ask for payment</button>
     </form>
     <form method="POST"><?= platform_csrf_field(); ?><input type="hidden" name="action" value="reject">

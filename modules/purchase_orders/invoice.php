@@ -34,12 +34,13 @@ $isReceived = $po['status'] === 'Received';
 function money($v) { return number_format((float) $v, 2); }
 
 $docTitle = 'Purchase Order';
-$docNumber = 'No. PO-RM' . str_pad($po['id'], 6, '0', STR_PAD_LEFT);
+$docNumber = 'No. PO-' . company_doc_no((int) $po['id']);
 $statusLabel = htmlspecialchars($po['status'], ENT_QUOTES, 'UTF-8');
 $statusColor = $isDraft ? '#B8860B' : ($isCancelled ? '#8A90A3' : ($isReceived ? '#0FA968' : '#1E2FE0'));
 $statusBg    = $isDraft ? '#FDF3E3' : ($isCancelled ? '#F1F3F9' : ($isReceived ? '#E1F7EE' : '#E8EBFC'));
 
-$logoPath = __DIR__ . '/../../assets/images/rise.jpg';
+$co = company_profile();   // this company's own name, logo and details
+$logoPath = $co['logo_path'];
 
 // ---- Repeating header ----
 $headerHtml = '
@@ -49,10 +50,8 @@ $headerHtml = '
       <table cellpadding="0" cellspacing="0" width="100%">
        <tr><td><img src="' . $logoPath . '" style="height:70px; width:auto;"></td></tr>
          <tr><td style="padding-top:8px;">
-          <span style="font-size:24px; font-weight:900; color:#000000; letter-spacing:0.5px;">RISE MOTIVE</span><br>
-           <span style="font-size:10px; font-weight:700; color:#1E2333; margin-top:8px; display:inline-block;">TIN Number:122923513</span><br>
-           <span style="font-size:10px; font-weight:700; color:#1E2333; margin-top:8px; display:inline-block;">Website: www.risemotive.rw</span><br>
-           <span style="font-size:10px; font-weight:700; color:#1E2333; margin-top:8px; display:inline-block;">Kicukiro District, Kigali, Rwanda</span>
+          <span style="font-size:24px; font-weight:900; color:#000000; letter-spacing:0.5px;">' . htmlspecialchars($co['name'], ENT_QUOTES, 'UTF-8') . '</span><br>
+           ' . company_header_lines_html($co) . '
            </td></tr>
       </table>
     </td>
@@ -160,7 +159,7 @@ ob_start();
 
 <?php if (!$isCancelled) { ?>
 <div class="sig-block">
-  <div class="sig-heading"><strong>For RISE MOTIVE</strong></div>
+  <div class="sig-heading"><strong>For <?= htmlspecialchars($co['name'], ENT_QUOTES, 'UTF-8'); ?></strong></div>
   <div class="sig-sub">Purchase Order Prepared By:</div>
   <div><span class="sig-label">Name:</span> <strong><?= htmlspecialchars($po['created_by_name'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></strong></div>
   <div><span class="sig-label">Position:</span> <strong><?= htmlspecialchars($po['created_by_position'] ?? ucfirst($po['created_by_role'] ?? '—'), ENT_QUOTES, 'UTF-8'); ?></strong></div>
@@ -211,6 +210,6 @@ $mpdf->SetHTMLFooter($footerHtml);
 $mpdf->WriteHTML($bodyHtml);
 
 $filename = ($isDraft ? 'Draft-PO' : ($isCancelled ? 'Cancelled-PO' : 'Purchase-Order'))
-    . '-RM' . str_pad($po['id'], 6, '0', STR_PAD_LEFT) . '.pdf';
+    . '-' . company_doc_no((int) $po['id']) . '.pdf';
 
 $mpdf->Output($filename, \Mpdf\Output\Destination::INLINE);

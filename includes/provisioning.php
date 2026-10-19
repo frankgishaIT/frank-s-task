@@ -33,6 +33,21 @@ function mm_random_password(int $length = 20): string
     return $out . '-Qz7!';
 }
 
+/** An invoice prefix from a company's initials: "Kigali Fresh Traders" -> "KFT". */
+function provision_invoice_prefix(string $name): string
+{
+    $words = preg_split('/[^A-Za-z0-9]+/', $name, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+    $initials = '';
+    foreach ($words as $w) {
+        $initials .= strtoupper($w[0]);
+    }
+    $initials = substr($initials, 0, 4);
+    if (strlen($initials) < 2) {
+        $initials = strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $name), 0, 3));
+    }
+    return $initials !== '' ? $initials : 'INV';
+}
+
 /** Who is running this command, for the audit log. */
 function mm_cli_actor(): string
 {
@@ -164,6 +179,13 @@ function provision_company(string $code, string $name, string $ownerName, string
         $role = 'Admin';
         $st = mysqli_prepare($admin, "INSERT INTO users (names, email, password_hash, role, phone, department_id, is_active) VALUES (?, ?, ?, ?, ?, (SELECT id FROM departments WHERE name = 'Operations' LIMIT 1), 1)");
         mysqli_stmt_bind_param($st, 'sssss', $ownerName, $ownerEmail, $hash, $role, $ownerPhone);
+        mysqli_stmt_execute($st);
+
+        // the company's own profile: its name, the owner's phone and email, and an invoice prefix from its initials
+        $prefix = provision_invoice_prefix($name);
+        $profilePhone = $ownerPhone ?? '';
+        $st = mysqli_prepare($admin, 'INSERT INTO company_profile (id, display_name, phone, email, invoice_prefix) VALUES (1, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE id = id');
+        mysqli_stmt_bind_param($st, 'ssss', $name, $profilePhone, $ownerEmail, $prefix);
         mysqli_stmt_execute($st);
 
         // register it in the platform

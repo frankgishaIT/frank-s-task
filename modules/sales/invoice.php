@@ -8,7 +8,7 @@ use Mpdf\Mpdf;
 // NEW: credit invoices must be paid within this many hours (the 72-hour rule).
 const INVOICE_PAYMENT_HOURS = 72;
 const INVOICE_DAILY_CHARGE_PERCENT = 1;
-const INVOICE_HELP_PHONE = '0795 344 768';
+// (the help phone printed on invoices now comes from the company profile)
 
 // CHANGED: problems are sent as "error" (they were sent as "success"), and messages are urlencoded.
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
@@ -66,12 +66,14 @@ $customerLocationParts = array_filter([$sale['customer_sector'] ?? '', $sale['cu
 $customerLocation = $customerLocationParts ? implode(', ', $customerLocationParts) : null;
 
 $docTitle = $isPending ? 'Draft Invoice' : ($isUnpaidInvoice ? 'Invoice' : ($isCancelled ? 'Cancelled Sale' : 'Receipt'));
-$docNumber = 'No. RM' . str_pad($sale['id'], 6, '0', STR_PAD_LEFT);
+$docNumber = 'No. ' . company_doc_no((int) $sale['id']);
 $statusLabel = htmlspecialchars($sale['status'], ENT_QUOTES, 'UTF-8');
 $statusColor = $isPending ? '#B8860B' : ($isCancelled ? '#6B7280' : ($isUnpaidInvoice ? '#E24B4A' : '#0FA968'));
 $statusBg    = $isPending ? '#FDF3E3' : ($isCancelled ? '#F1F3F9' : ($isUnpaidInvoice ? '#FCE9E9' : '#E1F7EE'));
 
-$logoPath = __DIR__ . '/../../assets/images/rise.jpg';
+$co = company_profile();   // this company's own name, logo and details
+$invoiceHelp = $co['help_phone'] !== '' ? $co['help_phone'] : $co['phone'];
+$logoPath = $co['logo_path'];
 
 // ---- Repeating header (no URL, ever — this is entirely our own HTML) ----
 $headerHtml = '
@@ -81,10 +83,8 @@ $headerHtml = '
       <table cellpadding="0" cellspacing="0" width="100%">
        <tr><td><img src="' . $logoPath . '" style="height:70px; width:auto;"></td></tr>
          <tr><td style="padding-top:8px;">
-          <span style="font-size:24px; font-weight:900; color:#000000; letter-spacing:0.5px;">RISE MOTIVE</span><br>
-           <span style="font-size:10px; font-weight:700; color:#1E2333; margin-top:8px; display:inline-block;">TIN Number:122923513</span><br>
-           <span style="font-size:10px; font-weight:700; color:#1E2333; margin-top:8px; display:inline-block;">Website: www.risemotive.rw</span><br>
-           <span style="font-size:10px; font-weight:700; color:#1E2333; margin-top:8px; display:inline-block;">Kicukiro District, Kigali, Rwanda</span>
+          <span style="font-size:24px; font-weight:900; color:#000000; letter-spacing:0.5px;">' . htmlspecialchars($co['name'], ENT_QUOTES, 'UTF-8') . '</span><br>
+           ' . company_header_lines_html($co) . '
            </td></tr>
       </table>
     </td>
@@ -256,18 +256,21 @@ ob_start();
 <table class="cols">
 <tr>
 <td class="col-left">
+<?php if ($co['methods']) { ?>
   <div class="pm-heading"><strong>ACCEPTED PAYMENT METHODS</strong></div>
+<?php foreach ($co['methods'] as $pm) { ?>
 
-  <div class="pm-option">Bank Transfer &ndash; EQUITY BANK</div>
-  <div class="pm-detail"><span class="pm-label">Account No:</span> <strong>4020201146022</strong></div>
-
-  <div class="pm-option">MTN-MoMo Code</div>
-  <div class="pm-detail"><span class="pm-label">MoMo Code:</span> <strong>070600</strong></div>
-  <div class="pm-detail"><span class="pm-label">Account Names:</span> <strong>RISE MOTIVE Ltd</strong></div>
+  <div class="pm-option"><?= htmlspecialchars($pm['method_name'], ENT_QUOTES, 'UTF-8'); ?></div>
+  <div class="pm-detail"><span class="pm-label"><?= htmlspecialchars($pm['account_label'] ?: 'Account No', ENT_QUOTES, 'UTF-8'); ?>:</span> <strong><?= htmlspecialchars($pm['account_number'], ENT_QUOTES, 'UTF-8'); ?></strong></div>
+<?php if (!empty($pm['account_name'])) { ?>
+  <div class="pm-detail"><span class="pm-label">Account Names:</span> <strong><?= htmlspecialchars($pm['account_name'], ENT_QUOTES, 'UTF-8'); ?></strong></div>
+<?php } ?>
+<?php } ?>
+<?php } ?>
 </td>
 <td class="col-right">
 <?php if (!$isPending) { ?>
-  <div class="sig-heading"><strong>For RISE MOTIVE</strong></div>
+  <div class="sig-heading"><strong>For <?= htmlspecialchars($co['name'], ENT_QUOTES, 'UTF-8'); ?></strong></div>
   <div class="sig-sub"><?= $isPaidReceipt ? 'Receipt' : 'Invoice'; ?> Issued and Approved by:</div>
   <div class="sig-detail"><span class="pm-label">Name:</span> <strong><?= htmlspecialchars($sale['recorded_by_name'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></strong></div>
   <div class="sig-detail"><span class="pm-label">Position:</span> <strong><?= htmlspecialchars($sale['recorded_by_position'] ?? ucfirst($sale['recorded_by_role'] ?? '—'), ENT_QUOTES, 'UTF-8'); ?></strong></div>
@@ -285,12 +288,12 @@ ob_start();
   <div class="t-heading">TERMS &amp; CONDITIONS</div>
   <div style="margin-bottom:3px;">By Accepting This Invoice, The Customer Agrees That:</div>
   <ol>
-    <li>This is not an official RRA/EBM tax invoice. Request an EBM Receipt after payment via <?= INVOICE_HELP_PHONE; ?>.</li>
+    <li>This is not an official RRA/EBM tax invoice.<?php if ($invoiceHelp !== '') { ?> Request an EBM Receipt after payment via <?= htmlspecialchars($invoiceHelp, ENT_QUOTES, 'UTF-8'); ?>.<?php } ?></li>
     <li>Credit invoices must be paid within <?= INVOICE_PAYMENT_HOURS; ?> hours. Thereafter, a <?= INVOICE_DAILY_CHARGE_PERCENT; ?>% daily compound charge applies.</li>
-    <li>Rise Motive Ltd is not responsible for delays caused by incomplete information or late customer responses.</li>
+    <li><?= htmlspecialchars($co['name'], ENT_QUOTES, 'UTF-8'); ?> is not responsible for delays caused by incomplete information or late customer responses.</li>
     <li>Additional work or changes after confirmation may incur extra charges.</li>
     <li>Payments are non-refundable once service has started or products have been delivered.</li>
-    <li>This system-generated RM Invoice is valid without a handwritten signature.</li>
+    <li>This system-generated invoice is valid without a handwritten signature.</li>
   </ol>
 </div>
 <?php } elseif ($isPaidReceipt) { ?>
@@ -298,7 +301,7 @@ ob_start();
 <div class="terms">
   <div class="t-heading">TAX &amp; RECEIPT NOTICE</div>
   <ol>
-    <li>This Receipt is not an official RRA/EBM tax receipt. For an official EBM Receipt, contact <?= INVOICE_HELP_PHONE; ?>.</li>
+    <li>This Receipt is not an official RRA/EBM tax receipt.<?php if ($invoiceHelp !== '') { ?> For an official EBM Receipt, contact <?= htmlspecialchars($invoiceHelp, ENT_QUOTES, 'UTF-8'); ?>.<?php } ?></li>
     <li>This system-generated RM Receipt is valid without a handwritten signature.</li>
   </ol>
 </div>
@@ -349,6 +352,6 @@ $mpdf->SetHTMLFooter($footerHtml);
 $mpdf->WriteHTML($bodyHtml);
 
 $filename = ($isPending ? 'Draft-Invoice' : ($isCancelled ? 'Cancelled-Sale' : ($isUnpaidInvoice ? 'Invoice' : 'Receipt')))
-    . '-RM' . str_pad($sale['id'], 6, '0', STR_PAD_LEFT) . '.pdf';
+    . '-' . company_doc_no((int) $sale['id']) . '.pdf';
 
 $mpdf->Output($filename, \Mpdf\Output\Destination::INLINE);

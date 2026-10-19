@@ -167,6 +167,45 @@ function tenant_connect(array $company): mysqli
     }
 }
 
+/**
+ * The next company code: RMCP0002, RMCP0003 ... (RMCP0001 is your own company). The counter only goes up, so a number
+ * is never given twice, even if two approvals happen at the same moment.
+ */
+function platform_next_company_code(): string
+{
+    $db = platform_conn();
+    for ($try = 0; $try < 100; $try++) {
+        mysqli_query($db, "UPDATE platform_counters SET value = LAST_INSERT_ID(value + 1) WHERE name = 'company_code'");
+        $n = (int) mysqli_insert_id($db);
+        if ($n <= 0) {
+            throw new RuntimeException('The company code counter is missing. Run: php tools/platform_migrate.php');
+        }
+        $code = 'RMCP' . str_pad((string) $n, 4, '0', STR_PAD_LEFT);
+        $st = mysqli_prepare($db, "SELECT (SELECT COUNT(*) FROM companies WHERE company_code = ?) + (SELECT COUNT(*) FROM signup_requests WHERE company_code = ? AND status <> 'rejected')");
+        mysqli_stmt_bind_param($st, 'ss', $code, $code);
+        mysqli_stmt_execute($st);
+        if ((int) mysqli_fetch_row(mysqli_stmt_get_result($st))[0] === 0) {
+            return $code;      // a number already used by hand is simply skipped
+        }
+    }
+    throw new RuntimeException('Could not find a free company code.');
+}
+
+/**
+ * Like tenant_connect(), but a database that cannot be opened is an EXCEPTION, not the end of the program.
+ * Used by jobs that visit many companies (the daily job) and by pages that must answer politely (password reset):
+ * one broken company must never stop the others.
+ */
+function tenant_try_connect(array $company): mysqli
+{
+    try {
+        $conn = mysqli_connect($company['db_host'], $company['db_user'], platform_decrypt($company['db_pass_enc']), $company['db_name']);
+    } catch (Throwable $e) {
+        throw new RuntimeException('Could not open the database of company ' . $company['company_code'] . ': ' . $e->getMessage(), 0, $e);
+    }
+    return $conn;
+}
+
 function platform_audit(?int $companyId, string $actor, string $action, string $details = ''): void
 {
     $st = mysqli_prepare(platform_conn(), 'INSERT INTO platform_audit_log (company_id, actor, action, details) VALUES (?, ?, ?, ?)');

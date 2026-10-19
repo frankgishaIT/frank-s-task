@@ -5,6 +5,7 @@
  *   php tools/install_platform.php --company1-code=RM --company1-name="RISE MOTIVE"
  *
  * Optional: --platform-db=mm_platform  --platform-user=mm_platform
+ *           --credentials-file=/path/to/saved/db.php   (read the database login from this saved copy of the old config/db.php)
  *           --public-url=https://mymotive.risemotive.rw   (used in the links inside emails)
  *           --mail-dry-run=1   (emails are written to storage/platform_outbox.log instead of being sent: for staging)
  *
@@ -60,8 +61,12 @@ if (!is_file($dbFile)) {
 }
 
 // ---- 1. read the current database login (company 1)
-$old = (string) file_get_contents($dbFile);
-if (strpos($old, 'includes/tenant.php') !== false) {
+$source = $opt['credentials-file'] ?? $dbFile;          // normally the current config/db.php
+if (!is_file($source)) {
+    fail("The credentials file $source was not found.");
+}
+$old = (string) file_get_contents($source);
+if ($source === $dbFile && strpos($old, 'includes/tenant.php') !== false) {
     fail('config/db.php has already been converted.');
 }
 $creds = [];
@@ -133,8 +138,8 @@ try {
 
     // ---- 5. keep the old file safely, then replace it with one that has no secrets
     $backup = '/root/db.php.pre-saas.' . date('Ymd-His');
-    if (!@copy($dbFile, $backup)) {
-        throw new RuntimeException("Could not save a copy of config/db.php to $backup.");
+    if (!@copy($source, $backup)) {
+        throw new RuntimeException("Could not save a copy of the old database login to $backup.");
     }
     chmod($backup, 0600);
     $done['backup'] = $backup;

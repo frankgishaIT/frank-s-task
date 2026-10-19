@@ -6,7 +6,7 @@
  *   php tools/platform_config.php set public_url https://mymotive.risemotive.rw
  *   php tools/platform_config.php set mail_dry_run true
  *
- * Settings: public_url, mail_dry_run (true/false), admin_notify_email, payment_instructions, terms_url
+ * Settings: public_url, mail_dry_run (true/false), admin_notify_email, payment_instructions, terms_url, daily_hour (0-23: when the daily job starts)
  */
 if (PHP_SAPI !== 'cli') {
     http_response_code(404);
@@ -19,7 +19,7 @@ if (!is_array($cfg)) {
     exit(1);
 }
 $allowed = ['public_url' => 'text', 'mail_dry_run' => 'bool', 'admin_notify_email' => 'text', 'payment_instructions' => 'text', 'terms_url' => 'text',
-    'xentripay_base_url' => 'text', 'xentripay_api_key' => 'text', 'payment_test_mode' => 'bool', 'payment_test_amount' => 'text'];
+    'xentripay_base_url' => 'text', 'xentripay_api_key' => 'text', 'payment_test_mode' => 'bool', 'payment_test_amount' => 'text', 'daily_hour' => 'text'];
 $secret = ['db_pass', 'key', 'xentripay_api_key'];
 $command = $argv[1] ?? '';
 if ($command === 'show') {

@@ -155,7 +155,7 @@ function credit_apply_payment(mysqli $conn, array $sale, float $amount, int $pay
         $sale['charges_paid'] = round((float) $sale['charges_paid'] + $toCharges, 2);
         credit_ledger_add($conn, $sale, 'PAYMENT_CHARGE', $toCharges, null, null, $paymentId, 'Payment applied to overdue charges', $userId);
 
-        $desc = 'Overdue charges paid on invoice RM' . str_pad((string) $sale['id'], 6, '0', STR_PAD_LEFT);
+        $desc = 'Overdue charges paid on invoice ' . company_doc_no((int) $sale['id']);
         $tx = mysqli_prepare($conn, "INSERT INTO transactions (category, transaction_type, amount, transaction_date, description, recorded_by, status, is_automatic)
             VALUES (?, 'Income', ?, CURDATE(), ?, ?, 'approved', 1)");
         $cat = CREDIT_CHARGE_CATEGORY;

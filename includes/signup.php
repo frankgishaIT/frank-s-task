@@ -280,9 +280,11 @@ function signup_suggest_code(string $companyName): string
     return $code;
 }
 
-function signup_approve(int $id, string $code, string $adminEmail): void
+function signup_approve(int $id, ?string $code, string $adminEmail): void
 {
-    $code = platform_normalize_code($code);
+    // The company code is made by the system (RMCP0002, RMCP0003 ...) so codes are always consistent and never repeated.
+    // A code can still be given by hand (used by tests and the command line).
+    $code = ($code === null || trim($code) === '') ? platform_next_company_code() : platform_normalize_code($code);
     if (!platform_valid_code($code)) {
         throw new SignupException('The company code must be 2 to 30 characters: letters, digits, - or _.');
     }
@@ -506,7 +508,7 @@ function invite_set_password(array $invite, string $newPassword): void
         throw new SignupException('This link was already used or has expired.');
     }
     try {
-        $tenant = tenant_connect($company);
+        $tenant = tenant_try_connect($company);
         $hash = password_hash($newPassword, PASSWORD_DEFAULT);
         $st = mysqli_prepare($tenant, "UPDATE users SET password_hash = ?, is_active = 1 WHERE email = ? AND role = 'Admin' LIMIT 1");
         mysqli_stmt_bind_param($st, 'ss', $hash, $invite['email']);

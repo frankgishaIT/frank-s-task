@@ -19,6 +19,7 @@ if (!defined('BASE_URL')) {
 }
 
 require_once __DIR__ . '/platform.php';
+require_once __DIR__ . '/company_profile.php';   // the company's own name, logo and details for every page
 
 $MM_COMPANY = null;   // the company of this request: a row of the platform "companies" table
 

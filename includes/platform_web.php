@@ -137,33 +137,50 @@ function platform_flash(string $message, string $kind = 'success'): void
     $_SESSION['flash'] = ['m' => $message, 'k' => $kind];
 }
 
-/** The admin panel's page frame. */
+/** The admin panel's page frame: a sidebar on the left, the page on the right. Without an admin it is a plain centred page. */
 function platform_page_start(string $title, ?array $admin = null, string $active = ''): void
 {
+    require_once __DIR__ . '/public_layout.php';      // the icons
     $flash = $_SESSION['flash'] ?? null;
     unset($_SESSION['flash']);
-    $nav = [
-        'dashboard' => ['index.php', 'Dashboard'],
-        'requests'  => ['requests.php', 'Sign-up requests'],
-        'companies' => ['companies.php', 'Companies'],
-        'emails'    => ['emails.php', 'Emails'],
-        'password'  => ['password.php', 'My password'],
-    ];
+    $logo = mm_asset('images/logo-badge.png');
     echo '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
-        . '<title>' . h($title) . ' - MY MOTIVE platform</title>'
+        . '<title>' . h($title) . ' | MY MOTIVE platform</title><meta name="robots" content="noindex"><link rel="icon" href="' . h($logo) . '">'
+        . '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+        . '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">'
         . '<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet">'
-        . '<style>body{background:#F6F7FB}.navbar{background:#1E2333}.card{border:0;border-radius:14px;box-shadow:0 4px 18px rgba(30,35,51,.06)}</style>'
-        . '</head><body>';
-    echo '<nav class="navbar navbar-expand navbar-dark mb-4"><div class="container"><span class="navbar-brand fw-bold">MY MOTIVE platform</span>';
-    if ($admin) {
-        echo '<ul class="navbar-nav me-auto">';
-        foreach ($nav as $key => [$file, $label]) {
-            echo '<li class="nav-item"><a class="nav-link' . ($active === $key ? ' active' : '') . '" href="' . h(BASE_URL . '/platform/' . $file) . '">' . h($label) . '</a></li>';
+        . '<link rel="stylesheet" href="' . h(mm_asset('css/mm-public.css')) . '"><link rel="stylesheet" href="' . h(mm_asset('css/mm-admin.css')) . '">'
+        . '</head><body class="mm mm-admin">';
+
+    $GLOBALS['MMA_MODE'] = $admin ? 'shell' : 'bare';
+    if (!$admin) {
+        echo '<div class="mma-bare"><div class="inner"><div class="brandrow"><img src="' . h($logo) . '" alt="">MY MOTIVE platform</div>';
+        if ($flash) {
+            echo '<div class="alert alert-' . h($flash['k']) . '">' . h($flash['m']) . '</div>';
         }
-        echo '</ul><span class="navbar-text me-3">' . h($admin['name']) . '</span>'
-            . '<a class="btn btn-sm btn-outline-light" href="' . h(BASE_URL . '/platform/logout.php') . '">Sign out</a>';
+        return;
     }
-    echo '</div></nav><div class="container pb-5">';
+    $pending = 0;
+    try {
+        $pending = (int) mysqli_fetch_row(mysqli_query(platform_conn(), "SELECT COUNT(*) FROM signup_requests WHERE status = 'pending'"))[0];
+    } catch (Throwable $e) {
+    }
+    $nav = [
+        'dashboard' => ['index.php', 'Dashboard', 'chart'],
+        'requests'  => ['requests.php', 'Sign-up requests', 'users'],
+        'companies' => ['companies.php', 'Companies', 'building'],
+        'emails'    => ['emails.php', 'Emails', 'mail'],
+        'password'  => ['password.php', 'My password', 'key'],
+    ];
+    echo '<div class="mma-shell"><aside class="mma-side"><div class="mma-brand"><img src="' . h($logo) . '" alt=""><div>MY MOTIVE<small>Platform</small></div></div><nav class="mma-nav">';
+    foreach ($nav as $key => [$file, $label, $icon]) {
+        echo '<a class="' . ($active === $key ? 'on' : '') . '" href="' . h(BASE_URL . '/platform/' . $file) . '">' . mm_icon($icon, 19) . '<span>' . h($label) . '</span>'
+            . ($key === 'requests' && $pending > 0 ? '<span class="cnt">' . $pending . '</span>' : '') . '</a>';
+    }
+    $initial = strtoupper(mb_substr((string) $admin['name'], 0, 1)) ?: 'A';
+    echo '</nav><div class="mma-user"><div class="av">' . h($initial) . '</div><div class="who">' . h($admin['name']) . '<small>' . h($admin['email']) . '</small></div>'
+        . '<a href="' . h(BASE_URL . '/platform/logout.php') . '" title="Sign out" aria-label="Sign out">' . mm_icon('arrow', 18) . '</a></div></aside>';
+    echo '<main class="mma-main">';
     if ($flash) {
         echo '<div class="alert alert-' . h($flash['k']) . '">' . h($flash['m']) . '</div>';
     }
@@ -171,5 +188,6 @@ function platform_page_start(string $title, ?array $admin = null, string $active
 
 function platform_page_end(): void
 {
-    echo '</div></body></html>';
+    // the pages open either the shell (<main> inside <div class="mma-shell">) or the plain centred page
+    echo ($GLOBALS['MMA_MODE'] ?? 'shell') === 'bare' ? '</div></div></body></html>' : '</main></div></body></html>';
 }

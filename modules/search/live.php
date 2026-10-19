@@ -584,7 +584,12 @@ function renderLeaveRows(mysqli $conn, string $like, int $limit, $userId): strin
         $class = $statusClass[$r['status']] ?? 'secondary';
         $html .= '<tr>';
         $html .= '<td>' . esc($r['leave_type']) . '</td>';
-        $html .= '<td>' . esc($r['start_date']) . ' &rarr; ' . esc($r['end_date']) . '</td>';
+        // CHANGED: Short Leave shows its date and times; other types their date range.
+        if ($r['leave_type'] === 'Short Leave' && !empty($r['start_time']) && !empty($r['end_time'])) {
+            $html .= '<td class="text-nowrap">' . esc(date('d M Y', strtotime($r['start_date'])) . ', ' . substr($r['start_time'], 0, 5) . ' – ' . substr($r['end_time'], 0, 5)) . '</td>';
+        } else {
+            $html .= '<td class="text-nowrap">' . esc(date('d M Y', strtotime($r['start_date']))) . ' &rarr; ' . esc(date('d M Y', strtotime($r['end_date']))) . '</td>';
+        }
         $html .= '<td>' . esc($r['reason'] ?? '') . '</td>';
         $html .= '<td><span class="badge bg-' . $class . '">' . esc($r['status']) . '</span></td>';
         $html .= '<td>' . esc(date('d M Y', strtotime($r['created_at']))) . '</td>';

@@ -5,8 +5,9 @@ require_role(['Admin']);
 
 use Mpdf\Mpdf;
 
+// CHANGED: problems are shown as errors (they were shown as success messages), and messages are encoded.
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT); // loans.id
-if (!$id) { header('Location: index.php?success=Invalid loan selected.'); exit; }
+if (!$id) { header('Location: index.php?error=' . urlencode('Invalid loan selected.')); exit; }
 
 $loanStmt = mysqli_prepare($conn, 'SELECT loans.*,
         users.names AS created_by_name, users.role AS created_by_role, users.phone AS created_by_phone,
@@ -18,7 +19,7 @@ $loanStmt = mysqli_prepare($conn, 'SELECT loans.*,
 mysqli_stmt_bind_param($loanStmt, 'i', $id);
 mysqli_stmt_execute($loanStmt);
 $loan = mysqli_fetch_assoc(mysqli_stmt_get_result($loanStmt));
-if (!$loan) { header('Location: index.php?success=Loan not found.'); exit; }
+if (!$loan) { header('Location: index.php?error=' . urlencode('Loan not found.')); exit; }
 
 $scheduleStmt = mysqli_prepare($conn, 'SELECT * FROM loan_schedule WHERE loan_id = ? ORDER BY installment_no ASC');
 mysqli_stmt_bind_param($scheduleStmt, 'i', $id);
@@ -94,6 +95,11 @@ ob_start();
   .sig-sub { color:#1E2333; font-weight:600; margin-bottom:6px; }
   .sig-label { color:#1E2333; display:inline-block; width:70px; }
   .footnote { margin-top:12px; font-size:9px; color:#1E2333; }
+  /* NEW: Loan Receipt Confirmation */
+  .confirm { margin-top:14px; padding:9px 12px; border:1px solid #E4E8F2; border-radius:6px; font-size:9px; page-break-inside: avoid; }
+  .confirm .c-heading { font-size:10px; font-weight:800; margin-bottom:5px; }
+  .confirm ul { margin:0; padding-left:16px; }
+  .confirm li { margin-bottom:3px; }
 </style>
 
 <table class="info-grid">
@@ -179,6 +185,17 @@ $statusColor = ['Paid' => '#0FA968', 'Partial' => '#E68A1C'];
   <tr class="grand"><td>Outstanding Balance</td><td class="val">RWF <?= money($loan['outstanding_balance']); ?></td></tr>
 </table>
 
+<!-- NEW: Loan Receipt Confirmation (the lender's name and the loan reference are filled in automatically) -->
+<div class="confirm">
+  <div class="c-heading">LOAN RECEIPT CONFIRMATION</div>
+  <ul>
+    <li>Rise Motive Ltd acknowledges receipt of the loan from <strong><?= $h($loan['lender']); ?></strong> under Loan Reference: <strong><?= $h($loanRef); ?></strong>.</li>
+    <li>Rise Motive Ltd recognizes its obligation to repay the outstanding loan in accordance with the agreed repayment schedule. The outstanding balance shown above includes the scheduled interest and remains subject to payments duly recorded.</li>
+    <li>This statement confirms the loan acknowledgment and recorded obligations. It does not replace bank statements, payment receipts, or other transaction evidence.</li>
+    <li>This is a system-generated document and is valid without a handwritten signature or stamp. Its validity is subject to the accuracy of the records maintained in MY MOTIVE.</li>
+  </ul>
+</div>
+
 <div class="sig-block">
   <div class="sig-heading"><strong>For <?= htmlspecialchars($co['name'], ENT_QUOTES, 'UTF-8'); ?></strong></div>
   <div class="sig-sub">Loan Recorded By:</div>
@@ -194,6 +211,8 @@ $statusColor = ['Paid' => '#0FA968', 'Partial' => '#E68A1C'];
 $bodyHtml = ob_get_clean();
 
 // ---- Build the PDF ----
+$tmp = sys_get_temp_dir() . '/mpdf';
+if (!is_dir($tmp)) { @mkdir($tmp, 0775, true); }
 $mpdf = new Mpdf([
     'format' => 'A4',
     'margin_top' => 55,
@@ -202,8 +221,10 @@ $mpdf = new Mpdf([
     'margin_footer' => 6,
     'margin_left' => 15,
     'margin_right' => 15,
+    'tempDir' => $tmp,
 ]);
 
+$mpdf->SetTitle($docTitle . ' ' . $loanRef);
 $mpdf->SetHTMLHeader($headerHtml);
 $mpdf->SetHTMLFooter($footerHtml);
 $mpdf->WriteHTML($bodyHtml);

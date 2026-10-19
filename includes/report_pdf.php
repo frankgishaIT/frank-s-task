@@ -16,11 +16,18 @@
  *   'footer_summary' => [ ['Overall Profit', 'RWF 200.00'], ... ], // optional, after the table
  *   'notes'          => ['Amounts are net of discount.'],
  * ]
+ *
+ * CHANGED: large reports (e.g. All Transactions for a whole year) are rendered in mPDF's fast table
+ * mode and very long texts are shortened in the PDF, so they no longer run past the server's time
+ * limit (the browser then showed endless loading / "page not found").
  */
 require_once __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/report_helpers.php';
 
 use Mpdf\Mpdf;
+
+const REPORT_PDF_FAST_ROWS = 150;     // above this many rows, use the fast table mode
+const REPORT_PDF_MAX_TEXT = 120;      // longer texts are shortened in the PDF (the screen shows them in full)
 
 /** Company details shown in the header of every report. */
 function report_company(): array
@@ -54,9 +61,26 @@ function report_key_figures_html(array $pairs): string
     return $html . '</table>';
 }
 
+/** NEW: a cell's text for the PDF, shortened when very long (long unbroken text is very slow to lay out). */
+function report_pdf_cell_text(string $text): string
+{
+    if (mb_strlen($text) > REPORT_PDF_MAX_TEXT) {
+        $text = rtrim(mb_substr($text, 0, REPORT_PDF_MAX_TEXT - 1)) . '…';
+    }
+    // Break very long words (e.g. codes without spaces) so a cell never forces a re-layout of the table.
+    return preg_replace('/(\S{40})(?=\S)/u', '$1 ', $text);
+}
+
 /** Builds the full PDF for a report array and returns the Mpdf object. */
 function report_render_pdf(array $report): Mpdf
 {
+    // NEW: big reports need more time and memory than a normal page.
+    @set_time_limit(300);
+    @ini_set('memory_limit', '512M');
+    // NEW: mPDF refuses HTML longer than pcre.backtrack_limit (1 MB by default) with an error;
+    // a year of transactions is longer than that.
+    @ini_set('pcre.backtrack_limit', '20000000');
+
     $co = report_company();
     $logoHtml = is_file($co['logo']) ? '<img src="' . $co['logo'] . '" style="height:42px; width:auto;"><br>' : '';
 
@@ -106,7 +130,9 @@ function report_render_pdf(array $report): Mpdf
     $body .= '</table>';
     $body .= report_key_figures_html($report['summary'] ?? []);
 
-    $body .= '<table class="data"><thead><tr>';
+    // CHANGED: the header row repeats on every page; column widths are fixed, so mPDF does not
+    // have to measure every cell of every row.
+    $body .= '<table class="data" repeat_header="1"><thead><tr>';
     foreach ($columns as $c) {
         $align = ($c['align'] ?? 'L') === 'R' ? 'right' : 'left';
         $body .= '<th style="width:' . round(100 * $c['w'] / $totalW, 2) . '%; text-align:' . $align . ';">' . report_e($c['label']) . '</th>';
@@ -121,7 +147,8 @@ function report_render_pdf(array $report): Mpdf
         $body .= '<tr>';
         foreach ($columns as $c) {
             $align = ($c['align'] ?? 'L') === 'R' ? 'right' : 'left';
-            $body .= '<td style="text-align:' . $align . ';">' . report_e(report_format_cell($row[$c['key']] ?? '', $c['type'] ?? 'text')) . '</td>';
+            $text = report_pdf_cell_text(report_format_cell($row[$c['key']] ?? '', $c['type'] ?? 'text'));
+            $body .= '<td style="text-align:' . $align . ';">' . report_e($text) . '</td>';
         }
         $body .= '</tr>';
     }
@@ -152,11 +179,16 @@ function report_render_pdf(array $report): Mpdf
     if (!is_dir($tmp)) {
         @mkdir($tmp, 0775, true);
     }
+    $big = count($rows) > REPORT_PDF_FAST_ROWS;
     $mpdf = new Mpdf([
         'format' => 'A4-L',
         'margin_top' => 36, 'margin_bottom' => 16, 'margin_header' => 8, 'margin_footer' => 6,
         'margin_left' => 12, 'margin_right' => 12,
         'tempDir' => $tmp,
+        // NEW: fast mode for big reports (plain cell borders, no per-cell measuring of the whole table).
+        'simpleTables' => $big,
+        'packTableData' => $big,
+        'shrink_tables_to_fit' => 1,
     ]);
     $mpdf->SetTitle($report['title']);
     $mpdf->SetAuthor(report_company()['name']);

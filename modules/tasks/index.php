@@ -82,7 +82,7 @@ function task_status_badge($status) {
                     <td><?= task_status_badge($task['status']); ?></td>
                     <td><?= $task['performance_score'] !== null ? (int) $task['performance_score'] . '/100' : '—'; ?></td>
                     <td class="text-nowrap">
-                        <a href="view.php?id=<?= (int) $task['id']; ?>" class="btn btn-info btn-sm">View</a>
+                        <a href="view.php?id=<?= (int) $task['id']; ?>" class="rm-btn rm-btn-info rm-btn-sm">View</a>
 
                         <?php if ($role === 'Employee' && (int) $task['assigned_to'] === (int) $userId) { ?>
                             <?php if ($task['status'] === 'Pending') { ?>
@@ -106,10 +106,10 @@ function task_status_badge($status) {
                             <?php if ($task['status'] === 'Completed') { ?>
                                 <a href="review.php?id=<?= (int) $task['id']; ?>" class="btn btn-success btn-sm">Review</a>
                             <?php } ?>
-                            <a href="edit.php?id=<?= (int) $task['id']; ?>" class="btn btn-warning btn-sm">Edit</a>
+                            <a href="edit.php?id=<?= (int) $task['id']; ?>" class="rm-btn rm-btn-warning rm-btn-sm">Edit</a>
                             <form method="POST" action="delete.php" class="d-inline" onsubmit="return confirm('Delete this task?')">
                                 <input type="hidden" name="id" value="<?= (int) $task['id']; ?>">
-                                <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                                 <button type="submit" class="rm-btn rm-btn-danger rm-btn-sm">Delete</button>
                             </form>
                         <?php } ?>
                     </td>

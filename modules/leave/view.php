@@ -4,23 +4,26 @@ require '../../config/db.php';
 $userId = current_user_id();
 $role = current_user_role();
 
+// CHANGED: problems are shown as errors (they were shown as success messages), and messages are encoded.
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
-if (!$id) { header('Location: index.php?success=Invalid leave request selected.'); exit; }
+if (!$id) { header('Location: index.php?error=' . urlencode('Invalid leave request selected.')); exit; }
 
 $statement = mysqli_prepare($conn, 'SELECT leave_requests.*, users.names AS employee_name FROM leave_requests INNER JOIN users ON leave_requests.user_id = users.id WHERE leave_requests.id = ?');
 mysqli_stmt_bind_param($statement, 'i', $id);
 mysqli_stmt_execute($statement);
 $leave = mysqli_fetch_assoc(mysqli_stmt_get_result($statement));
-if (!$leave) { header('Location: index.php?success=Leave request not found.'); exit; }
+if (!$leave) { header('Location: index.php?error=' . urlencode('Leave request not found.')); exit; }
 
 // Only the employee who owns the request, or a Manager/Admin, may view or join the chat.
 $canView = ((int) $leave['user_id'] === (int) $userId) || in_array($role, ['Manager', 'Admin'], true);
-if (!$canView) { header('Location: index.php?success=You do not have access to that leave request.'); exit; }
+if (!$canView) { header('Location: index.php?error=' . urlencode('You do not have access to that leave request.')); exit; }
 
 if (isset($_POST['message'])) {
     $message = trim($_POST['message']);
     if ($message === '') {
         $error = 'Please write a message before sending.';
+    } elseif (mb_strlen($message) > 2000) {
+        $error = 'The message is too long (maximum 2000 characters).';
     } else {
         $insert = mysqli_prepare($conn, 'INSERT INTO leave_request_comments (leave_request_id, user_id, message) VALUES (?, ?, ?)');
         mysqli_stmt_bind_param($insert, 'iis', $id, $userId, $message);
@@ -80,6 +83,23 @@ usort($events, function ($a, $b) {
     return strtotime($a['time']) <=> strtotime($b['time']);
 });
 
+// NEW: dates in the same format as the Leave list.
+//   Short Leave:  20 Oct 2026, 09:00 – 11:00 (2h)      Other types:  20 Oct 2026 → 22 Oct 2026 (3 days)
+$startTs = strtotime($leave['start_date']);
+$endTs = strtotime($leave['end_date']);
+$st = $leave['start_time'] ?? null;
+$et = $leave['end_time'] ?? null;
+if ($leave['leave_type'] === 'Short Leave' && $st && $et) {
+    $minutes = (int) round((strtotime('2000-01-01 ' . $et) - strtotime('2000-01-01 ' . $st)) / 60);
+    $length = $minutes >= 60 ? intdiv($minutes, 60) . 'h' . ($minutes % 60 ? ' ' . ($minutes % 60) . 'min' : '') : $minutes . 'min';
+    $datesText = date('d M Y', $startTs) . ', ' . substr($st, 0, 5) . ' – ' . substr($et, 0, 5) . ' (' . $length . ')';
+} else {
+    $days = (int) round(($endTs - $startTs) / 86400) + 1;
+    $datesText = ($startTs === $endTs ? date('d M Y', $startTs) : date('d M Y', $startTs) . ' → ' . date('d M Y', $endTs))
+        . ' (' . $days . ' day' . ($days === 1 ? '' : 's') . ')';
+}
+$statusColors = ['Pending' => '#6B7280', 'Manager Approved' => '#0EA5E9', 'Approved' => '#0FA968', 'Rejected' => '#E24B4A'];
+
 include '../../includes/header.php';
 include '../../includes/sidebar.php';
 
@@ -101,15 +121,19 @@ $modal_subtitle = htmlspecialchars($leave['employee_name'], ENT_QUOTES, 'UTF-8')
             </div>
             <?php } ?>
 
-            <div class="row g-3 mb-3">
-                <div class="col-6">
+            <div class="row g-3 mb-2">
+                <div class="col-md-5">
                     <label class="form-label small fw-semibold text-muted">Leave Type</label>
                     <input class="form-control rm-input" value="<?= htmlspecialchars($leave['leave_type'], ENT_QUOTES, 'UTF-8'); ?>" disabled>
                 </div>
-                <div class="col-6">
-                    <label class="form-label small fw-semibold text-muted">Dates</label>
-                    <input class="form-control rm-input" value="<?= htmlspecialchars($leave['start_date'], ENT_QUOTES, 'UTF-8'); ?> &rarr; <?= htmlspecialchars($leave['end_date'], ENT_QUOTES, 'UTF-8'); ?>" disabled>
+                <div class="col-md-7">
+                    <label class="form-label small fw-semibold text-muted"><?= $leave['leave_type'] === 'Short Leave' ? 'Date and Time' : 'Dates'; ?></label>
+                    <input class="form-control rm-input" value="<?= htmlspecialchars($datesText, ENT_QUOTES, 'UTF-8'); ?>" disabled>
                 </div>
+            </div>
+            <!-- NEW: the request's status -->
+            <div class="mb-3 small">Status:
+                <span class="badge" style="background:<?= $statusColors[$leave['status']] ?? '#6B7280'; ?>;"><?= htmlspecialchars($leave['status'], ENT_QUOTES, 'UTF-8'); ?></span>
             </div>
 
             <div class="mb-2 small fw-semibold text-muted text-uppercase" style="letter-spacing:.03em;">Chat &amp; History</div>
@@ -134,7 +158,7 @@ $modal_subtitle = htmlspecialchars($leave['employee_name'], ENT_QUOTES, 'UTF-8')
             <form method="POST">
                 <div class="mb-3">
                     <label class="form-label small fw-semibold text-muted">Add a message</label>
-                    <textarea name="message" class="form-control rm-input" rows="2" style="height:auto;" placeholder="Write a message..."></textarea>
+                    <textarea name="message" class="form-control rm-input" rows="2" maxlength="2000" style="height:auto;" placeholder="Write a message..."></textarea>
                 </div>
                 <div class="d-grid gap-2 d-md-flex justify-content-end mt-4">
                     <button type="submit" class="rm-btn rm-btn-primary">

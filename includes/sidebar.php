@@ -21,6 +21,14 @@ try {
 }
 ?>
 
+<!-- NEW: system-wide colour for "warning" badges (Medium priority, Partially Paid, Pending, Low Stock, Late ...).
+     The yellow is replaced by orange with white text. To use another colour, change --rm-warning-badge only. -->
+<style>
+    :root { --rm-warning-badge: #211b3f; }
+    .badge.bg-warning,
+    .badge.bg-warning.text-dark { background-color: var(--rm-warning-badge) !important; color: #FFFFFF !important; }
+</style>
+
 <div class="sidebar">
 
     <h3>

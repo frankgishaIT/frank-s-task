@@ -297,7 +297,7 @@ $jsonFlags = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
         const list = currentList();
         const n = groupSelect.value === 'numbers' ? list.length : list.filter(p => p.phone).length;
         if (n === 0) { e.preventDefault(); alert('Nobody in this selection has a phone number.'); return; }
-        if (!confirm('Send this SMS to ' + n + ' person(s)? This uses your Pindo credit.')) { e.preventDefault(); }
+        if (!confirm('Send this SMS to ' + n + ' person(s)? This uses your SMS credit.')) { e.preventDefault(); }
     });
 
     fillPeople();

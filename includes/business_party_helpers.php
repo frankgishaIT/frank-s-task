@@ -12,9 +12,17 @@ function business_party_display_name($party) {
 }
 
 function business_party_type_badge($type) {
-    $map = ['Supplier' => 'primary', 'Payee' => 'warning text-dark', 'Partner' => 'info text-dark'];
+    $label = htmlspecialchars($type, ENT_QUOTES, 'UTF-8');
+
+    // CHANGED: Partner now has white text. Bootstrap's light cyan is hard to read with white
+    // text, so Partner uses a darker cyan background (change #0891B2 to adjust the colour).
+    if ($type === 'Partner') {
+        return '<span class="badge text-white" style="background-color:#0891B2;">' . $label . '</span>';
+    }
+
+    $map = ['Supplier' => 'primary', 'Payee' => 'warning text-dark'];
     $class = $map[$type] ?? 'secondary';
-    return '<span class="badge bg-' . $class . '">' . htmlspecialchars($type, ENT_QUOTES, 'UTF-8') . '</span>';
+    return '<span class="badge bg-' . $class . '">' . $label . '</span>';
 }
 
 /**

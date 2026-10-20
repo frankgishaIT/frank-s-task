@@ -3,11 +3,11 @@
  * Applies the database changes (files in migrations/) that a company's database has not seen yet.
  * Run it as the Linux root user after every update that adds a file to migrations/.
  *
- *   php tools/migrate_companies.php                 every company EXCEPT company 1
+ *   php tools/migrate_companies.php                 every business EXCEPT business 1
  *   php tools/migrate_companies.php --code=ACME     one company
- *   php tools/migrate_companies.php --code=RM       company 1 as well, when you ask for it by name
+ *   php tools/migrate_companies.php --code=RM       business 1 as well, when you ask for it by name
  *
- * Company 1 (your live database) is normally updated by deploy.sh when you push to main. The two use the
+ * Business 1 (your live database) is normally updated by deploy.sh when you push to main. The two use the
  * same ledger (the schema_migrations table), so whichever runs first, the other sees it is done.
  */
 if (PHP_SAPI !== 'cli') {
@@ -44,7 +44,7 @@ try {
         }
     }
     if ($only !== null && !array_filter($companies, static fn($c) => $c['company_code'] === $only)) {
-        fwrite(STDERR, "There is no company with the code $only.\n");
+        fwrite(STDERR, "There is no business with the code $only.\n");
         exit(2);
     }
 } catch (Throwable $e) {

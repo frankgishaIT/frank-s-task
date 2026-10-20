@@ -110,7 +110,7 @@ function mm_mail_approved(array $req, string $payUrl, string $validUntil): array
             . mm_mail_p('Good news: <b>' . mm_e($req['company_name']) . '</b> is approved. One last step: pay the amount below with Mobile Money. You will get a prompt on your phone to confirm it with your PIN. Your account opens by itself right after.'),
         'rows'      => [
             ['Package', mm_e($req['package_name']) . ' (' . mm_e($req['billing_period']) . ')'],
-            ['Company code', mm_e($req['company_code'])],
+            ['Business code', mm_e($req['company_code'])],
             ['Reference', mm_e($req['reference'])],
             ['Amount to pay', '<span style="font-size:18px;color:#2E3FC0">' . mm_e(mm_mail_money((int) $req['amount_due'])) . '</span>'],
         ],
@@ -136,7 +136,7 @@ function mm_mail_payment_received(array $req, int $amount, string $paymentRef): 
 {
     return ['Payment received (' . $req['reference'] . ')', mm_email_layout([
         'tone'      => 'success',
-        'preheader' => 'Thank you! We are creating your company now.',
+        'preheader' => 'Thank you! We are creating your business now.',
         'title'     => 'Payment received. Thank you!',
         'intro'     => mm_mail_p('Hello ' . mm_e($req['owner_name']) . ',')
             . mm_mail_p('We received your payment. We are creating <b>' . mm_e($req['company_name']) . '</b> right now. In a minute you will get one more email with the link to choose your password.'),
@@ -153,16 +153,16 @@ function mm_mail_welcome(array $req, array $company, string $link): array
 {
     return ['Your MY MOTIVE account is ready', mm_email_layout([
         'tone'      => 'success',
-        'preheader' => 'Choose your password and sign in. Your company code is ' . $company['company_code'] . '.',
+        'preheader' => 'Choose your password and sign in. Your business code is ' . $company['company_code'] . '.',
         'title'     => 'Your account is ready',
         'intro'     => mm_mail_p('Hello ' . mm_e($req['owner_name']) . ',')
             . mm_mail_p('<b>' . mm_e($company['name']) . '</b> is open on MY MOTIVE. Choose your own password to get started. The link below works once and stays valid for 7 days.'),
         'rows'      => [
-            ['Company code', '<span style="font-size:18px;letter-spacing:.04em;color:#2E3FC0">' . mm_e($company['company_code']) . '</span>'],
+            ['Business code', '<span style="font-size:18px;letter-spacing:.04em;color:#2E3FC0">' . mm_e($company['company_code']) . '</span>'],
             ['Your email', mm_e($req['owner_email'])],
         ],
         'cta'       => ['Choose my password', $link],
-        'after'     => mm_mail_p('<span style="color:#6B7285;font-size:13.5px">You and your staff sign in with the <b>company code</b>, an email and a password. Keep the code handy: share it only with your team.</span>')
+        'after'     => mm_mail_p('<span style="color:#6B7285;font-size:13.5px">You and your staff sign in with the <b>business code</b>, an email and a password. Keep the code handy: share it only with your team.</span>')
             . mm_mail_p('<span style="color:#6B7285;font-size:13.5px">Sign in page: ' . mm_e(platform_public_url()) . '/login.php</span>'),
     ])];
 }
@@ -205,7 +205,7 @@ function mm_mail_subscription_notice(array $company, string $packageName, string
             . mm_mail_p($days > 0
                 ? 'The <b>' . mm_e($packageName) . '</b> subscription of <b>' . mm_e($company['name']) . '</b> ends ' . mm_e($when) . ' (' . mm_e($endsOn) . '). Renew it to keep working without interruption.'
                 : 'The <b>' . mm_e($packageName) . '</b> subscription of <b>' . mm_e($company['name']) . '</b> ended on ' . mm_e($endsOn) . '. Renew it now: after a few days of grace the account is paused, and all your data is kept safely.'),
-        'rows'      => [['Company code', mm_e($company['company_code'])], ['Package', mm_e($packageName)], ['Renewal', mm_e(mm_mail_money($amount))]],
+        'rows'      => [['Business code', mm_e($company['company_code'])], ['Package', mm_e($packageName)], ['Renewal', mm_e(mm_mail_money($amount))]],
         'after'     => $payHelp !== '' ? mm_mail_p('<span style="color:#6B7285;font-size:13.5px">' . nl2br(mm_e($payHelp)) . '</span>') : '',
     ])];
 }
@@ -217,7 +217,7 @@ function mm_mail_subscription_suspended(array $company, string $endedOn): array
         'title'     => 'Your account is paused',
         'intro'     => mm_mail_p('Hello,')
             . mm_mail_p('The subscription of <b>' . mm_e($company['name']) . '</b> ended on ' . mm_e($endedOn) . ' and was not renewed, so the account is paused. <b>Nothing was deleted</b>: as soon as you renew, everything is back exactly as you left it.'),
-        'rows'      => [['Company code', mm_e($company['company_code'])]],
+        'rows'      => [['Business code', mm_e($company['company_code'])]],
     ])];
 }
 

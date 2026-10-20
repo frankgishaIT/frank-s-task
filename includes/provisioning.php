@@ -121,12 +121,12 @@ function provision_company(string $code, string $name, string $ownerName, string
 {
     $code = platform_normalize_code($code);
     if (!platform_valid_code($code)) {
-        throw new RuntimeException('The company code must be 2 to 30 characters: letters, digits, - or _.');
+        throw new RuntimeException('The business code must be 2 to 30 characters: letters, digits, - or _.');
     }
     $name = trim($name);
     $ownerName = trim($ownerName);
     if ($name === '' || $ownerName === '') {
-        throw new RuntimeException('The company name and the owner name are required.');
+        throw new RuntimeException('The business name and the owner name are required.');
     }
     if (!filter_var($ownerEmail, FILTER_VALIDATE_EMAIL)) {
         throw new RuntimeException('The owner email address is not valid.');
@@ -135,7 +135,7 @@ function provision_company(string $code, string $name, string $ownerName, string
         throw new RuntimeException('Unknown status.');
     }
     if (platform_company_by_code($code)) {
-        throw new RuntimeException("The company code $code is already used.");
+        throw new RuntimeException("The business code $code is already used.");
     }
 
     $slug = strtolower(preg_replace('/[^A-Za-z0-9]/', '_', $code));
@@ -181,7 +181,7 @@ function provision_company(string $code, string $name, string $ownerName, string
         mysqli_stmt_bind_param($st, 'sssss', $ownerName, $ownerEmail, $hash, $role, $ownerPhone);
         mysqli_stmt_execute($st);
 
-        // the company's own profile: its name, the owner's phone and email, and an invoice prefix from its initials
+        // the business's own profile: its name, the owner's phone and email, and an invoice prefix from its initials
         $prefix = provision_invoice_prefix($name);
         $profilePhone = $ownerPhone ?? '';
         $st = mysqli_prepare($admin, 'INSERT INTO company_profile (id, display_name, phone, email, invoice_prefix) VALUES (1, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE id = id');
@@ -214,7 +214,7 @@ function provision_company(string $code, string $name, string $ownerName, string
             }
         } catch (Throwable $ignored) {
         }
-        throw new RuntimeException('Could not create the company (everything was undone): ' . $e->getMessage(), 0, $e);
+        throw new RuntimeException('Could not create the business (everything was undone): ' . $e->getMessage(), 0, $e);
     }
 
     return [
@@ -266,7 +266,7 @@ function provision_set_status(string $code, string $status): void
     }
     $company = platform_company_by_code($code);
     if (!$company) {
-        throw new RuntimeException('There is no company with that code.');
+        throw new RuntimeException('There is no business with that code.');
     }
     $st = mysqli_prepare(platform_conn(), 'UPDATE companies SET status = ? WHERE id = ?');
     $id = (int) $company['id'];

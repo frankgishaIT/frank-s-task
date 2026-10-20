@@ -1,6 +1,6 @@
 <?php
 /**
- * The worker: creates the database of every company whose payment was recorded.
+ * The worker: creates the database of every business whose payment was recorded.
  * It must run as the Linux root user (it creates databases), every minute, from cron:
  *
  *   * * * * * cd /var/www/mymotive-staging && flock -n /tmp/mm-worker.lock php tools/worker.php >> /var/log/mm-worker.log 2>&1
@@ -14,6 +14,7 @@ if (PHP_SAPI !== 'cli') {
 require_once __DIR__ . '/../includes/provisioning.php';
 require_once __DIR__ . '/../includes/signup.php';
 require_once __DIR__ . '/../includes/daily.php';
+require_once __DIR__ . '/../includes/business_delete.php';
 
 try {
     $db = platform_conn();
@@ -43,7 +44,10 @@ try {
         echo date('Y-m-d H:i:s') . ' ' . signup_activate_one($id) . "\n";
     }
 
-    // once a day: renewal reminders, pausing companies that did not renew, and each company's SMS reminders
+    // once a day: renewal reminders, pausing companies that did not renew, and each business's SMS reminders
+    foreach (company_purge_pending() as $purgeLine) {
+        echo date('Y-m-d H:i:s') . ' ' . $purgeLine . "\n";
+    }
     $daily = daily_maybe_run();
     if ($daily !== null) {
         echo date('Y-m-d H:i:s') . " daily job:\n";

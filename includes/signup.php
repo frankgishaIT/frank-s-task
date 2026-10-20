@@ -3,11 +3,11 @@
  * MY MOTIVE SaaS: company sign-up, approval, payment and activation.
  *
  * The life of a request:
- *   pending      the company filled in the form                      (nothing is created yet)
- *   approved     you accepted it; the company must now pay           (the company code is fixed here)
+ *   pending      the business filled in the form                      (nothing is created yet)
+ *   approved     you accepted it; the business must now pay           (the business code is fixed here)
  *   activating   payment recorded; waiting for the worker            (a worker running as root creates the database)
  *   provisioning the worker is busy with it
- *   active       the company exists and the owner was invited
+ *   active       the business exists and the owner was invited
  *   rejected     you refused it (with a reason)
  *   failed       the worker hit a problem; "Retry" puts it back to activating
  *
@@ -96,7 +96,7 @@ function signup_clean(array $in, array &$errors): ?array
         return $v;
     };
 
-    $companyName = $text('company_name', 2, 150, 'The company name');
+    $companyName = $text('company_name', 2, 150, 'The business name');
     $ownerName = $text('owner_name', 2, 150, 'Your name');
     $email = strtolower($text('owner_email', 5, 150, 'The email address'));
     if (!isset($errors['owner_email']) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -156,7 +156,7 @@ function signup_new_reference(): string
     throw new RuntimeException('Could not make a reference number.');
 }
 
-/** Saves a cleaned request. Refuses an email that already has an open request or a company. */
+/** Saves a cleaned request. Refuses an email that already has an open request or a business. */
 function signup_create(array $clean, string $ip): array
 {
     $db = platform_conn();
@@ -169,7 +169,7 @@ function signup_create(array $clean, string $ip): array
     mysqli_stmt_execute($st);
     $existing = (int) mysqli_fetch_row(mysqli_stmt_get_result($st))[0];
     if ($open > 0 || $existing > 0) {
-        throw new SignupException('This email address already has a request or a company. Please contact support if you need help.');
+        throw new SignupException('This email address already has a request or a business. Please contact support if you need help.');
     }
 
     $reference = signup_new_reference();
@@ -244,7 +244,7 @@ function signup_counts(): array
 
 // ---------------------------------------------------------------- the admin's decisions
 
-/** True if this company code is already used by a company or reserved by another open request. */
+/** True if this business code is already used by a company or reserved by another open request. */
 function signup_code_taken(string $code, ?int $exceptRequestId = null): bool
 {
     $db = platform_conn();
@@ -261,7 +261,7 @@ function signup_code_taken(string $code, ?int $exceptRequestId = null): bool
     return (int) mysqli_fetch_row(mysqli_stmt_get_result($st))[0] > 0;
 }
 
-/** A short code taken from the company name, made unique with a number if needed. */
+/** A short code taken from the business name, made unique with a number if needed. */
 function signup_suggest_code(string $companyName): string
 {
     $first = strtok(trim($companyName), ' ') ?: '';
@@ -282,11 +282,11 @@ function signup_suggest_code(string $companyName): string
 
 function signup_approve(int $id, ?string $code, string $adminEmail): void
 {
-    // The company code is made by the system (RMCP0002, RMCP0003 ...) so codes are always consistent and never repeated.
+    // The business code is made by the system (RMCP0002, RMCP0003 ...) so codes are always consistent and never repeated.
     // A code can still be given by hand (used by tests and the command line).
     $code = ($code === null || trim($code) === '') ? platform_next_company_code() : platform_normalize_code($code);
     if (!platform_valid_code($code)) {
-        throw new SignupException('The company code must be 2 to 30 characters: letters, digits, - or _.');
+        throw new SignupException('The business code must be 2 to 30 characters: letters, digits, - or _.');
     }
     if (signup_code_taken($code, $id)) {
         throw new SignupException("The code $code is already used. Choose another one.");
@@ -332,12 +332,12 @@ function signup_reject(int $id, string $reason, string $adminEmail): void
     signup_email_rejected($req);
 }
 
-/** Records that the company paid, and queues the creation of its database. The worker does the rest. */
+/** Records that the business paid, and queues the creation of its database. The worker does the rest. */
 function signup_record_payment(int $id, string $method, string $reference, int $amount, string $adminEmail): void
 {
     $reference = trim($reference);
     if (!in_array($method, SIGNUP_PAYMENT_METHODS, true)) {
-        throw new SignupException('Choose how the company paid.');
+        throw new SignupException('Choose how the business paid.');
     }
     if ($reference === '' || mb_strlen($reference) > 100) {
         throw new SignupException('Enter the payment reference (for example the MoMo transaction number).');
@@ -383,7 +383,7 @@ function signup_retry(int $id, string $adminEmail): void
 // ---------------------------------------------------------------- activation (run by the worker, as root)
 
 /**
- * Creates the company for a paid request. Safe to run again after a failure: what already exists is reused.
+ * Creates the business for a paid request. Safe to run again after a failure: what already exists is reused.
  * Returns a one-line result for the worker's log.
  */
 function signup_activate_one(int $id): string
@@ -398,7 +398,7 @@ function signup_activate_one(int $id): string
     $req = signup_get($id);
     try {
         if (empty($req['company_code'])) {
-            throw new RuntimeException('The request has no company code.');
+            throw new RuntimeException('The request has no business code.');
         }
         $company = platform_company_by_code($req['company_code']);
         if (!$company) {
@@ -438,7 +438,7 @@ function signup_activate_one(int $id): string
         return "request $id: FAILED: $msg";
     }
 
-    // The company exists now. A problem with the email must not undo that: the admin can resend the invite.
+    // The business exists now. A problem with the email must not undo that: the admin can resend the invite.
     $sent = signup_send_invite($req, $company);
     return "request $id: company " . $company['company_code'] . ' is active' . ($sent ? ', invite sent' : ', INVITE NOT SENT (use "Resend invite")');
 }
@@ -491,12 +491,12 @@ function signup_password_problem(string $password, string $email): ?string
     return null;
 }
 
-/** Sets the owner's password in the company's own database and uses up the link. */
+/** Sets the owner's password in the business's own database and uses up the link. */
 function invite_set_password(array $invite, string $newPassword): void
 {
     $company = platform_company_by_id((int) $invite['company_id']);
     if (!$company || $company['status'] === 'suspended') {
-        throw new SignupException('This company account is not active.');
+        throw new SignupException('This business account is not active.');
     }
     $db = platform_conn();
     // use up the link FIRST, atomically: two people clicking at once cannot both succeed
@@ -550,7 +550,7 @@ function signup_email_received(array $req): void
 
 function signup_email_approved(array $req, string $payToken, string $payExpires): bool
 {
-    $req = signup_get((int) $req['id']) ?? $req;   // the company code is fixed now
+    $req = signup_get((int) $req['id']) ?? $req;   // the business code is fixed now
     [$subject, $html] = mm_mail_approved($req, payment_pay_url($payToken), date('j F Y', strtotime($payExpires)));
     return platform_send_email($req['owner_email'], $req['owner_name'], $subject, $html);
 }
@@ -569,18 +569,18 @@ function signup_email_invite(array $req, array $company, string $link): bool
 
 // ---------------------------------------------------------------- companies and the worker, as the admin panel sees them
 
-/** Suspends or re-activates a company. Company 1 is your own company and cannot be suspended from the panel. */
+/** Suspends or re-activates a company. Business 1 is your own business and cannot be suspended from the panel. */
 function company_set_status(int $companyId, string $status, string $adminEmail): void
 {
     if (!in_array($status, ['active', 'suspended'], true)) {
         throw new SignupException('Unknown status.');
     }
     if ($companyId === 1 && $status === 'suspended') {
-        throw new SignupException('Company 1 is your own company. It cannot be suspended from here.');
+        throw new SignupException('Business 1 is your own business. It cannot be suspended from here.');
     }
     $company = platform_company_by_id($companyId);
     if (!$company) {
-        throw new SignupException('There is no such company.');
+        throw new SignupException('There is no such business.');
     }
     $st = mysqli_prepare(platform_conn(), 'UPDATE companies SET status = ? WHERE id = ?');
     mysqli_stmt_bind_param($st, 'si', $status, $companyId);

@@ -8,7 +8,7 @@ use Mpdf\Mpdf;
 // NEW: credit invoices must be paid within this many hours (the 72-hour rule).
 const INVOICE_PAYMENT_HOURS = 72;
 const INVOICE_DAILY_CHARGE_PERCENT = 1;
-// (the help phone printed on invoices now comes from the company profile)
+// (the help phone printed on invoices now comes from the business profile)
 
 // CHANGED: problems are sent as "error" (they were sent as "success"), and messages are urlencoded.
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
@@ -71,7 +71,7 @@ $statusLabel = htmlspecialchars($sale['status'], ENT_QUOTES, 'UTF-8');
 $statusColor = $isPending ? '#B8860B' : ($isCancelled ? '#6B7280' : ($isUnpaidInvoice ? '#E24B4A' : '#0FA968'));
 $statusBg    = $isPending ? '#FDF3E3' : ($isCancelled ? '#F1F3F9' : ($isUnpaidInvoice ? '#FCE9E9' : '#E1F7EE'));
 
-$co = company_profile();   // this company's own name, logo and details
+$co = company_profile();   // this business's own name, logo and details
 $invoiceHelp = $co['help_phone'] !== '' ? $co['help_phone'] : $co['phone'];
 $logoPath = $co['logo_path'];
 
@@ -160,7 +160,7 @@ ob_start();
   </tr>
   <tr>
     <td><span class="label"><strong>Amount Paid:&nbsp;</strong></span>RWF <?= money($sale['amount_paid']); ?></td>
-    <td><?php if ($sale['customer_id']) { ?><span class="label"><strong>Customer ID:&nbsp;</strong></span>RMC<?= str_pad((string) $sale['customer_id'], 6, '0', STR_PAD_LEFT); ?><?php } ?></td>
+    <td></td>
   </tr>
 </table>
 
@@ -314,7 +314,7 @@ ob_start();
   <?php } elseif ($isCancelled) { ?>
     This sale was cancelled and was not applied to inventory or finance records.
   <?php } else { ?>
-    Rise Beyond Limits!
+    Thank You For Choosing <?= htmlspecialchars($co['name'], ENT_QUOTES, 'UTF-8'); ?>
   <?php } ?>
 </div>
 <?php

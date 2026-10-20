@@ -74,7 +74,7 @@ function sms_parts(string $text): int {
     return $n <= 160 ? 1 : (int) ceil($n / 153);
 }
 
-/** SMS this company has really sent so far this calendar month (a long message counts once per part). */
+/** SMS this business has really sent so far this calendar month (a long message counts once per part). */
 function sms_month_usage(mysqli $conn): int {
     $res = mysqli_query($conn, "SELECT COALESCE(SUM(IF(CHAR_LENGTH(message) <= 160, 1, CEIL(CHAR_LENGTH(message) / 153))), 0)
         FROM sms_log WHERE status = 'sent' AND created_at >= DATE_FORMAT(NOW(), '%Y-%m-01')");
@@ -83,7 +83,7 @@ function sms_month_usage(mysqli $conn): int {
 
 /** null = this message may be sent. Otherwise the reason it is blocked (the package's monthly limit is used up). */
 function sms_quota_block_reason(mysqli $conn, string $text): ?string {
-    $quota = function_exists('mm_sms_quota') ? mm_sms_quota() : null;   // null = no limit (for example your own company)
+    $quota = function_exists('mm_sms_quota') ? mm_sms_quota() : null;   // null = no limit (for example your own business)
     if ($quota === null) { return null; }
     $used = sms_month_usage($conn);
     if ($used + sms_parts($text) > $quota) {
@@ -116,7 +116,7 @@ function sms_send(mysqli $conn, ?string $to, string $text, string $event, ?strin
         sms_log($conn, $phone, $text, $event, $refType, $refId, 'failed', null, 'PHP cURL extension is not enabled', $userId);
         return false;
     }
-    // the package's monthly limit: blocked messages are written to the log, so the company can see why
+    // the package's monthly limit: blocked messages are written to the log, so the business can see why
     $blocked = sms_quota_block_reason($conn, $text);
     if ($blocked !== null) {
         sms_log($conn, $phone, $text, $event, $refType, $refId, 'skipped', null, $blocked, $userId);

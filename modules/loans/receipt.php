@@ -28,7 +28,7 @@ $docTitle = 'Loan Repayment Receipt';
 $docNumber = 'No. ' . company_doc_no((int) $payment['id']);
 $loanRef = 'LN-' . str_pad($payment['loan_id'], 6, '0', STR_PAD_LEFT);
 
-$co = company_profile();   // this company's own name, logo and details
+$co = company_profile();   // this business's own name, logo and details
 $logoPath = $co['logo_path'];
 
 // ---- Repeating header ----
@@ -135,7 +135,7 @@ ob_start();
 </div>
 
 <div class="footnote">
-  This receipt confirms a loan repayment made to <?= htmlspecialchars($payment['lender'], ENT_QUOTES, 'UTF-8'); ?>.<br><br>Rise Beyond Limits!
+  This receipt confirms a loan repayment made to <?= htmlspecialchars($payment['lender'], ENT_QUOTES, 'UTF-8'); ?>.<br><br>Thank You For Choosing <?= htmlspecialchars($co['name'], ENT_QUOTES, 'UTF-8'); ?>
 </div>
 <?php
 $bodyHtml = ob_get_clean();

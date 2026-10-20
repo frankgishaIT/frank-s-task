@@ -66,7 +66,7 @@ try {
             $r = provision_company($code, $opt['name'], $opt['owner-name'], $opt['owner-email'], $opt['owner-phone'] ?? null);
             company_set_package((int) $r['company_id'], $package, mm_cli_actor());
             echo "\nCompany created.\n";
-            echo "  Company code:       {$r['code']}\n";
+            echo "  Business code:       {$r['code']}\n";
             echo "  Database:           {$r['db_name']}\n";
             echo "  Package:            $package\n";
             echo "  Owner login email:  {$r['owner_email']}\n";
@@ -81,7 +81,7 @@ try {
                 exit(2);
             }
             company_set_package((int) $co['id'], $pk, mm_cli_actor());
-            echo "Company {$co['company_code']} is now on the $pk package.\n";
+            echo "Business {$co['company_code']} is now on the $pk package.\n";
             break;
 
         case 'renew':
@@ -91,7 +91,7 @@ try {
                 exit(2);
             }
             $end = company_record_renewal((int) $co['id'], $opt['method'], $opt['reference'], (int) $opt['amount'], mm_cli_actor());
-            echo "Company {$co['company_code']} is active until $end.\n";
+            echo "Business {$co['company_code']} is active until $end.\n";
             break;
 
         case 'setcode':
@@ -110,7 +110,7 @@ try {
             mysqli_stmt_bind_param($st, 'si', $to, $cid);
             mysqli_stmt_execute($st);
             platform_audit($cid, mm_cli_actor(), 'company_code_changed', $co['company_code'] . ' -> ' . $to);
-            echo "The code of company {$co['name']} is now $to (it was {$co['company_code']}). People must type the new code to sign in.\n";
+            echo "The code of business {$co['name']} is now $to (it was {$co['company_code']}). People must type the new code to sign in.\n";
             break;
 
         case 'suspend':

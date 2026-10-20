@@ -1,12 +1,12 @@
 <?php
 /**
- * Gives company 1 (RISE MOTIVE) its profile: the name, TIN, website, address, payment methods and logo that used to be
+ * Gives business 1 (RISE MOTIVE) its profile: the name, TIN, website, address, payment methods and logo that used to be
  * written into the documents. Run once at go-live, as root. It only fills a profile that is still empty (use --force to overwrite).
  *
  *   php tools/seed_company1.php [--name="RISE MOTIVE"] [--tin=122923513] [--website=www.risemotive.rw] [--address="Kicukiro District, Kigali, Rwanda"]
  *                               [--phone=0795344768] [--help-phone=0795344768] [--momo-phone=...] [--prefix=RM] [--logo=assets/images/rise.jpg] [--force]
  *
- * SMS options start OFF for company 1, so nothing is sent to its customers until you switch them on (after the preview).
+ * SMS options start OFF for business 1, so nothing is sent to its customers until you switch them on (after the preview).
  */
 if (PHP_SAPI !== 'cli') {
     http_response_code(404);
@@ -23,13 +23,13 @@ foreach (array_slice($argv, 1) as $a) {
 }
 $company = platform_company_by_id(1);
 if (!$company) {
-    fwrite(STDERR, "Company 1 is not registered yet.\n");
+    fwrite(STDERR, "Business 1 is not registered yet.\n");
     exit(1);
 }
 $conn = tenant_try_connect($company);
 $existing = mysqli_fetch_assoc(mysqli_query($conn, 'SELECT * FROM company_profile WHERE id = 1')) ?: null;
 if ($existing && !empty($existing['display_name']) && empty($opt['force'])) {
-    echo "Company 1 already has a profile. Nothing changed (use --force to overwrite).\n";
+    echo "Business 1 already has a profile. Nothing changed (use --force to overwrite).\n";
     exit(0);
 }
 $v = static fn(string $k, string $default): string => trim($opt[$k] ?? $default);
@@ -57,10 +57,10 @@ if (!empty($opt['force']) || (int) mysqli_fetch_row(mysqli_query($conn, 'SELECT 
     }
 }
 
-// the logo: the picture that used to be written into the documents, saved as this company's own logo
+// the logo: the picture that used to be written into the documents, saved as this business's own logo
 $logoSrc = $opt['logo'] ?? 'assets/images/rise.jpg';
 $logoSrc = $logoSrc[0] === '/' ? $logoSrc : dirname(__DIR__) . '/' . $logoSrc;
-$logoNote = 'no logo file found at ' . $logoSrc . ' (upload one on the Company profile page)';
+$logoNote = 'no logo file found at ' . $logoSrc . ' (upload one on the Business profile page)';
 if (is_file($logoSrc) && function_exists('imagecreatefromstring')) {
     $img = @imagecreatefromstring((string) file_get_contents($logoSrc));
     if ($img) {
@@ -83,5 +83,5 @@ if (is_file($logoSrc) && function_exists('imagecreatefromstring')) {
     }
 }
 platform_audit(1, mm_cli_actor(), 'company1_profile_seeded', $name);
-echo "Company 1 profile saved: $name, TIN $tin, invoice prefix $prefix, 2 payment methods, logo $logoNote.\n";
+echo "Business 1 profile saved: $name, TIN $tin, invoice prefix $prefix, 2 payment methods, logo $logoNote.\n";
 echo "Its SMS options are OFF. Preview first:  php tools/daily.php --dry-run --code={$company['company_code']}\n";

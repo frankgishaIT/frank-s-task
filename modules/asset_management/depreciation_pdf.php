@@ -47,7 +47,7 @@ $usefulLifeYears = round(((int) $asset['useful_life_days']) / 365, 2);
 $dailyAmount = asset_daily_depreciation_amount((float) $asset['acquisition_value'], (float) $asset['residual_value'], (int) $asset['useful_life_days']);
 $depreciatedSoFar = round((float) $asset['acquisition_value'] - (float) $asset['current_value'], 2);
 
-$co = company_profile();   // this company's own name, logo and details
+$co = company_profile();   // this business's own name, logo and details
 $logoPath = $co['logo_path'];
 
 // ---- Repeating header ----
@@ -159,7 +159,7 @@ ob_start();
 </div>
 
 <div class="footnote">
-  This report shows the value and depreciation history of <?= $h($asset['asset_name']); ?> as at <?= date('d M Y'); ?>.<br><br> Rise Beyond Limits!
+  This report shows the value and depreciation history of <?= $h($asset['asset_name']); ?> as at <?= date('d M Y'); ?>.<br><br> Thank You For Choosing <?= htmlspecialchars($co['name'], ENT_QUOTES, 'UTF-8'); ?>
 </div>
 <?php
 $bodyHtml = ob_get_clean();

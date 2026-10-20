@@ -44,8 +44,8 @@ mm_public_start('Choose your password', [
     'shell' => 'narrow',
     'panel' => [
         'headline' => 'Welcome aboard.',
-        'lead'     => 'Choose a strong password and your company is ready to use.',
-        'points'   => [['lock', 'Only you know your password: we cannot see it'], ['key', 'You and your staff sign in with your company code'], ['users', 'Add your team once you are in']],
+        'lead'     => 'Choose a strong password and your business is ready to use.',
+        'points'   => [['lock', 'Only you know your password: we cannot see it'], ['key', 'You and your staff sign in with your business code'], ['users', 'Add your team once you are in']],
     ],
 ]);
 
@@ -53,8 +53,8 @@ if ($finished) { ?>
     <div class="mm-center">
         <div class="mm-bigicon ok"><?= mm_icon('check', 40); ?></div>
         <h1 class="mm-title">Your password is set</h1>
-        <p class="mm-sub">You can sign in now. Remember your company code: your staff use it too.</p>
-        <div class="mm-summary" style="text-align:left"><div class="row"><span>Company code</span><span style="letter-spacing:.06em;font-size:18px;color:var(--mm-primary-dark)"><?= h($invite['company_code']); ?></span></div></div>
+        <p class="mm-sub">You can sign in now. Remember your business code: your staff use it too.</p>
+        <div class="mm-summary" style="text-align:left"><div class="row"><span>Business code</span><span style="letter-spacing:.06em;font-size:18px;color:var(--mm-primary-dark)"><?= h($invite['company_code']); ?></span></div></div>
         <a class="mm-btn" href="<?= h(BASE_URL); ?>/login.php">Go to sign in <?= mm_icon('arrow', 18); ?></a>
     </div>
 <?php } elseif (!$invite) { ?>

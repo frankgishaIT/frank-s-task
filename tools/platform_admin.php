@@ -1,6 +1,6 @@
 <?php
 /**
- * Platform admins: the people who may approve companies. Run as any user that can read config/platform.php.
+ * Platform admins: the people who may approve businesses. Run as any user that can read config/platform.php.
  *
  *   php tools/platform_admin.php create --email=you@example.com --name="Your Name"
  *   php tools/platform_admin.php reset  --email=you@example.com

@@ -49,7 +49,7 @@ if ($command === 'import-xentripay') {
     $cfg['xentripay_base_url'] = rtrim($found['XENTRIPAY_BASE_URL'], '/');
     $cfg['xentripay_api_key'] = $found['XENTRIPAY_API_KEY'];
     $text = "<?php\n// MY MOTIVE SaaS platform settings. NOT in git. Keep this file private.\n"
-        . "// 'key' encrypts every company's database password. If it is lost, those passwords cannot be recovered: back this file up.\n"
+        . "// 'key' encrypts every business's database password. If it is lost, those passwords cannot be recovered: back this file up.\n"
         . 'return ' . var_export($cfg, true) . ";\n";
     if (file_put_contents($file, $text) === false) {
         fwrite(STDERR, "Could not write config/platform.php.\n");
@@ -62,7 +62,7 @@ if ($command === 'import-xentripay') {
 if ($command === 'set' && isset($argv[2], $argv[3]) && isset($allowed[$argv[2]])) {
     $cfg[$argv[2]] = $allowed[$argv[2]] === 'bool' ? in_array(strtolower($argv[3]), ['1', 'true', 'yes', 'on'], true) : $argv[3];
     $text = "<?php\n// MY MOTIVE SaaS platform settings. NOT in git. Keep this file private.\n"
-        . "// 'key' encrypts every company's database password. If it is lost, those passwords cannot be recovered: back this file up.\n"
+        . "// 'key' encrypts every business's database password. If it is lost, those passwords cannot be recovered: back this file up.\n"
         . 'return ' . var_export($cfg, true) . ";\n";
     if (file_put_contents($file, $text) === false) {
         fwrite(STDERR, "Could not write config/platform.php.\n");

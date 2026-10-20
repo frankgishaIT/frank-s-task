@@ -40,7 +40,7 @@ $statusBadge = [
 ];
 $badge = $statusBadge[$loan['status']] ?? ['#8A90A3', '#F1F3F9'];
 
-$co = company_profile();   // this company's own name, logo and details
+$co = company_profile();   // this business's own name, logo and details
 $logoPath = $co['logo_path'];
 
 // ---- Repeating header ----
@@ -189,8 +189,8 @@ $statusColor = ['Paid' => '#0FA968', 'Partial' => '#E68A1C'];
 <div class="confirm">
   <div class="c-heading">LOAN RECEIPT CONFIRMATION</div>
   <ul>
-    <li>Rise Motive Ltd acknowledges receipt of the loan from <strong><?= $h($loan['lender']); ?></strong> under Loan Reference: <strong><?= $h($loanRef); ?></strong>.</li>
-    <li>Rise Motive Ltd recognizes its obligation to repay the outstanding loan in accordance with the agreed repayment schedule. The outstanding balance shown above includes the scheduled interest and remains subject to payments duly recorded.</li>
+    <li><?= $h($co['name']); ?> acknowledges receipt of the loan from <strong><?= $h($loan['lender']); ?></strong> under Loan Reference: <strong><?= $h($loanRef); ?></strong>.</li>
+    <li><?= $h($co['name']); ?> recognizes its obligation to repay the outstanding loan in accordance with the agreed repayment schedule. The outstanding balance shown above includes the scheduled interest and remains subject to payments duly recorded.</li>
     <li>This statement confirms the loan acknowledgment and recorded obligations. It does not replace bank statements, payment receipts, or other transaction evidence.</li>
     <li>This is a system-generated document and is valid without a handwritten signature or stamp. Its validity is subject to the accuracy of the records maintained in MY MOTIVE.</li>
   </ul>
@@ -205,7 +205,7 @@ $statusColor = ['Paid' => '#0FA968', 'Partial' => '#E68A1C'];
 </div>
 
 <div class="footnote">
-  This schedule shows the repayment plan for the loan from <?= $h($loan['lender']); ?>, with payments recorded up to <?= date('d M Y'); ?>.<br><br>Rise Beyond Limits!
+  This schedule shows the repayment plan for the loan from <?= $h($loan['lender']); ?>, with payments recorded up to <?= date('d M Y'); ?>.<br><br>Thank You For Choosing <?= htmlspecialchars($co['name'], ENT_QUOTES, 'UTF-8'); ?>
 </div>
 <?php
 $bodyHtml = ob_get_clean();

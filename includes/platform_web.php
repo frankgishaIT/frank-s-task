@@ -17,7 +17,7 @@ function h($value): string
     return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 }
 
-/** Starts a session with its own cookie name, so a platform session can never be mistaken for a company session. */
+/** Starts a session with its own cookie name, so a platform session can never be mistaken for a business session. */
 function platform_session_start(string $name): void
 {
     // these pages must not be shown inside another site's frame, cached, or leak their address to other sites
@@ -140,7 +140,8 @@ function platform_flash(string $message, string $kind = 'success'): void
 /** The admin panel's page frame: a sidebar on the left, the page on the right. Without an admin it is a plain centred page. */
 function platform_page_start(string $title, ?array $admin = null, string $active = ''): void
 {
-    require_once __DIR__ . '/public_layout.php';      // the icons
+    require_once __DIR__ . '/public_layout.php';
+    require_once __DIR__ . '/admin_profile.php';      // the icons
     $flash = $_SESSION['flash'] ?? null;
     unset($_SESSION['flash']);
     $logo = mm_asset('images/logo-badge.png');
@@ -168,9 +169,9 @@ function platform_page_start(string $title, ?array $admin = null, string $active
     $nav = [
         'dashboard' => ['index.php', 'Dashboard', 'chart'],
         'requests'  => ['requests.php', 'Sign-up requests', 'users'],
-        'companies' => ['companies.php', 'Companies', 'building'],
+        'companies' => ['companies.php', 'Businesses', 'building'],
         'emails'    => ['emails.php', 'Emails', 'mail'],
-        'password'  => ['password.php', 'My password', 'key'],
+        'profile'   => ['profile.php', 'My profile', 'users'],
     ];
     echo '<div class="mma-shell"><aside class="mma-side"><div class="mma-brand"><img src="' . h($logo) . '" alt=""><div>MY MOTIVE<small>Platform</small></div></div><nav class="mma-nav">';
     foreach ($nav as $key => [$file, $label, $icon]) {
@@ -178,7 +179,7 @@ function platform_page_start(string $title, ?array $admin = null, string $active
             . ($key === 'requests' && $pending > 0 ? '<span class="cnt">' . $pending . '</span>' : '') . '</a>';
     }
     $initial = strtoupper(mb_substr((string) $admin['name'], 0, 1)) ?: 'A';
-    echo '</nav><div class="mma-user"><div class="av">' . h($initial) . '</div><div class="who">' . h($admin['name']) . '<small>' . h($admin['email']) . '</small></div>'
+    echo '</nav><div class="mma-user"><div class="av">' . (admin_avatar_url($admin) ? '<img src="' . h(admin_avatar_url($admin)) . '" alt="" style="width:100%;height:100%;border-radius:50%;object-fit:cover">' : h($initial)) . '</div><div class="who">' . h($admin['name']) . '<small>' . h($admin['email']) . '</small></div>'
         . '<a href="' . h(BASE_URL . '/platform/logout.php') . '" title="Sign out" aria-label="Sign out">' . mm_icon('arrow', 18) . '</a></div></aside>';
     echo '<main class="mma-main">';
     if ($flash) {

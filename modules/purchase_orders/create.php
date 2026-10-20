@@ -213,7 +213,7 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
             <?php } ?>
 
             <label class="form-label small fw-semibold text-muted">Products</label>
-            <p class="small text-muted mb-2">Pick how you're buying each product — units are set up per item in <a href="../products/index.php">RM Offerings</a>. Cost / Unit is always the price per single piece; the Line Total scales automatically for boxes/packs.</p>
+            <p class="small text-muted mb-2">Pick how you're buying each product — units are set up per item in <a href="../products/index.php">Inventory</a>. Cost / Unit is always the price per single piece; the Line Total scales automatically for boxes/packs.</p>
             <table class="table table-bordered bg-white align-middle" id="itemsTable">
                 <thead>
                     <tr>

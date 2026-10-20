@@ -57,7 +57,7 @@ try {
 
     <?php if (current_user_role() === 'Admin') { ?>
     <a href="../company/profile.php" class="<?= navActive('company', $currentPath) ?>">
-        <i class="bi bi-sliders"></i> Company profile
+        <i class="bi bi-sliders"></i> Business profile
     </a>
     <?php } ?>
 
@@ -82,7 +82,7 @@ try {
     </a>
 
     <a href="../products/index.php" class="<?= navActive('products', $currentPath) ?>">
-        <i class="bi bi-box-seam"></i> RM Offerings
+        <i class="bi bi-box-seam"></i> Inventory
     </a>
 
     <?php if (in_array(current_user_role(), ['Admin', 'Manager'], true)) { ?>

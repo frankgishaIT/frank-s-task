@@ -3,7 +3,7 @@
  * The frame shared by every customer-facing page (sign-up, payment, set / reset password).
  * One look, one stylesheet (assets/css/mm-public.css), no external framework.
  *
- *   mm_public_start('Open your company', ['panel' => [...], 'width' => 'wide']);
+ *   mm_public_start('Open your business', ['panel' => [...], 'width' => 'wide']);
  *   ... the content of the card ...
  *   mm_public_end();
  */
@@ -66,7 +66,7 @@ function mm_public_start(string $title, array $opt = []): void
         ['box', 'Your offerings, customers and sales'],
         ['chart', 'Money, loans, assets and payroll with Hasty'],
     ];
-    $note = $panel['note'] ?? 'Secure and private: every company has its own separate database.';
+    $note = $panel['note'] ?? 'Secure and private: every business has its own separate database.';
     $card = 'mm-card' . (($opt['width'] ?? '') === 'wide' ? ' mm-wide' : (($opt['width'] ?? '') === 'slim' ? ' mm-slim' : ''));
     $logo = mm_asset('images/logo-badge.png');
 

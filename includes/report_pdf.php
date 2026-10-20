@@ -32,7 +32,7 @@ const REPORT_PDF_MAX_TEXT = 120;      // longer texts are shortened in the PDF (
 /** Company details shown in the header of every report. */
 function report_company(): array
 {
-    $co = company_profile();   // this company's own details, never another company's
+    $co = company_profile();   // this business's own details, never another company's
     return [
         'name'    => $co['name'],
         'tin'     => $co['tin'],

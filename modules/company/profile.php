@@ -53,15 +53,15 @@ if (isset($_POST['save'])) {
             'invoice_prefix' => strtoupper(profile_text('invoice_prefix', 8)),
         ];
         if ($in['display_name'] === '') {
-            $errors[] = 'The company name is required.';
+            $errors[] = 'The business name is required.';
         }
         if ($in['email'] !== '' && !filter_var($in['email'], FILTER_VALIDATE_EMAIL)) {
-            $errors[] = 'The company email address is not valid.';
+            $errors[] = 'The business email address is not valid.';
         }
         if ($in['tin'] !== '' && !preg_match('/^[A-Za-z0-9\/ -]+$/', $in['tin'])) {
             $errors[] = 'The TIN may only contain letters, digits, spaces, - and /.';
         }
-        foreach (['phone' => 'The company phone', 'momo_phone' => 'The MoMo phone', 'help_phone' => 'The help phone'] as $k => $label) {
+        foreach (['phone' => 'The business phone', 'momo_phone' => 'The MoMo phone', 'help_phone' => 'The help phone'] as $k => $label) {
             if ($in[$k] !== '' && !preg_match('/^\+?[0-9 ]{9,20}$/', $in[$k])) {
                 $errors[] = "$label must be a phone number (digits only).";
             }
@@ -132,12 +132,12 @@ if (isset($_POST['save'])) {
                     mysqli_stmt_execute($ins);
                 }
                 mysqli_commit($conn);
-                $_SESSION['profile_notice'] = 'The company profile was saved.';
+                $_SESSION['profile_notice'] = 'The business profile was saved.';
                 header('Location: profile.php');
                 exit;
             } catch (Throwable $e) {
                 mysqli_rollback($conn);
-                error_log('company profile save failed: ' . $e->getMessage());
+                error_log('business profile save failed: ' . $e->getMessage());
                 $errors[] = 'The profile could not be saved. Please try again.';
             }
         }
@@ -161,7 +161,7 @@ include '../../includes/header.php';
 include '../../includes/sidebar.php';
 ?>
 <div class="mb-4">
-    <h4 class="mb-1" style="font-weight:800;color:#1E2333">Company profile</h4>
+    <h4 class="mb-1" style="font-weight:800;color:#1E2333">Business profile</h4>
     <p class="text-muted mb-0">This is how <?= $h($co['name']); ?> appears on its invoices, receipts, reports and SMS messages.</p>
 </div>
 
@@ -189,7 +189,7 @@ include '../../includes/sidebar.php';
 <div class="card border-0 shadow-sm mb-4"><div class="card-body">
     <h6 class="fw-bold mb-3">Identity</h6>
     <div class="row g-3">
-        <div class="col-md-6"><label class="form-label">Company name</label><input class="form-control rm-input" name="display_name" value="<?= $val('display_name', $co['name']); ?>" maxlength="150" required></div>
+        <div class="col-md-6"><label class="form-label">Business name</label><input class="form-control rm-input" name="display_name" value="<?= $val('display_name', $co['name']); ?>" maxlength="150" required></div>
         <div class="col-md-3"><label class="form-label">TIN</label><input class="form-control rm-input" name="tin" value="<?= $val('tin'); ?>" maxlength="30"></div>
         <div class="col-md-3"><label class="form-label">Website</label><input class="form-control rm-input" name="website" value="<?= $val('website'); ?>" maxlength="150" placeholder="www.yourcompany.rw"></div>
         <div class="col-md-6"><label class="form-label">Address</label><input class="form-control rm-input" name="address" value="<?= $val('address'); ?>" maxlength="255" placeholder="District, City, Country"></div>

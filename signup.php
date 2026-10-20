@@ -44,13 +44,13 @@ if ($chosen === '' && $cards) {
     $chosen = (string) $cards[0]['package']['id'];
 }
 
-mm_public_start('Open your company', [
+mm_public_start('Open your business', [
     'width' => 'wide',
     'panel' => [
-        'headline' => 'Open your company in minutes.',
+        'headline' => 'Open your business in minutes.',
         'lead'     => 'Tell us about your business, choose a plan, pay with Mobile Money, and start working. No setup fees, no paperwork.',
         'points'   => [
-            ['shield', 'Your data stays yours: every company has its own private database'],
+            ['shield', 'Your data stays yours: every business has its own private database'],
             ['users', 'Employees, attendance, leave, customers and sales from day one'],
             ['card', 'Pay with MTN or Airtel Mobile Money, right from your phone'],
         ],
@@ -74,13 +74,13 @@ if ($done) { ?>
             <ol>
                 <li>We review your request (usually within one working day).</li>
                 <li>If it is approved, you get an email with a secure <b>Pay</b> button.</li>
-                <li>You pay with Mobile Money. Your company opens right after, and you choose your password.</li>
+                <li>You pay with Mobile Money. Your business opens right after, and you choose your password.</li>
             </ol>
         </div>
         <a class="mm-link" href="<?= h(BASE_URL); ?>/login.php">Back to sign in</a>
     </div>
 <?php } else { ?>
-    <h1 class="mm-title">Open your company</h1>
+    <h1 class="mm-title">Open your business</h1>
     <p class="mm-sub">Takes about two minutes. You only pay after we approve your request.</p>
 <?php if (!empty($errors['_'])) { ?><div class="mm-alert bad"><?= mm_icon('alert', 18); ?><div><?= h($errors['_']); ?></div></div><?php } ?>
 <?php if ($errors && empty($errors['_'])) { ?><div class="mm-alert bad"><?= mm_icon('alert', 18); ?><div>Please check the fields marked in red.</div></div><?php } ?>
@@ -89,9 +89,9 @@ if ($done) { ?>
         <?= platform_csrf_field(); ?>
         <div style="position:absolute;left:-5000px" aria-hidden="true"><label>Website <input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
 
-        <div class="mm-section"><b>1</b>Your company</div>
+        <div class="mm-section"><b>1</b>Your business</div>
         <div class="mm-grid">
-            <div class="mm-field mm-full"><label class="mm-label" for="company_name">Company name</label>
+            <div class="mm-field mm-full"><label class="mm-label" for="company_name">Business name</label>
                 <input class="mm-input<?= $bad('company_name'); ?>" id="company_name" name="company_name" value="<?= $val('company_name'); ?>" maxlength="150" placeholder="e.g. Kigali Fresh Traders" autocomplete="organization"><?= $err('company_name'); ?></div>
             <div class="mm-field"><label class="mm-label" for="tin">TIN <i>(optional)</i></label>
                 <input class="mm-input<?= $bad('tin'); ?>" id="tin" name="tin" value="<?= $val('tin'); ?>" maxlength="30" placeholder="Tax number"><?= $err('tin'); ?></div>
@@ -102,7 +102,7 @@ if ($done) { ?>
             <div class="mm-field mm-full"><label class="mm-label" for="owner_name">Your full name</label>
                 <input class="mm-input<?= $bad('owner_name'); ?>" id="owner_name" name="owner_name" value="<?= $val('owner_name'); ?>" maxlength="150" placeholder="First and last name" autocomplete="name"><?= $err('owner_name'); ?></div>
             <div class="mm-field"><label class="mm-label" for="owner_email">Email address</label>
-                <input class="mm-input<?= $bad('owner_email'); ?>" type="email" id="owner_email" name="owner_email" value="<?= $val('owner_email'); ?>" maxlength="150" placeholder="you@company.com" autocomplete="email"><?= $err('owner_email'); ?>
+                <input class="mm-input<?= $bad('owner_email'); ?>" type="email" id="owner_email" name="owner_email" value="<?= $val('owner_email'); ?>" maxlength="150" placeholder="you@business.com" autocomplete="email"><?= $err('owner_email'); ?>
                 <?php if (!isset($errors['owner_email'])) { ?><div class="mm-hint">We send the approval and your sign-in link here.</div><?php } ?></div>
             <div class="mm-field"><label class="mm-label" for="owner_phone">Mobile phone</label>
                 <input class="mm-input<?= $bad('owner_phone'); ?>" type="tel" id="owner_phone" name="owner_phone" value="<?= $val('owner_phone'); ?>" maxlength="20" placeholder="0788 123 456" autocomplete="tel"><?= $err('owner_phone'); ?>

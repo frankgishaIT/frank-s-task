@@ -13,9 +13,9 @@
         <div class="fs-1 mb-2">🔒</div>
         <h4 class="mb-2"><?= htmlspecialchars($featureLabel, ENT_QUOTES, 'UTF-8'); ?> is not included in your package</h4>
         <?php if ($packageName !== '') { ?>
-        <p class="text-muted">Your company is on the <b><?= htmlspecialchars($packageName, ENT_QUOTES, 'UTF-8'); ?></b> package.</p>
+        <p class="text-muted">Your business is on the <b><?= htmlspecialchars($packageName, ENT_QUOTES, 'UTF-8'); ?></b> package.</p>
         <?php } else { ?>
-        <p class="text-muted">Your company does not have an active package at the moment.</p>
+        <p class="text-muted">Your business does not have an active package at the moment.</p>
         <?php } ?>
         <p class="text-muted">To add this, please ask your administrator to upgrade the package.</p>
         <a class="btn btn-primary" href="<?= htmlspecialchars((defined('BASE_URL') ? BASE_URL : '') . '/modules/dashboard/index.php', ENT_QUOTES, 'UTF-8'); ?>">Back to the dashboard</a>

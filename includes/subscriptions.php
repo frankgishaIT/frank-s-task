@@ -3,9 +3,9 @@
  * Subscriptions after the first payment: reminders, expiry, and renewals.
  *
  *   7, 3 and 1 day before the end, and on the last day: an email to the owner (each sent once)
- *   a few days after the end (the grace period): the company is paused, with a clear reason. Its data is never deleted.
- *   a recorded renewal: the end date moves forward, the company is active again, and the owner gets a receipt.
- * Company 1 (your own company) is never paused.
+ *   a few days after the end (the grace period): the business is paused, with a clear reason. Its data is never deleted.
+ *   a recorded renewal: the end date moves forward, the business is active again, and the owner gets a receipt.
+ * Business 1 (your own business) is never paused.
  */
 
 require_once __DIR__ . '/platform.php';
@@ -37,7 +37,7 @@ function subscription_renewal_amount(array $sub): int
 function company_record_renewal(int $companyId, string $method, string $reference, int $amount, string $adminEmail): string
 {
     if (!in_array($method, SIGNUP_PAYMENT_METHODS, true)) {
-        throw new SignupException('Choose how the company paid.');
+        throw new SignupException('Choose how the business paid.');
     }
     $reference = trim($reference);
     if ($reference === '' || mb_strlen($reference) > 100) {
@@ -46,7 +46,7 @@ function company_record_renewal(int $companyId, string $method, string $referenc
     $company = platform_company_by_id($companyId);
     $sub = $company ? subscription_latest($companyId) : null;
     if (!$company || !$sub) {
-        throw new SignupException('This company has no subscription to renew.');
+        throw new SignupException('This business has no subscription to renew.');
     }
     $due = subscription_renewal_amount($sub);
     if ($amount < $due) {

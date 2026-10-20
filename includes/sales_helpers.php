@@ -44,7 +44,7 @@ function customer_credit_status($loyaltyPoints) {
  * Service profit = 80% of the amount paid for the service.
  */
 function calculate_sale_profit($conn, $saleId) {
-    // CHANGED: uses the company profit rules (includes/profit_rules.php), so loyalty points,
+    // CHANGED: uses the business profit rules (includes/profit_rules.php), so loyalty points,
     // reports and fund allocations all use the same profit. The discount is now respected.
     $lineNet  = sales_report_line_net_sql('sales', 'sale_items');
     $lineCost = sales_report_line_cost_sql('sales', 'sale_items', 'products');

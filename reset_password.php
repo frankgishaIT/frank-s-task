@@ -44,7 +44,7 @@ mm_public_start('Choose a new password', [
     'panel' => [
         'headline' => 'Back in a moment.',
         'lead'     => 'Choose a new password, then sign in as usual.',
-        'points'   => [['lock', 'Use something you do not use anywhere else'], ['shield', 'We never see your password'], ['key', 'Your company code stays the same']],
+        'points'   => [['lock', 'Use something you do not use anywhere else'], ['shield', 'We never see your password'], ['key', 'Your business code stays the same']],
     ],
 ]);
 

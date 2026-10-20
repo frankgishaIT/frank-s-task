@@ -55,7 +55,7 @@ mm_public_start('Platform sign in', [
     'shell' => 'narrow',
     'panel' => [
         'headline' => 'The control room.',
-        'lead'     => 'Approve new companies, confirm payments, keep every account healthy, and see the whole platform at a glance.',
+        'lead'     => 'Approve new businesses, confirm payments, keep every account healthy, and see the whole platform at a glance.',
         'points'   => [
             ['shield', 'Only authorised staff can come in'],
             ['clock', 'You are signed out after 30 minutes without activity'],
@@ -72,7 +72,7 @@ mm_public_start('Platform sign in', [
     <form method="POST" autocomplete="off">
         <?= platform_csrf_field(); ?>
         <div class="mm-field"><label class="mm-label" for="email">Email address</label>
-            <input class="mm-input" type="email" id="email" name="email" value="<?= h($emailTyped); ?>" required<?= $emailTyped === '' ? ' autofocus' : ''; ?> autocomplete="username" placeholder="you@company.com"></div>
+            <input class="mm-input" type="email" id="email" name="email" value="<?= h($emailTyped); ?>" required<?= $emailTyped === '' ? ' autofocus' : ''; ?> autocomplete="username" placeholder="you@business.com"></div>
         <div class="mm-field" style="margin-bottom:22px"><label class="mm-label" for="pw">Password</label>
             <div class="mm-pwwrap"><input class="mm-input" type="password" id="pw" name="password" required<?= $emailTyped !== '' ? ' autofocus' : ''; ?> autocomplete="current-password" placeholder="Your password">
                 <button type="button" class="mm-eye" id="eye" aria-label="Show password"><?= mm_icon('eye', 18); ?></button></div></div>

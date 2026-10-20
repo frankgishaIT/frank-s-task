@@ -31,7 +31,7 @@ $lowStockCount = count(po_low_stock_products($conn));
 
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
-        <a href="../products/index.php" class="text-decoration-none small text-muted"><i class="bi bi-arrow-left"></i> Back to RM Offerings</a>
+        <a href="../products/index.php" class="text-decoration-none small text-muted"><i class="bi bi-arrow-left"></i> Back to Inventory</a>
         <h2 class="mt-1">Purchase Orders</h2>
     </div>
     <a href="create.php" class="rm-btn rm-btn-primary">+ New Purchase Order</a>

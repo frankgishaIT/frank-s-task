@@ -8,7 +8,7 @@
  *
  * Two safety rules:
  *   - A page that belongs to no known feature is refused (the door is closed unless we opened it).
- *   - Company 1 (your own company) has the "owner" package, which includes everything.
+ *   - Business 1 (your own business) has the "owner" package, which includes everything.
  */
 
 require_once __DIR__ . '/platform.php';
@@ -24,7 +24,7 @@ const MM_MODULE_FEATURE = [
     'tasks'             => 'tasks',
     'transactions'      => 'transactions',
     'categories'        => 'transactions',
-    'products'          => 'products',           // "RM Offerings"
+    'products'          => 'products',           // "Inventory"
     'purchases'         => 'products',
     'purchase_orders'   => 'products',
     'business_parties'  => 'business_parties',
@@ -38,7 +38,7 @@ const MM_MODULE_FEATURE = [
     'sms'               => 'sms',
     'tools'             => 'tools',
     'search'            => '*',
-    'company'           => '*',   // the company profile page (it is limited to the Admin role inside the page)
+    'company'           => '*',   // the business profile page (it is limited to the Admin role inside the page)
 ];
 
 /** Pages inside modules/transactions/ that are the "RM Funds" screens (a feature of their own). */
@@ -51,7 +51,7 @@ const MM_FUND_PAGES = [
 const MM_FEATURE_LABELS = [
     'dashboard' => 'Dashboard', 'employees' => 'Employees', 'attendance' => 'Attendance', 'leave' => 'Leave requests',
     'targets' => 'RM Targets', 'tasks' => 'Tasks', 'transactions' => 'Transactions', 'funds' => 'RM Funds',
-    'products' => 'RM Offerings', 'customers' => 'Customers', 'business_parties' => 'Business parties', 'sales' => 'Sales',
+    'products' => 'Inventory', 'customers' => 'Customers', 'business_parties' => 'Business parties', 'sales' => 'Sales',
     'loans' => 'Loans', 'assets' => 'Assets', 'financial_reports' => 'Financial reports', 'payroll' => 'Payroll',
     'notifications' => 'Notifications', 'sms' => 'SMS', 'tools' => 'Tools',
 ];
@@ -83,7 +83,7 @@ function platform_package_for_company(int $companyId): ?array
         if ($companyId !== 1) {
             return null;
         }
-        // Company 1 is your own company: a missing or expired subscription must never lock you out of your own business.
+        // Business 1 is your own business: a missing or expired subscription must never lock you out of your own business.
         $st = mysqli_prepare(platform_conn(), "SELECT code, name, features FROM packages WHERE code = 'owner' LIMIT 1");
         mysqli_stmt_execute($st);
         $row = mysqli_fetch_assoc(mysqli_stmt_get_result($st)) ?: ['code' => 'owner', 'name' => 'Owner (everything)', 'features' => json_encode(array_keys(MM_FEATURE_LABELS))];
@@ -129,7 +129,7 @@ function mm_filter_menu(string $html): string
 }
 
 /**
- * For a company without the RM Funds feature the pages say "Capital Fund", never "RM Capital Fund".
+ * For a business without the RM Funds feature the pages say "Capital Fund", never "RM Capital Fund".
  * It only touches ordinary web pages: a PDF, a spreadsheet or a JSON answer (they set their own Content-Type) is left alone.
  */
 function mm_neutral_fund_words(string $output): string
@@ -170,7 +170,7 @@ function company_set_package(int $companyId, string $packageCode, string $actor)
         throw new RuntimeException('There is no package called ' . $packageCode . '.');
     }
     if (!platform_company_by_id($companyId)) {
-        throw new RuntimeException('There is no such company.');
+        throw new RuntimeException('There is no such business.');
     }
     $packageId = (int) $package['id'];
     $st = mysqli_prepare($db, "UPDATE subscriptions SET package_id = ? WHERE company_id = ? AND status = 'active' ORDER BY id DESC LIMIT 1");

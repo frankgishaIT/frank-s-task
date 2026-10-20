@@ -1,10 +1,10 @@
 <?php
 /**
- * The identity of the company you are signed in to: its name, logo, tax number, address, payment methods and
+ * The identity of the business you are signed in to: its name, logo, tax number, address, payment methods and
  * invoice prefix. Everything a customer sees on an invoice, receipt, report or SMS comes from here, so no
  * company ever shows another company's name, logo or payment details.
  *
- * Loaded by includes/tenant.php, so every page already has it. A company edits its profile at Company profile.
+ * Loaded by includes/tenant.php, so every page already has it. A company edits its profile at Business profile.
  */
 
 if (!defined('COMPANY_LOGO_DIR')) {
@@ -35,7 +35,7 @@ function company_profile(): array
                 $methods[] = $m;
             }
         } catch (Throwable $e) {
-            // the profile tables are made by migration 029: until it has run, the company simply has no profile yet
+            // the profile tables are made by migration 029: until it has run, the business simply has no profile yet
         }
     }
     $name = trim((string) ($row['display_name'] ?? ''));
@@ -75,13 +75,13 @@ function company_name(): string
     return company_profile()['name'];
 }
 
-/** "RM000954": this company's prefix and the number padded to $pad digits. */
+/** "RM000954": this business's prefix and the number padded to $pad digits. */
 function company_doc_no(int $id, int $pad = 6): string
 {
     return company_profile()['invoice_prefix'] . str_pad((string) $id, $pad, '0', STR_PAD_LEFT);
 }
 
-/** The lines under the company name on a document: TIN, website, address. Only what the company filled in. */
+/** The lines under the business name on a document: TIN, website, address. Only what the business filled in. */
 function company_header_lines_html(array $co): string
 {
     $style = 'font-size:10px; font-weight:700; color:#1E2333; margin-top:8px; display:inline-block;';
@@ -122,7 +122,7 @@ function company_save_logo(array $upload): string
 {
     $cid = function_exists('mm_company_id') ? (int) mm_company_id() : 0;
     if ($cid <= 0) {
-        throw new RuntimeException('No company is signed in.');
+        throw new RuntimeException('No business is signed in.');
     }
     if (($upload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK || !is_uploaded_file($upload['tmp_name'] ?? '')) {
         throw new RuntimeException('The logo could not be uploaded. Please try again.');

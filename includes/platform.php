@@ -2,9 +2,9 @@
 /**
  * MY MOTIVE SaaS: the platform side.
  *
- * The PLATFORM database knows every company (its code, its own database, its status).
- * Each company's real data lives in that company's OWN database, opened with that
- * company's OWN MySQL user. This file finds the company and opens its database.
+ * The PLATFORM database knows every business (its code, its own database, its status).
+ * Each company's real data lives in that business's OWN database, opened with that
+ * company's OWN MySQL user. This file finds the business and opens its database.
  * One connection never mixes two companies.
  *
  * Settings come from config/platform.php (not in git: it holds the platform database
@@ -157,18 +157,18 @@ function platform_company_by_id(int $id): ?array
     return mysqli_fetch_assoc(mysqli_stmt_get_result($st)) ?: null;
 }
 
-/** Opens the company's OWN database with the company's OWN MySQL user. */
+/** Opens the business's OWN database with the business's OWN MySQL user. */
 function tenant_connect(array $company): mysqli
 {
     try {
         return mysqli_connect($company['db_host'], $company['db_user'], platform_decrypt($company['db_pass_enc']), $company['db_name']);
     } catch (Throwable $e) {
-        platform_fail('Could not open the database of company ' . $company['company_code'] . ': ' . $e->getMessage());
+        platform_fail('Could not open the database of business ' . $company['company_code'] . ': ' . $e->getMessage());
     }
 }
 
 /**
- * The next company code: RMCP0002, RMCP0003 ... (RMCP0001 is your own company). The counter only goes up, so a number
+ * The next business code: RMCP0002, RMCP0003 ... (RMCP0001 is your own business). The counter only goes up, so a number
  * is never given twice, even if two approvals happen at the same moment.
  */
 function platform_next_company_code(): string
@@ -178,7 +178,7 @@ function platform_next_company_code(): string
         mysqli_query($db, "UPDATE platform_counters SET value = LAST_INSERT_ID(value + 1) WHERE name = 'company_code'");
         $n = (int) mysqli_insert_id($db);
         if ($n <= 0) {
-            throw new RuntimeException('The company code counter is missing. Run: php tools/platform_migrate.php');
+            throw new RuntimeException('The business code counter is missing. Run: php tools/platform_migrate.php');
         }
         $code = 'RMCP' . str_pad((string) $n, 4, '0', STR_PAD_LEFT);
         $st = mysqli_prepare($db, "SELECT (SELECT COUNT(*) FROM companies WHERE company_code = ?) + (SELECT COUNT(*) FROM signup_requests WHERE company_code = ? AND status <> 'rejected')");
@@ -188,7 +188,7 @@ function platform_next_company_code(): string
             return $code;      // a number already used by hand is simply skipped
         }
     }
-    throw new RuntimeException('Could not find a free company code.');
+    throw new RuntimeException('Could not find a free business code.');
 }
 
 /**
@@ -201,7 +201,7 @@ function tenant_try_connect(array $company): mysqli
     try {
         $conn = mysqli_connect($company['db_host'], $company['db_user'], platform_decrypt($company['db_pass_enc']), $company['db_name']);
     } catch (Throwable $e) {
-        throw new RuntimeException('Could not open the database of company ' . $company['company_code'] . ': ' . $e->getMessage(), 0, $e);
+        throw new RuntimeException('Could not open the database of business ' . $company['company_code'] . ': ' . $e->getMessage(), 0, $e);
     }
     return $conn;
 }
@@ -215,7 +215,7 @@ function platform_audit(?int $companyId, string $actor, string $action, string $
 
 // ---------------------------------------------------------------- small helpers for pages
 
-/** The company of the current request (a row of the companies table), or null on the login page. */
+/** The business of the current request (a row of the companies table), or null on the login page. */
 function mm_company(): ?array
 {
     return $GLOBALS['MM_COMPANY'] ?? null;
@@ -233,7 +233,7 @@ function mm_company_name(): string
     return $c ? (string) $c['name'] : 'MY MOTIVE';
 }
 
-/** Remembers the company code in the browser, so the login form is already filled in next time. */
+/** Remembers the business code in the browser, so the login form is already filled in next time. */
 function mm_remember_company(string $code): void
 {
     setcookie('mm_company', $code, [

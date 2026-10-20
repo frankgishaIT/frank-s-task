@@ -7,9 +7,9 @@
  * difference is that $conn now points at the database of the visitor's company.
  *
  * Rules:
- *   - A logged-in request uses the company stored in the SESSION (set at login, on the server).
+ *   - A logged-in request uses the business stored in the SESSION (set at login, on the server).
  *     Nothing in the URL, a form or a cookie can change it.
- *   - The login page uses the company code the visitor typed.
+ *   - The login page uses the business code the visitor typed.
  *   - A company that is not active cannot sign in, and a signed-in user is signed out.
  */
 
@@ -19,12 +19,12 @@ if (!defined('BASE_URL')) {
 }
 
 require_once __DIR__ . '/platform.php';
-require_once __DIR__ . '/company_profile.php';   // the company's own name, logo and details for every page
+require_once __DIR__ . '/company_profile.php';   // the business's own name, logo and details for every page
 
-$MM_COMPANY = null;   // the company of this request: a row of the platform "companies" table
+$MM_COMPANY = null;   // the business of this request: a row of the platform "companies" table
 
 if (defined('RM_OS_ALLOW_GUEST')) {
-    // ---- The login page: the company comes from the code the visitor typed.
+    // ---- The login page: the business comes from the code the visitor typed.
     if (isset($_POST['company_code']) && is_string($_POST['company_code'])) {
         $found = platform_company_by_code($_POST['company_code']);
         if ($found && $found['status'] === 'active') {
@@ -35,7 +35,7 @@ if (defined('RM_OS_ALLOW_GUEST')) {
     // ---- Every other page: sends visitors who are not signed in to the login page (as before) ...
     require_once __DIR__ . '/auth.php';
 
-    // ... and then uses the company the visitor signed in to.
+    // ... and then uses the business the visitor signed in to.
     $mmCompanyId = (int) ($_SESSION['company_id'] ?? 0);
     $found = $mmCompanyId > 0 ? platform_company_by_id($mmCompanyId) : null;
     if (!$found) {
@@ -52,7 +52,7 @@ if ($MM_COMPANY) {
     $conn = tenant_connect($MM_COMPANY);
     unset($MM_COMPANY['db_pass_enc']);   // no page needs the encrypted password, so it is not kept in memory
 
-    // The package: which parts of the system this company has paid for.
+    // The package: which parts of the system this business has paid for.
     if (!defined('RM_OS_ALLOW_GUEST')) {
         require_once __DIR__ . '/features.php';
         $MM_PACKAGE = platform_package_for_company((int) $MM_COMPANY['id']);

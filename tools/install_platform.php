@@ -10,12 +10,12 @@
  *           --mail-dry-run=1   (emails are written to storage/platform_outbox.log instead of being sent: for staging)
  *
  * What it does:
- *   1. Reads the database login from the CURRENT config/db.php. That database becomes company 1.
+ *   1. Reads the database login from the CURRENT config/db.php. That database becomes business 1.
  *   2. Creates the platform database and its own MySQL user.
  *   3. Writes config/platform.php (the platform login and a new random master key).
- *   4. Registers company 1 in the platform, with its database password encrypted.
+ *   4. Registers business 1 in the platform, with its database password encrypted.
  *   5. Copies the old config/db.php to /root (it holds secrets) and replaces it with a file that holds NONE.
- * Nothing inside company 1's database is changed. If any step fails, everything is put back.
+ * Nothing inside business 1's database is changed. If any step fails, everything is put back.
  */
 
 if (PHP_SAPI !== 'cli') {
@@ -48,7 +48,7 @@ $platformUser = $opt['platform-user'] ?? 'mm_platform';
 $webGroup = getenv('MM_WEB_GROUP') ?: 'www-data';
 
 if (!platform_valid_code($code) || $companyName === '') {
-    fail('Give the code and name of company 1, for example: --company1-code=RM --company1-name="RISE MOTIVE"');
+    fail('Give the code and name of business 1, for example: --company1-code=RM --company1-name="RISE MOTIVE"');
 }
 if (!preg_match('/^[A-Za-z0-9_]{1,64}$/', $platformDb) || !preg_match('/^[A-Za-z0-9_]{1,32}$/', $platformUser)) {
     fail('The platform database and user names may only use letters, digits and _.');
@@ -60,7 +60,7 @@ if (!is_file($dbFile)) {
     fail('config/db.php was not found.');
 }
 
-// ---- 1. read the current database login (company 1)
+// ---- 1. read the current database login (business 1)
 $source = $opt['credentials-file'] ?? $dbFile;          // normally the current config/db.php
 if (!is_file($source)) {
     fail("The credentials file $source was not found.");
@@ -82,7 +82,7 @@ try {
 } catch (Throwable $e) {
     fail('The login in config/db.php does not work (' . $e->getMessage() . '). Nothing was changed.');
 }
-echo "1/5  Company 1 will be the database '{$creds['database']}' (login read, and it works).\n";
+echo "1/5  Business 1 will be the database '{$creds['database']}' (login read, and it works).\n";
 
 $done = ['db' => false, 'user' => false, 'file' => false, 'backup' => null];
 $admin = null;
@@ -117,7 +117,7 @@ try {
         'mail_dry_run' => ($opt['mail-dry-run'] ?? '0') === '1',
     ];
     $text = "<?php\n// MY MOTIVE SaaS platform settings. NOT in git. Keep this file private.\n"
-        . "// 'key' encrypts every company's database password. If it is lost, those passwords cannot be recovered: back this file up.\n"
+        . "// 'key' encrypts every business's database password. If it is lost, those passwords cannot be recovered: back this file up.\n"
         . 'return ' . var_export($settings, true) . ";\n";
     if (file_put_contents($platformFile, $text) === false) {
         throw new RuntimeException('Could not write config/platform.php.');
@@ -127,14 +127,14 @@ try {
     @chgrp($platformFile, $webGroup);
     echo "3/5  config/platform.php written (new random master key).\n";
 
-    // ---- 4. register company 1
+    // ---- 4. register business 1
     $enc = platform_encrypt($creds['password']);
     $st = mysqli_prepare(platform_conn(), "INSERT INTO companies (company_code, name, db_host, db_name, db_user, db_pass_enc, status) VALUES (?, ?, ?, ?, ?, ?, 'active')");
     mysqli_stmt_bind_param($st, 'ssssss', $code, $companyName, $creds['host'], $creds['database'], $creds['user'], $enc);
     mysqli_stmt_execute($st);
     $companyId = (int) mysqli_insert_id(platform_conn());
     platform_audit($companyId, mm_cli_actor(), 'platform_installed', "company1=$code db={$creds['database']}");
-    echo "4/5  Company 1 registered: code $code, database {$creds['database']} (password stored encrypted).\n";
+    echo "4/5  Business 1 registered: code $code, database {$creds['database']} (password stored encrypted).\n";
 
     // ---- 5. keep the old file safely, then replace it with one that has no secrets
     $backup = '/root/db.php.pre-saas.' . date('Ymd-His');
@@ -172,4 +172,4 @@ try {
     fail('Something failed, and everything was put back: ' . $e->getMessage());
 }
 
-echo "\nDONE. Sign in with company code $code and your usual email and password.\n";
+echo "\nDONE. Sign in with business code $code and your usual email and password.\n";

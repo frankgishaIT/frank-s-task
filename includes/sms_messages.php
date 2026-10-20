@@ -10,13 +10,13 @@
  */
 require_once __DIR__ . '/sms_helpers.php';
 
-// A company's name, MoMo number, help number and website come from ITS OWN profile (the Company profile page),
-// never from this file, so every company's messages carry its own details and nobody else's.
+// A company's name, MoMo number, help number and website come from ITS OWN profile (the Business profile page),
+// never from this file, so every business's messages carry its own details and nobody else's.
 function sms_company(): string { return company_profile()['name']; }
 function sms_momo_phone(): string { $p = company_profile(); return $p['momo_phone'] !== '' ? $p['momo_phone'] : $p['phone']; }
 function sms_help_phone(): string { $p = company_profile(); return $p['help_phone'] !== '' ? $p['help_phone'] : $p['phone']; }
 function sms_website(): string { return company_profile()['website']; }
-/** " EBM/Ikibazo: 0795..." when the company has a help number, otherwise nothing. */
+/** " EBM/Ikibazo: 0795..." when the business has a help number, otherwise nothing. */
 function sms_help_tail(string $label = 'EBM/Ikibazo'): string { $h = sms_help_phone(); return $h !== '' ? ' ' . $label . ': ' . $h . '.' : ''; }
 
 // How often the automatic messages are repeated (spec: credit reminder 1 in 2 days, loyalty weekly).
@@ -60,7 +60,7 @@ function sms_greet(?string $name, string $fallback = 'Mukiliya', string $lang = 
 // The invoice number shown in the messages, in the same format as the printed receipt:
 // "RM" + the sale number with 6 digits, e.g. sale 46 -> RM000046.
 function sms_invoice_no(int $saleId): string {
-    return company_doc_no($saleId);   // this company's prefix + the sale number, e.g. RM000046
+    return company_doc_no($saleId);   // this business's prefix + the sale number, e.g. RM000046
 }
 
 // True when this message was already sent for this record.
@@ -312,7 +312,7 @@ function sms_notify_payroll_paid(mysqli $conn, int $payrollId, ?int $userId = nu
  * NEW: welcome message to a new customer (sent once, when the customer is registered)
  * ===================================================================== */
 
-// (the website now comes from the company profile: sms_website())
+// (the website now comes from the business profile: sms_website())
 
 /**
  * The Customer ID shown in the welcome SMS. Uses the customer's own code column if the table has

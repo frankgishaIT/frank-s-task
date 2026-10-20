@@ -1,11 +1,11 @@
 <?php
 /**
- * Paying for a company: from the "Approved" email to a confirmed payment.
+ * Paying for a business: from the "Approved" email to a confirmed payment.
  *
  *   approval  -> a secure pay link is made (only its fingerprint is stored)
  *   pay page  -> the customer gives a mobile-money number -> XentriPay sends an approval prompt to the phone
  *   status    -> the page (and, as a safety net, the worker) asks XentriPay "is it paid?"
- *   confirmed -> the request goes to "activating" exactly once -> the worker creates the company
+ *   confirmed -> the request goes to "activating" exactly once -> the worker creates the business
  *
  * Nothing here trusts the browser: the amount is read from our database, never from the page, and a payment is
  * counted only when XentriPay itself says SUCCESS.
@@ -212,7 +212,7 @@ function payment_refresh(int $attemptId): ?array
 
 /**
  * A payment is confirmed: the request moves from "approved" to "activating" (once), the payment is recorded,
- * and the customer gets a receipt. The worker then creates the company.
+ * and the customer gets a receipt. The worker then creates the business.
  */
 function payment_confirm(array $attempt): bool
 {

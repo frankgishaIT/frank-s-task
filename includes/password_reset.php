@@ -1,8 +1,8 @@
 <?php
 /**
- * "I forgot my password", for the people of every company.
+ * "I forgot my password", for the people of every business.
  *
- * The person gives the company code and their email. If they match an active account, an email with a one-hour,
+ * The person gives the business code and their email. If they match an active account, an email with a one-hour,
  * one-time link is sent. The page ALWAYS gives the same answer, so nobody can use it to find out who has an account.
  */
 
@@ -12,7 +12,7 @@ require_once __DIR__ . '/platform_mail.php';
 
 const PWRESET_VALID_MINUTES = 60;
 
-/** Sends the reset email if (and only if) the company and the email match an active account. Prints nothing, returns nothing. */
+/** Sends the reset email if (and only if) the business and the email match an active account. Prints nothing, returns nothing. */
 function pwreset_request(string $companyCode, string $email, string $ip): void
 {
     $email = strtolower(trim($email));
@@ -69,12 +69,12 @@ function pwreset_lookup(string $token): ?array
     return mysqli_fetch_assoc(mysqli_stmt_get_result($st)) ?: null;
 }
 
-/** Sets the new password in the company's own database and uses up the link. Throws if it cannot. */
+/** Sets the new password in the business's own database and uses up the link. Throws if it cannot. */
 function pwreset_apply(array $reset, string $newPassword): void
 {
     $company = platform_company_by_id((int) $reset['company_id']);
     if (!$company || $company['status'] !== 'active') {
-        throw new RuntimeException('This company account is not active.');
+        throw new RuntimeException('This business account is not active.');
     }
     $db = platform_conn();
     $id = (int) $reset['id'];

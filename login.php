@@ -15,15 +15,15 @@ if (isset($_POST['login'])) {
     $password = is_string($_POST['password'] ?? null) ? $_POST['password'] : '';
     $user = null;
 
-    // includes/tenant.php has already connected to the company named by the company code,
-    // but only if that code exists and the company is active.
+    // includes/tenant.php has already connected to the business named by the business code,
+    // but only if that code exists and the business is active.
     if (!empty($MM_COMPANY) && isset($conn)) {
         $statement = mysqli_prepare($conn, 'SELECT id, names, email, password_hash, role FROM users WHERE email = ? AND is_active = 1');
         mysqli_stmt_bind_param($statement, 's', $email);
         mysqli_stmt_execute($statement);
         $user = mysqli_fetch_assoc(mysqli_stmt_get_result($statement));
     } else {
-        // A wrong company code takes about as long as a wrong password, so the answer does not reveal which one was wrong.
+        // A wrong business code takes about as long as a wrong password, so the answer does not reveal which one was wrong.
         password_verify($password, '$2y$10$exFhmYboBXgQb/y.E/iKMOShJo9fh5hWnhxbjVnViqHiidzLM8rJK');
     }
 
@@ -38,14 +38,14 @@ if (isset($_POST['login'])) {
         exit;
     }
 
-    $error = 'Invalid company code, email or password.';
+    $error = 'Invalid business code, email or password.';
 }
 
 // Why a visitor was sent back to this page (see includes/tenant.php)
 if (!isset($error)) {
     $why = $_GET['reason'] ?? '';
     if ($why === 'inactive') {
-        $error = 'Your company account is not active. Please contact your administrator.';
+        $error = 'Your business account is not active. Please contact your administrator.';
     } elseif ($why === 'expired') {
         $error = 'Please sign in again.';
     }
@@ -296,7 +296,7 @@ if (!isset($error)) {
             <form method="POST">
                 <?php $prefillCompany = $_POST['company_code'] ?? ($_COOKIE['mm_company'] ?? ''); if (!is_string($prefillCompany)) { $prefillCompany = ''; } ?>
                 <div class="mb-3">
-                    <label class="form-label">Company code</label>
+                    <label class="form-label">Business code</label>
                     <div class="input-group-rm">
                         <i class="bi bi-building"></i>
                         <input type="text" name="company_code" value="<?= htmlspecialchars($prefillCompany, ENT_QUOTES, 'UTF-8'); ?>" placeholder="e.g. RM" required maxlength="30" autocomplete="organization" style="text-transform:uppercase" <?= $prefillCompany === '' ? 'autofocus' : ''; ?>>
@@ -307,7 +307,7 @@ if (!isset($error)) {
                     <label class="form-label">Email address</label>
                     <div class="input-group-rm">
                         <i class="bi bi-envelope"></i>
-                        <input type="email" name="email" placeholder="you@company.com" required autofocus>
+                        <input type="email" name="email" placeholder="you@business.com" required autofocus>
                     </div>
                 </div>
 
@@ -325,7 +325,7 @@ if (!isset($error)) {
                 <button type="submit" name="login" class="btn-signin">Sign in</button>
             </form>
             <p style="text-align:center;margin:18px 0 0;font-size:13px;color:#8A90A3">
-                New company? <a href="signup.php" style="color:#3B4FE0;font-weight:600;text-decoration:none">Open an account</a>
+                New business? <a href="signup.php" style="color:#3B4FE0;font-weight:600;text-decoration:none">Open an account</a>
             </p>
         </div>
 

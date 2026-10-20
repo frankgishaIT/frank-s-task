@@ -3,7 +3,7 @@
  * The daily job for the whole platform. It runs once a day (started by the worker) and does two things:
  *
  *   1. SUBSCRIPTIONS   renewal reminders, and pausing companies that did not renew (see subscriptions.php)
- *   2. EACH COMPANY    the SMS payment reminders, if the company has them switched on and its package limit allows it.
+ *   2. EACH COMPANY    the SMS payment reminders, if the business has them switched on and its package limit allows it.
  *                      The "overdue charges" and "weekly loyalty" jobs run only for companies that switched them on.
  *
  * One company failing never stops the others. Every step can be previewed with dry-run: nothing is sent or changed.
@@ -11,8 +11,8 @@
 
 require_once __DIR__ . '/provisioning.php';
 require_once __DIR__ . '/subscriptions.php';
-require_once __DIR__ . '/features.php';           // the package of each company (SMS limit)
-require_once __DIR__ . '/company_profile.php';   // each company's own details and options
+require_once __DIR__ . '/features.php';           // the package of each business (SMS limit)
+require_once __DIR__ . '/company_profile.php';   // each business's own details and options
 
 const DAILY_DEFAULT_HOUR = 7;   // the job starts at or after this hour (server time) each day
 
@@ -20,7 +20,7 @@ const DAILY_DEFAULT_HOUR = 7;   // the job starts at or after this hour (server 
 function daily_company(array $company, bool $dryRun): string
 {
     $label = $company['company_code'];
-    // the company's world, exactly as it would be during one of its own page requests
+    // the business's world, exactly as it would be during one of its own page requests
     $GLOBALS['MM_COMPANY'] = $company;
     $GLOBALS['MM_PACKAGE'] = platform_package_for_company((int) $company['id']);
     $GLOBALS['MM_FEATURES'] = $GLOBALS['MM_PACKAGE']['features'] ?? [];

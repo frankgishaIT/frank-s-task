@@ -66,7 +66,7 @@ mm_public_start('Complete your payment', [
     'shell' => 'narrow',
     'panel' => [
         'headline' => 'One last step.',
-        'lead'     => 'Pay securely with Mobile Money. Your company opens automatically as soon as the payment is confirmed.',
+        'lead'     => 'Pay securely with Mobile Money. Your business opens automatically as soon as the payment is confirmed.',
         'points'   => [
             ['phone', 'You approve on your own phone with your PIN'],
             ['lock', 'We never see or store your PIN'],
@@ -116,7 +116,7 @@ if ($view === 'invalid') { ?>
         <div class="mm-alert bad"><?= mm_icon('alert', 18); ?><div><?= h($error); ?></div></div>
 <?php } ?>
         <div class="mm-summary">
-            <div class="row"><span>Company</span><span><?= h($req['company_name']); ?></span></div>
+            <div class="row"><span>Business</span><span><?= h($req['company_name']); ?></span></div>
             <div class="row"><span>Package</span><span><span class="mm-badge"><?= h($req['package_name']); ?></span> <?= h($req['billing_period'] === 'yearly' ? 'Yearly' : 'Monthly'); ?></span></div>
             <div class="row"><span>Reference</span><span><?= h($req['reference']); ?></span></div>
             <div class="row total"><span>Total to pay</span><span><?= h(signup_money($charge['amount'])); ?></span></div>
@@ -180,8 +180,8 @@ if ($view === 'invalid') { ?>
         <h1 class="mm-title">Your account is ready!</h1>
         <p class="mm-sub">We sent an email to <b style="color:var(--mm-ink)"><?= h($req['owner_email']); ?></b> with a secure link to choose your password.</p>
         <div class="mm-summary" style="text-align:left">
-            <div class="row"><span>Company</span><span><?= h($req['company_name']); ?></span></div>
-            <div class="row"><span>Company code</span><span style="letter-spacing:.06em;color:var(--mm-primary-dark)"><?= h($req['company_code']); ?></span></div>
+            <div class="row"><span>Business</span><span><?= h($req['company_name']); ?></span></div>
+            <div class="row"><span>Business code</span><span style="letter-spacing:.06em;color:var(--mm-primary-dark)"><?= h($req['company_code']); ?></span></div>
         </div>
         <a class="mm-btn" href="<?= h(BASE_URL); ?>/login.php">Go to sign in <?= mm_icon('arrow', 18); ?></a>
         <p class="mm-hint" style="margin-top:14px">Open the email first: you choose your password with its link. Check your spam folder if you do not see it.</p>

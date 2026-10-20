@@ -6,7 +6,7 @@
  *   php tools/credentials.php --new-admin-password=you@x.com   also sets a NEW temporary password for that platform admin and writes it in the file
  *   php tools/credentials.php --file=/root/my-sign-ins.txt     another file name
  *
- * Passwords are never stored in readable form anywhere, so an existing password can NOT be looked up. A company owner's password
+ * Passwords are never stored in readable form anywhere, so an existing password can NOT be looked up. A business owner's password
  * is chosen by the owner through the emailed link. The only password this file can contain is a freshly made temporary one.
  */
 if (PHP_SAPI !== 'cli') {
@@ -28,11 +28,11 @@ $L[] = 'MY MOTIVE: WHERE TO SIGN IN        (made ' . date('Y-m-d H:i') . ')';
 $L[] = 'KEEP THIS FILE PRIVATE. Delete it when you have saved what you need.';
 $L[] = '';
 $L[] = '1. ADDRESSES';
-$L[] = "   Companies sign in at:           $base/login.php      (company code + email + password)";
+$L[] = "   Companies sign in at:           $base/login.php      (business code + email + password)";
 $L[] = "   New companies sign up at:       $base/signup.php";
 $L[] = "   Platform admin (you) sign in:   $base/platform/login.php";
 $L[] = '';
-$L[] = '2. PLATFORM ADMINS (the people who approve companies)';
+$L[] = '2. PLATFORM ADMINS (the people who approve businesses)';
 $res = mysqli_query(platform_conn(), 'SELECT id, email, name, is_active, must_change_password, last_login_at FROM platform_admins ORDER BY id');
 $admins = [];
 while ($r = mysqli_fetch_assoc($res)) {
@@ -69,8 +69,8 @@ $res = mysqli_query(platform_conn(), "SELECT c.company_code, c.name, c.status, c
 while ($r = mysqli_fetch_assoc($res)) {
     $L[] = sprintf('   %-10s %-30s %-10s %-9s %s', $r['company_code'], mb_substr($r['name'], 0, 30), $r['status'], $r['package'] ?? '-', $r['owner_email'] ?? '(your own staff)');
 }
-$L[] = '   Every person signs in with: company code + their email + their own password.';
-$L[] = '   A company owner chooses the password through the link in the "Your account is ready" email.';
+$L[] = '   Every person signs in with: business code + their email + their own password.';
+$L[] = '   A business owner chooses the password through the link in the "Your account is ready" email.';
 $L[] = '   Someone who forgot theirs uses "Forgot password?" on the sign-in page.';
 $staging = '/root/mymotive-staging-credentials.txt';
 if (is_file($staging)) {

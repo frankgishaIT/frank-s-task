@@ -16,7 +16,7 @@ platform_page_start('Sign-up requests', $admin, 'requests');
 <?php } ?>
 </p>
 <div class="card p-3"><div class="table-responsive"><table class="table table-sm align-middle mb-0">
-<thead><tr><th>Reference</th><th>Company</th><th>Owner</th><th>Package</th><th>Due</th><th>Status</th><th>Sent</th></tr></thead><tbody>
+<thead><tr><th>Reference</th><th>Business</th><th>Owner</th><th>Package</th><th>Due</th><th>Status</th><th>Sent</th></tr></thead><tbody>
 <?php foreach ($rows as $r) { ?>
 <tr><td><a href="request.php?id=<?= (int) $r['id']; ?>"><?= h($r['reference']); ?></a></td><td><?= h($r['company_name']); ?></td><td><?= h($r['owner_name']); ?><br><small class="text-muted"><?= h($r['owner_email']); ?></small></td><td><?= h($r['package_name']); ?> / <?= h($r['billing_period']); ?></td><td><?= h(signup_money((int) $r['amount_due'])); ?></td><td><?= h($r['status']); ?></td><td><?= h($r['created_at']); ?></td></tr>
 <?php } ?>

@@ -1,6 +1,6 @@
 <?php
 /**
- * ONE place for the company's profit rules. Every report that shows profit
+ * ONE place for the business's profit rules. Every report that shows profit
  * (Sales reports, and later Gross Profit, Net Profit, Profit & Loss, Profit Margin)
  * must use these, so the numbers agree everywhere.
  *

@@ -39,7 +39,7 @@ $statusLabel = htmlspecialchars($po['status'], ENT_QUOTES, 'UTF-8');
 $statusColor = $isDraft ? '#B8860B' : ($isCancelled ? '#8A90A3' : ($isReceived ? '#0FA968' : '#1E2FE0'));
 $statusBg    = $isDraft ? '#FDF3E3' : ($isCancelled ? '#F1F3F9' : ($isReceived ? '#E1F7EE' : '#E8EBFC'));
 
-$co = company_profile();   // this company's own name, logo and details
+$co = company_profile();   // this business's own name, logo and details
 $logoPath = $co['logo_path'];
 
 // ---- Repeating header ----

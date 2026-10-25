@@ -4,8 +4,9 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 require '../../config/db.php';
 require '../../includes/notification_helper.php';
-// NEW: this page had no role check of its own (every other page has one).
-require_role(['Admin', 'Manager', 'Employee']);
+// CHANGED (Task 5): only Admins and Managers may edit customer records. Employees are refused here,
+// on the server, so a direct address or a manually sent form cannot get around it.
+require_role(['Admin', 'Manager']);
 
 // CHANGED: problems are sent as "error" (they were sent as "success"), and messages are urlencoded.
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);

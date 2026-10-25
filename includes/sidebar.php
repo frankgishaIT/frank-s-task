@@ -22,9 +22,9 @@ try {
 ?>
 
 <!-- NEW: system-wide colour for "warning" badges (Medium priority, Partially Paid, Pending, Low Stock, Late ...).
-     The yellow is replaced by orange with white text. To use another colour, change --rm-warning-badge only. -->
+     The yellow is replaced by grey with white text. To use another colour, change --rm-warning-badge only. -->
 <style>
-    :root { --rm-warning-badge: #211b3f; }
+    :root { --rm-warning-badge: #6B7280; }
     .badge.bg-warning,
     .badge.bg-warning.text-dark { background-color: var(--rm-warning-badge) !important; color: #FFFFFF !important; }
 </style>
@@ -42,6 +42,17 @@ try {
         <i class="bi bi-house-door-fill"></i> Dashboard
     </a>
 
+    <?php
+    // NEW (Task 1): Internal Communication, with the number of unread messages.
+    $commUnread = 0;
+    try { require_once __DIR__ . '/comm_helpers.php'; $commUnread = comm_unread_total($conn, (int) current_user_id(), current_user_role()); }
+    catch (Throwable $commError) { $commUnread = 0; }
+    ?>
+    <a href="../messages/index.php" class="<?= navActive('/messages/', $currentPath) ?>">
+        <i class="bi bi-chat-dots-fill"></i> Messages
+        <?php if ($commUnread > 0) { ?><span class="badge rounded-pill ms-1" style="background:#E24B4A;"><?= $commUnread > 99 ? '99+' : $commUnread; ?></span><?php } ?>
+    </a>
+
     <?php if (current_user_role() === 'Admin') { ?>
     <a href="../departments/index.php" class="<?= navActive('departments', $currentPath) ?>">
         <i class="bi bi-building"></i> Departments
@@ -51,6 +62,13 @@ try {
     <?php if (current_user_role() === 'Admin') { ?>
     <a href="../users/index.php" class="<?= navActive('users', $currentPath) ?>">
         <i class="bi bi-people-fill"></i> Employees
+    </a>
+    <?php } ?>
+
+    <?php if (current_user_role() === 'Admin') { ?>
+    <!-- NEW (Task 3): Admin-managed categories (expense categories, asset types, leave types ...) -->
+    <a href="../categories/index.php" class="<?= navActive('/categories/', $currentPath) ?>">
+        <i class="bi bi-tags-fill"></i> Categories
     </a>
     <?php } ?>
 

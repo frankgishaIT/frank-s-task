@@ -11,7 +11,8 @@ $departments = mysqli_query($conn, 'SELECT * FROM departments WHERE is_active = 
 $departmentList = [];
 while ($d = mysqli_fetch_assoc($departments)) { $departmentList[] = $d; }
 
-$assetTypes = ['Vehicle', 'Equipment', 'Furniture', 'Computer & IT', 'Building', 'Land', 'Machinery', 'Other'];
+require_once '../../includes/category_helpers.php'; // NEW (Task 3): Admin-managed categories
+$assetTypes = categories_active($conn, 'asset_type'); // CHANGED (Task 3): managed by Admins under Categories
 
 // CHANGED: a new asset can only be registered as Active or Under Maintenance.
 // Disposed and Lost are outcomes that must go through the asset's disposal / loss action,

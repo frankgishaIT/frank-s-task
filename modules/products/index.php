@@ -22,10 +22,14 @@ $result = mysqli_query($conn, "SELECT * FROM products ORDER BY item_type, produc
 $lowStockCount = mysqli_fetch_assoc(mysqli_query($conn, "SELECT COUNT(*) AS c FROM products WHERE item_type = 'Item' AND quantity <= " . stock_reorder_level_sql() . " AND is_active = 1"))['c'];
 
 // Total value of current stock, based on Buying Price. Only active, physical
-// Items carry stock — Services are excluded since they have no quantity.
+// Products carry stock — Services are excluded since they have no quantity.
 $stockValueRow = mysqli_fetch_assoc(mysqli_query($conn, "SELECT COALESCE(SUM(quantity * buying_price), 0) AS stock_value
     FROM products WHERE item_type = 'Item' AND is_active = 1"));
 $totalStockValue = (float) $stockValueRow['stock_value'];
+
+// CHANGED (Task 2 A): the database keeps the value 'Item' (so no existing record, sale or report
+// changes), but everywhere on screen it is called "Product".
+function offering_type_label(string $type): string { return $type === 'Service' ? 'Service' : 'Product'; }
 ?>
 
 <?php if (isset($_GET['success'])) { ?>
@@ -34,9 +38,16 @@ $totalStockValue = (float) $stockValueRow['stock_value'];
     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
 </div>
 <?php } ?>
+<?php if (isset($_GET['error'])) { ?>
+<!-- NEW: error messages were not shown on this page. -->
+<div class="alert alert-danger alert-dismissible fade show" role="alert">
+    <?= htmlspecialchars($_GET['error'], ENT_QUOTES, 'UTF-8'); ?>
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+<?php } ?>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h2>Items &amp; Services</h2>
+    <h2>Products &amp; Services</h2>
     <div class="d-flex gap-2">
         <a href="../purchases/index.php" class="rm-btn rm-btn-secondary"><i class="bi bi-clock-history me-1"></i>Purchase History</a>
         <?php if ($canManagePurchaseOrders) { ?>
@@ -44,7 +55,7 @@ $totalStockValue = (float) $stockValueRow['stock_value'];
         <a href="reports.php" class="rm-btn rm-btn-secondary"><i class="bi bi-bar-chart-fill me-1"></i>Reports</a>
         <?php } ?>
         <?php if ($isAdmin) { ?>
-        <a href="create.php" class="rm-btn rm-btn-primary">+ Add Item or Service</a>
+        <a href="create.php" class="rm-btn rm-btn-primary">+ Add Product or Service</a>
         <?php } ?>
     </div>
 </div>
@@ -55,7 +66,7 @@ $totalStockValue = (float) $stockValueRow['stock_value'];
             <div class="card-body">
                 <small class="text-muted">Total Stock Value</small>
                 <h4 class="text-primary mb-0">RWF <?= number_format($totalStockValue, 2); ?></h4>
-                <small class="text-muted">Based on Buying Price of active items in stock</small>
+                <small class="text-muted">Based on Buying Price of active products in stock</small>
             </div>
         </div>
     </div>
@@ -63,7 +74,7 @@ $totalStockValue = (float) $stockValueRow['stock_value'];
 
 <?php if ($lowStockCount > 0) { ?>
 <div class="alert alert-warning d-flex align-items-center justify-content-between gap-2 mb-4" style="border-radius:10px;">
-    <span><i class="bi bi-exclamation-triangle-fill"></i> <?= (int) $lowStockCount; ?> item<?= $lowStockCount == 1 ? '' : 's'; ?> at or below <?= $lowStockCount == 1 ? 'its' : 'their'; ?> reorder level.</span>
+    <span><i class="bi bi-exclamation-triangle-fill"></i> <?= (int) $lowStockCount; ?> product<?= $lowStockCount == 1 ? '' : 's'; ?> at or below <?= $lowStockCount == 1 ? 'its' : 'their'; ?> reorder level.</span>
     <?php if ($canManagePurchaseOrders) { ?>
     <a href="../purchase_orders/create.php?from_low_stock=1" class="rm-btn rm-btn-warning rm-btn-sm">Create Purchase Order</a>
     <?php } ?>
@@ -81,12 +92,12 @@ $totalStockValue = (float) $stockValueRow['stock_value'];
 <tr>
     <th>No.</th><th>Type</th><th>Name</th><th>Code</th><th>Quantity</th><th>Unit</th><th>Buying Price</th><th>Selling Price</th><th>Status</th><th>Action</th>
 </tr>
-<?php if (mysqli_num_rows($result) === 0) { ?><tr><td colspan="10" class="text-center text-muted py-4">No items or services yet.</td></tr><?php } ?>
+<?php if (mysqli_num_rows($result) === 0) { ?><tr><td colspan="10" class="text-center text-muted py-4">No products or services yet.</td></tr><?php } ?>
 <?php $rowNumber = $offset + 1; ?>
 <?php while ($row = mysqli_fetch_assoc($result)) { $isService = $row['item_type'] === 'Service'; ?>
 <tr>
     <td><?= $rowNumber++; ?></td>
-    <td><span class="badge bg-<?= $isService ? 'info text-dark' : 'primary'; ?>"><?= htmlspecialchars($row['item_type'], ENT_QUOTES, 'UTF-8'); ?></span></td>
+    <td><span class="badge bg-<?= $isService ? 'info text-dark' : 'primary'; ?>"><?= offering_type_label($row['item_type']); ?></span></td>
     <td><?= htmlspecialchars($row['product_name'], ENT_QUOTES, 'UTF-8'); ?></td>
     <td><?= htmlspecialchars($row['product_code'], ENT_QUOTES, 'UTF-8'); ?></td>
     <td>

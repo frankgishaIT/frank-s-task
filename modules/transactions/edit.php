@@ -5,6 +5,7 @@ if (session_status() === PHP_SESSION_NONE) {
 require '../../config/db.php';
 require '../../includes/fund_helpers.php';
 require_once '../../includes/income_allocation_helpers.php'; // NEW: manual Income -> four Funds
+require_once '../../includes/category_helpers.php'; // NEW (Task 3): Admin-managed categories
 
 // Admin-only action
 $isAdmin = isset($_SESSION['user_role']) && strtolower($_SESSION['user_role']) === 'admin';
@@ -46,7 +47,8 @@ if ($transaction['status'] === 'deleted') {
 // The type and the fund stay locked (switching them would move money between funds).
 $isFundExpense = $transaction['transaction_type'] === 'Expense' && !empty($transaction['fund_id']);
 $fundRow = !empty($transaction['fund_id']) ? fund_get($conn, (int) $transaction['fund_id']) : null;
-$categoryList = fund_expense_categories();
+// CHANGED (Task 3): managed by Admins. The record's own category stays available even if it was deactivated.
+$categoryList = categories_active($conn, 'expense', $transaction['expense_category'] ?? null);
 
 if (isset($_POST['update'])) {
     $category = $_POST['category'] ?? '';
@@ -70,8 +72,11 @@ if (isset($_POST['update'])) {
         $error = 'Please enter a category, positive amount, and valid date.';
     } elseif ($transactionDate > date('Y-m-d')) {
         $error = 'The date cannot be in the future.';
-    } elseif ($expenseCategory !== null && !in_array($expenseCategory, $categoryList, true)) {
-        $error = 'Invalid expense category.';
+    } elseif ($type === 'Expense' && $expenseCategory === null) {
+        // CHANGED (Task 3): an expense must always have its category.
+        $error = 'Please choose the Expense Category.';
+    } elseif ($expenseCategory !== null && !category_is_valid($conn, 'expense', $expenseCategory, $transaction['expense_category'] ?? null)) {
+        $error = 'Please choose an Expense Category from the list.';
     } else {
         mysqli_begin_transaction($conn);
         try {
@@ -213,9 +218,9 @@ $modal_subtitle = 'Update this transaction\'s details.';
                         <input type="text" class="form-control rm-input" value="<?= htmlspecialchars($fundRow['name'] ?? 'Not assigned (recorded before Funds)', ENT_QUOTES, 'UTF-8'); ?>" disabled>
                     </div>
                     <div class="col-6">
-                        <label class="form-label small fw-semibold text-muted">Expense Category</label>
-                        <select name="expense_category" class="form-select rm-input">
-                            <option value="">Select category (optional)</option>
+                        <label class="form-label small fw-semibold text-muted">Expense Category <span class="text-danger">*</span></label>
+                        <select name="expense_category" class="form-select rm-input" <?= $transaction['transaction_type'] === 'Expense' ? 'required' : ''; ?>>
+                            <option value="">Select category</option>
                             <?php foreach ($categoryList as $c) { ?>
                             <option value="<?= htmlspecialchars($c, ENT_QUOTES, 'UTF-8'); ?>" <?= (($transaction['expense_category'] ?? '') === $c) ? 'selected' : ''; ?>><?= htmlspecialchars($c, ENT_QUOTES, 'UTF-8'); ?></option>
                             <?php } ?>

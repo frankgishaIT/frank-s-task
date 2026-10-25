@@ -1,6 +1,8 @@
 <?php
 require '../../config/db.php';
 require_once '../../includes/admin_error_guard.php'; // NEW: shows the Admin the exact reason if this page fails
+require_once '../../includes/asset_capital_helpers.php';
+asset_capital_ensure_schema($conn); // NEW: adds any missing table / column of this feature automatically
 require '../../includes/asset_helpers.php'; // also loads asset_fund_helpers.php (RM Capital Fund sync)
 require_role(['Admin']);
 
@@ -18,8 +20,9 @@ $departments = mysqli_query($conn, 'SELECT * FROM departments WHERE is_active = 
 $departmentList = [];
 while ($d = mysqli_fetch_assoc($departments)) { $departmentList[] = $d; }
 
-$assetTypes = ['Vehicle', 'Equipment', 'Furniture', 'Computer & IT', 'Building', 'Land', 'Machinery', 'Other'];
-if (!in_array($asset['asset_type'], $assetTypes, true)) { array_unshift($assetTypes, $asset['asset_type']); }
+require_once '../../includes/category_helpers.php'; // NEW (Task 3): Admin-managed categories
+// CHANGED (Task 3): managed by Admins. The asset's own type stays available even if it was deactivated.
+$assetTypes = categories_active($conn, 'asset_type', $asset['asset_type']);
 
 // Form value helper: posted value after a failed save, otherwise the stored value.
 $val = function ($key, $default = '') { return $_POST[$key] ?? $default; };

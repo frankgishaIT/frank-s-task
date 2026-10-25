@@ -23,10 +23,18 @@ $parties = mysqli_query($conn, $sql);
 <?php if (isset($_GET['success'])) { ?>
 <div class="alert alert-success alert-dismissible fade show" role="alert"><?= htmlspecialchars($_GET['success'], ENT_QUOTES, 'UTF-8'); ?><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
 <?php } ?>
+<?php if (isset($_GET['error'])) { ?>
+<!-- NEW: error messages were not shown on this page. -->
+<div class="alert alert-danger alert-dismissible fade show" role="alert"><?= htmlspecialchars($_GET['error'], ENT_QUOTES, 'UTF-8'); ?><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+<?php } ?>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2>RM Business Parties</h2>
-    <a href="create.php" class="rm-btn rm-btn-primary">+ Add Business Party</a>
+    <div class="d-flex gap-2">
+        <!-- NEW (Task 4): Receivables and Payables reports -->
+        <a href="reports.php" class="btn btn-outline-primary">Receivables &amp; Payables</a>
+        <a href="create.php" class="rm-btn rm-btn-primary">+ Add Business Party</a>
+    </div>
 </div>
 
 <div class="mb-3 d-flex gap-2">
@@ -53,8 +61,10 @@ $parties = mysqli_query($conn, $sql);
     <td><?= htmlspecialchars($party['email'] ?: '—', ENT_QUOTES, 'UTF-8'); ?></td>
     <td><?= htmlspecialchars(implode(', ', array_filter([$party['sector'], $party['district'], $party['province']])), ENT_QUOTES, 'UTF-8'); ?></td>
     <td><?php if ($party['is_active']) { ?><span class="badge bg-success">Active</span><?php } else { ?><span class="badge bg-danger">Inactive</span><?php } ?></td>
-    <td>
+    <td class="text-nowrap">
         <a href="edit.php?id=<?= (int) $party['id']; ?>" class="rm-btn rm-btn-warning rm-btn-sm">Edit</a>
+        <!-- NEW: this party's payables and receivables, this year -->
+        <a href="reports.php?report=<?= $party['type'] === 'Partner' ? 'receivables' : 'payables'; ?>&period=this_year&party_id=<?= (int) $party['id']; ?>" class="rm-btn rm-btn-light rm-btn-sm">Statement</a>
         <a href="deactivate.php?id=<?= (int) $party['id']; ?>" class="rm-btn <?= $party['is_active'] ? 'rm-btn-danger' : 'rm-btn-success'; ?> rm-btn-sm" onclick="return confirm('<?= $party['is_active'] ? 'Deactivate this?' : 'Reactivate this?'; ?>')"><?= $party['is_active'] ? 'Deactivate' : 'Activate'; ?></a>
     </td>
 </tr>

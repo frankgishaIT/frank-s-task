@@ -52,8 +52,10 @@ function evidence_chunk_size(mysqli $conn): int
  * Saves an uploaded file ($_FILES[...] entry) and returns its reference "db:<id>",
  * null when nothing was uploaded, or throws RuntimeException with a clear reason.
  */
-function evidence_save(mysqli $conn, ?array $file, ?int $userId = null): ?string
+function evidence_save(mysqli $conn, ?array $file, ?int $userId = null, ?array $types = null): ?string
 {
+    // NEW: a caller may allow other document types ($types: mime => extension), e.g. Messages.
+    $types = $types ?? EVIDENCE_TYPES;
     if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
         return null;
     }
@@ -67,15 +69,16 @@ function evidence_save(mysqli $conn, ?array $file, ?int $userId = null): ?string
         throw new RuntimeException('The evidence file is too large (maximum 5 MB).');
     }
     $mime = (new finfo(FILEINFO_MIME_TYPE))->file($file['tmp_name']);
-    if (!isset(EVIDENCE_TYPES[$mime])) {
-        throw new RuntimeException('Evidence must be a PDF or a photo (JPG, PNG).');
+    if (!isset($types[$mime])) {
+        throw new RuntimeException($types === EVIDENCE_TYPES ? 'Evidence must be a PDF or a photo (JPG, PNG).'
+            : 'This type of file is not allowed (' . $mime . ').');
     }
     $content = file_get_contents($file['tmp_name']);
     if ($content === false) {
         throw new RuntimeException('The evidence file could not be read. Please try again.');
     }
 
-    $ext = EVIDENCE_TYPES[$mime];
+    $ext = $types[$mime];
     $size = strlen($content);
     try {
         evidence_ensure_table($conn);
@@ -128,7 +131,8 @@ function evidence_output(mysqli $conn, ?string $ref, string $downloadName, ?stri
             if ($pieces) { $f['content'] = implode('', array_column($pieces, 0)); }
             header('Content-Type: ' . $f['mime']);
             header('Content-Length: ' . strlen($f['content']));
-            header('Content-Disposition: inline; filename="' . $downloadName . '.' . $f['ext'] . '"');
+            $inline = in_array($f['ext'], ['pdf', 'jpg', 'png', 'txt'], true);
+            header('Content-Disposition: ' . ($inline ? 'inline' : 'attachment') . '; filename="' . $downloadName . '.' . $f['ext'] . '"');
             header('X-Content-Type-Options: nosniff');
             echo $f['content'];
             exit;

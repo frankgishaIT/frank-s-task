@@ -98,7 +98,10 @@ $customers = mysqli_query($conn, "SELECT customers.*,
         <span class="badge bg-<?= $creditStatus === 'Allowed' ? 'success' : 'danger'; ?>"><?= htmlspecialchars($creditStatus, ENT_QUOTES, 'UTF-8'); ?></span>
     </td>
     <td class="text-nowrap">
-        <a href="edit.php?id=<?= (int) $customer['id']; ?>" class="rm-btn rm-btn-warning rm-btn-sm">Edit</a>
+        <?php if ($canSendSms) { ?>
+            <!-- CHANGED (Task 5): only Admins and Managers can edit customers -->
+            <a href="edit.php?id=<?= (int) $customer['id']; ?>" class="rm-btn rm-btn-warning rm-btn-sm">Edit</a>
+        <?php } ?>
         <?php if ($canSendSms) { ?>
             <!-- NEW: this customer's Rewards section (history, points balance, record a reward) -->
             <a href="rewards.php?customer_id=<?= (int) $customer['id']; ?>" class="btn btn-outline-success btn-sm" title="Rewards"><i class="bi bi-gift"></i> Rewards</a>

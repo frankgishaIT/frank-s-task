@@ -161,7 +161,8 @@ function renderCustomersRows(mysqli $conn, string $like, int $limit, int $custom
             : '<td><span class="text-muted">RWF 0.00</span></td>';
         $html .= '<td><span class="fw-semibold">' . $points . '</span></td>';
         $html .= '<td><span class="badge bg-' . ($allowed ? 'success' : 'danger') . '">' . ($allowed ? 'Allowed' : 'Not Allowed') . '</span></td>';
-        $html .= '<td class="text-nowrap"><a href="../customers/edit.php?id=' . $id . '" class="rm-btn rm-btn-warning rm-btn-sm">Edit</a>';
+        // CHANGED (Task 5): only Admins and Managers can edit customers.
+        $html .= '<td class="text-nowrap">' . ($isManager ? '<a href="../customers/edit.php?id=' . $id . '" class="rm-btn rm-btn-warning rm-btn-sm">Edit</a>' : '');
         if ($isManager && $phoneOk) {
             $html .= ' <a href="../sms/sms_compose.php?group=customer&id=' . $id . '&template=' . ($balance > 0.009 ? 'credit' : 'custom')
                 . '" class="btn btn-outline-primary btn-sm" title="Send an SMS to this customer"><i class="bi bi-chat-dots"></i> SMS</a>';

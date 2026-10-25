@@ -7,6 +7,7 @@ require '../../includes/notification_helper.php';
 require '../../includes/business_party_helpers.php';
 require '../../includes/fund_helpers.php';
 require_once '../../includes/income_allocation_helpers.php'; // NEW: manual Income -> four Funds
+require_once '../../includes/category_helpers.php'; // NEW (Task 3): Admin-managed categories
 // CHANGED: the page had no login/role check of its own (every other page has one).
 require_role(['Admin', 'Manager', 'Employee']);
 
@@ -14,7 +15,7 @@ $isAdmin = isset($_SESSION['user_role']) && strtolower($_SESSION['user_role']) =
 $payeeList = business_parties_of_type($conn, 'Payee');
 $partnerList = business_parties_of_type($conn, 'Partner');
 $fundList = funds_all($conn);
-$categoryList = fund_expense_categories();
+$categoryList = categories_active($conn, 'expense'); // CHANGED (Task 3): managed by Admins under Categories
 
 if (isset($_POST['save'])) {
     $category = $_POST['category'] ?? '';
@@ -41,8 +42,11 @@ if (isset($_POST['save'])) {
         $error = 'Please select a valid party.';
     } elseif ($type === 'Expense' && (!$fundId || !fund_get($conn, $fundId))) {
         $error = 'Please select the Fund this expense will be paid from.';
-    } elseif ($type === 'Expense' && $expenseCategory !== '' && !in_array($expenseCategory, $categoryList, true)) {
-        $error = 'Invalid expense category.';
+    } elseif ($type === 'Expense' && $expenseCategory === '') {
+        // CHANGED (Task 3): an expense must always have its category.
+        $error = 'Please choose the Expense Category.';
+    } elseif ($type === 'Expense' && !category_is_valid($conn, 'expense', $expenseCategory)) {
+        $error = 'Please choose an Expense Category from the list.';
     } else {
         if ($type === 'Income') { $fundId = null; $expenseCategory = null; }
         if ($expenseCategory === '') { $expenseCategory = null; }
@@ -177,9 +181,9 @@ $modal_subtitle = $isAdmin ? 'Record a new income or expense entry.' : 'Submit a
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label small fw-semibold text-muted">Expense Category</label>
-                        <select name="expense_category" class="form-select rm-input">
-                            <option value="">Select category (optional)</option>
+                        <label class="form-label small fw-semibold text-muted">Expense Category <span class="text-danger">*</span></label>
+                        <select name="expense_category" id="expenseCategorySelect" class="form-select rm-input">
+                            <option value="">Select category</option>
                             <?php foreach ($categoryList as $c) { ?>
                             <option value="<?= htmlspecialchars($c, ENT_QUOTES, 'UTF-8'); ?>" <?= (($expenseCategory ?? '') === $c) ? 'selected' : ''; ?>><?= htmlspecialchars($c, ENT_QUOTES, 'UTF-8'); ?></option>
                             <?php } ?>
@@ -255,6 +259,7 @@ $modal_subtitle = $isAdmin ? 'Record a new income or expense entry.' : 'Submit a
         var isExpense = typeSelect.value === 'Expense';
         expenseFields.style.display = isExpense ? '' : 'none';
         fundSelect.required = isExpense;
+        document.getElementById('expenseCategorySelect').required = isExpense; // NEW (Task 3)
         if (!isExpense) { fundSelect.value = ''; fundBalance.textContent = ''; currentBalance = null; }
     }
 

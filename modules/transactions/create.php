@@ -25,6 +25,10 @@ if (isset($_POST['save'])) {
     $description = trim($_POST['description'] ?? '');
     $partyId = filter_input(INPUT_POST, 'party_id', FILTER_VALIDATE_INT) ?: null;
     $fundId = filter_input(INPUT_POST, 'fund_id', FILTER_VALIDATE_INT) ?: null;
+    if (!mm_has_feature('funds') && !$fundId && ($_POST['transaction_type'] ?? '') === 'Expense') { // PACKAGES: no fund picker, so the default fund is used
+        $defaultFund = fund_by_code($conn, 'OPERATING');
+        $fundId = $defaultFund ? (int) $defaultFund['id'] : null;
+    }
     $expenseCategory = trim($_POST['expense_category'] ?? '');
     $recordedBy = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
     $amount = ($amount === false || $amount === null) ? $amount : round($amount, 2); // NEW: no float leftovers in the fund
@@ -169,12 +173,12 @@ $modal_subtitle = $isAdmin ? 'Record a new income or expense entry.' : 'Submit a
 
                 <!-- FUND SELECTION + EXPENSE CATEGORY (Expense only) -->
                 <div id="expenseFields">
-                    <div class="mb-3">
+                    <div class="mb-3"<?= mm_has_feature('funds') ? '' : ' style="display:none"'; // PACKAGES: RM Funds are not part of this package ?>>
                         <label class="form-label small fw-semibold text-muted">Select Fund</label>
                         <select name="fund_id" id="fundSelect" class="form-select rm-input">
                             <option value="">Select fund</option>
                             <?php foreach ($fundList as $f) { ?>
-                            <option value="<?= (int) $f['id']; ?>" <?= (isset($fundId) && $fundId == $f['id']) ? 'selected' : ''; ?>><?= htmlspecialchars($f['name'], ENT_QUOTES, 'UTF-8'); ?></option>
+                            <option value="<?= (int) $f['id']; ?>" <?= ((isset($fundId) && $fundId == $f['id']) || (!mm_has_feature('funds') && $f['code'] === 'OPERATING')) ? 'selected' : ''; ?>><?= htmlspecialchars($f['name'], ENT_QUOTES, 'UTF-8'); ?></option>
                             <?php } ?>
                         </select>
                         <div id="fundBalance" class="small fw-semibold mt-1"></div>

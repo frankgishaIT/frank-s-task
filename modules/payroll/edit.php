@@ -90,7 +90,7 @@ if (isset($_POST['update'])) {
 
 // Shown on the form, so the admin can see if "Paid" will be blocked.
 $operatingFund = fund_by_code($conn, 'OPERATING');
-$operatingAvailable = $operatingFund ? fund_available($conn, (int) $operatingFund['id']) : null;
+$operatingAvailable = ($operatingFund && mm_has_feature('funds')) ? fund_available($conn, (int) $operatingFund['id']) : null; // PACKAGES
 
 include '../../includes/header.php'; include '../../includes/sidebar.php';
 

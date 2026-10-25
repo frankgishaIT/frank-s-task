@@ -17,7 +17,7 @@ require_once __DIR__ . '/asset_fund_helpers.php';
 
 // Generates the next asset code, e.g. AST-000001.
 function asset_generate_code($conn, $assetId) {
-    return 'RM-AST-' . str_pad($assetId, 6, '0', STR_PAD_LEFT);
+    return company_profile()['invoice_prefix'] . '-AST-' . str_pad($assetId, 6, '0', STR_PAD_LEFT);
 }
 
 // Straight-line only for now. Returns the constant daily depreciation

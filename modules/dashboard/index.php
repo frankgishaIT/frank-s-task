@@ -36,7 +36,7 @@ $lowStockCount = scalarQuery($conn, "SELECT COUNT(*) FROM products WHERE item_ty
 
 // RM Funds: shown to admins and managers only
 // (change this list if other roles should see them too).
-$canSeeFunds = in_array(strtolower($_SESSION['user_role'] ?? ''), ['admin', 'manager'], true);
+$canSeeFunds = in_array(strtolower($_SESSION['user_role'] ?? ''), ['admin', 'manager'], true) && mm_has_feature('funds'); // PACKAGES
 $fundCards = [];
 if ($canSeeFunds) {
     // CHANGED: the Operating Fund card is now the same size as the other cards, and the
@@ -140,7 +140,7 @@ $activityFeed = array_slice($activityFeed, 0, 6);
     Welcome back, <?= htmlspecialchars($_SESSION['user_name'] ?? 'Admin', ENT_QUOTES, 'UTF-8'); ?>
     <i class="bi bi-sun" style="color:var(--accent-amber); font-size:0.8em;"></i>
 </h2>
-        <p class="text-muted mb-0">Here's what's happening in RISE MOTIVE today.</p>
+        <p class="text-muted mb-0">Here's what's happening in <?= htmlspecialchars(company_profile()['name'], ENT_QUOTES, 'UTF-8'); ?> today.</p>
     </div>
     <div class="date-pill">
         <i class="bi bi-calendar3 me-1"></i>
@@ -191,7 +191,8 @@ $activityFeed = array_slice($activityFeed, 0, 6);
             </div>
         </div>
     </div>
-    <div class="col-6 col-xl-4">
+    <?php if (mm_has_feature('targets')) { ?>
+<div class="col-6 col-xl-4">
         <div class="rm-card stat-card">
             <div>
                 <p class="stat-label">Projects</p>
@@ -202,6 +203,7 @@ $activityFeed = array_slice($activityFeed, 0, 6);
             </div>
         </div>
     </div>
+<?php } ?>
     <div class="col-6 col-xl-4">
         <div class="rm-card stat-card">
             <div>
@@ -237,7 +239,8 @@ $activityFeed = array_slice($activityFeed, 0, 6);
             </div>
         </div>
     </div>
-    <div class="col-6 col-xl-4">
+    <?php if (mm_has_feature('tasks')) { ?>
+<div class="col-6 col-xl-4">
         <div class="rm-card stat-card">
             <div>
                 <p class="stat-label">Open tasks</p>
@@ -248,8 +251,10 @@ $activityFeed = array_slice($activityFeed, 0, 6);
             </div>
         </div>
     </div>
+<?php } ?>
 </div>
 
+<?php if (mm_has_feature('transactions')) { ?>
 <div class="row g-3 mb-4">
     <div class="col-lg-8">
         <div class="rm-card h-100">
@@ -290,6 +295,7 @@ $activityFeed = array_slice($activityFeed, 0, 6);
         </div>
     </div>
 </div>
+<?php } ?>
 
 <div class="rm-card mb-4">
     <div class="card-header">⚡ Quick actions</div>
@@ -301,30 +307,35 @@ $activityFeed = array_slice($activityFeed, 0, 6);
                     Add employee
                 </a>
             </div>
-            <div class="col-6 col-md-3">
+            <?php if (mm_has_feature('targets')) { ?>
+<div class="col-6 col-md-3">
                 <a href="../projects/create.php" class="quick-btn">
                     <i class="bi bi-folder-plus" style="color:var(--accent-teal)"></i>
                     Create project
                 </a>
             </div>
+<?php } ?>
             <div class="col-6 col-md-3">
                 <a href="../products/create.php" class="quick-btn">
                     <i class="bi bi-box-seam" style="color:var(--accent-amber)"></i>
                     Add product
                 </a>
             </div>
-            <div class="col-6 col-md-3">
+            <?php if (mm_has_feature('transactions')) { ?>
+<div class="col-6 col-md-3">
                 <a href="../transactions/create.php" class="quick-btn">
                     <i class="bi bi-cash-stack" style="color:var(--accent-red)"></i>
                     New transaction
                 </a>
             </div>
+<?php } ?>
         </div>
     </div>
 </div>
 
 <div class="row g-3">
-    <div class="col-lg-4">
+    <?php if (mm_has_feature('transactions')) { ?>
+<div class="col-lg-4">
         <div class="rm-card h-100">
             <div class="card-header">Top categories <span class="text-muted fw-normal">· this month</span></div>
             <div class="card-body">
@@ -349,12 +360,13 @@ $activityFeed = array_slice($activityFeed, 0, 6);
             </div>
         </div>
     </div>
+<?php } ?>
 
     <div class="col-lg-8">
         <div class="rm-card h-100">
             <div class="card-header d-flex justify-content-between align-items-center">
                 Recent activity
-                <a href="../transactions/index.php" class="small text-decoration-none" style="color:var(--accent-blue)">View all <i class="bi bi-chevron-right"></i></a>
+                <?php if (mm_has_feature('transactions')) { ?><a href="../transactions/index.php" class="small text-decoration-none" style="color:var(--accent-blue)">View all <i class="bi bi-chevron-right"></i></a><?php } ?>
             </div>
             <div class="card-body">
                 <?php if (empty($activityFeed)): ?>
@@ -381,6 +393,7 @@ $activityFeed = array_slice($activityFeed, 0, 6);
 </div>
 
 
+<?php if (mm_has_feature('transactions')) { ?>
 <script>
 const ctx = document.getElementById('financeChart');
 new Chart(ctx, {
@@ -406,8 +419,9 @@ new Chart(ctx, {
     }
 });
 </script>
+<?php } ?>
 
-<?php if ($topCategoriesTotal > 0): ?>
+<?php if ($topCategoriesTotal > 0 && mm_has_feature('transactions')): ?>
 <script>
 new Chart(document.getElementById('categoryChart'), {
     type: 'doughnut',

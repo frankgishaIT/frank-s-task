@@ -1,6 +1,6 @@
 <?php
 /**
- * Data layer for the Stock & Inventory reports (RM Offerings module).
+ * Data layer for the Stock & Inventory reports (Inventory module).
  * Same return shape as sales_report_build(), so the shared screen and PDF code render it.
  *
  * Stock rules:

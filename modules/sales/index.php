@@ -8,7 +8,7 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
 const PER_PAGE = 10;
 $role = current_user_role();
 $userId = current_user_id();
-$canSendSms = in_array($role, ['Admin', 'Manager'], true); // NEW: same roles as the Send SMS page
+$canSendSms = in_array($role, ['Admin', 'Manager'], true) && mm_has_feature('sms'); // PACKAGES // NEW: same roles as the Send SMS page
 
 // --- Credit view filter -------------------------------------------------
 $viewFilter = ($_GET['view'] ?? 'all') === 'credit' ? 'credit' : 'all';

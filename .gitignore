@@ -3,3 +3,5 @@ config/db.php
 config/mail.php 
 assets/uploads/
 config/
+storage/platform_outbox.log
+storage/worker.heartbeat

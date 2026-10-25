@@ -65,6 +65,33 @@ function sms_log(mysqli $conn, ?string $phone, string $text, string $event, ?str
  * Sends one SMS. Returns true when Pindo accepted it.
  * $event names what triggered it (e.g. 'SALE_RECEIPT'), $refType/$refId link it to the record.
  */
+/** Every company sends from the same registered sender name. */
+const SMS_SENDER_ID = 'RISEMOTIVE';
+
+/** How many SMS parts one message uses: 1 if it fits in 160 characters, otherwise one per 153 characters. */
+function sms_parts(string $text): int {
+    $n = mb_strlen($text);
+    return $n <= 160 ? 1 : (int) ceil($n / 153);
+}
+
+/** SMS this business has really sent so far this calendar month (a long message counts once per part). */
+function sms_month_usage(mysqli $conn): int {
+    $res = mysqli_query($conn, "SELECT COALESCE(SUM(IF(CHAR_LENGTH(message) <= 160, 1, CEIL(CHAR_LENGTH(message) / 153))), 0)
+        FROM sms_log WHERE status = 'sent' AND created_at >= DATE_FORMAT(NOW(), '%Y-%m-01')");
+    return $res ? (int) mysqli_fetch_row($res)[0] : 0;
+}
+
+/** null = this message may be sent. Otherwise the reason it is blocked (the package's monthly limit is used up). */
+function sms_quota_block_reason(mysqli $conn, string $text): ?string {
+    $quota = function_exists('mm_sms_quota') ? mm_sms_quota() : null;   // null = no limit (for example your own business)
+    if ($quota === null) { return null; }
+    $used = sms_month_usage($conn);
+    if ($used + sms_parts($text) > $quota) {
+        return 'Monthly SMS limit reached (' . $used . ' of ' . $quota . ' used this month). Upgrade the package to send more.';
+    }
+    return null;
+}
+
 function sms_send(mysqli $conn, ?string $to, string $text, string $event, ?string $refType = null,
         ?int $refId = null, ?int $userId = null): bool {
     $text = trim($text);
@@ -89,6 +116,12 @@ function sms_send(mysqli $conn, ?string $to, string $text, string $event, ?strin
         sms_log($conn, $phone, $text, $event, $refType, $refId, 'failed', null, 'PHP cURL extension is not enabled', $userId);
         return false;
     }
+    // the package's monthly limit: blocked messages are written to the log, so the business can see why
+    $blocked = sms_quota_block_reason($conn, $text);
+    if ($blocked !== null) {
+        sms_log($conn, $phone, $text, $event, $refType, $refId, 'skipped', null, $blocked, $userId);
+        return false;
+    }
 
     try {
         $ch = curl_init(PINDO_API_URL);
@@ -102,7 +135,7 @@ function sms_send(mysqli $conn, ?string $to, string $text, string $event, ?strin
                 'Content-Type: application/json',
                 'Accept: application/json',
             ],
-            CURLOPT_POSTFIELDS => json_encode(['to' => $phone, 'text' => $text, 'sender' => PINDO_SENDER]),
+            CURLOPT_POSTFIELDS => json_encode(['to' => $phone, 'text' => $text, 'sender' => SMS_SENDER_ID]),
         ]);
         $body = curl_exec($ch);
         $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);

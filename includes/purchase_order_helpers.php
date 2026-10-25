@@ -1,6 +1,6 @@
 <?php
 /**
- * Shared helpers for the Purchase Order sub-module (under RM Offerings).
+ * Shared helpers for the Purchase Order sub-module (under Inventory).
  */
 require_once __DIR__ . '/stock_rules.php'; // single "low stock" rule (per-product reorder level, else the default)
 require_once __DIR__ . '/fund_helpers.php'; // RM Funds: purchases are paid from the RM Capital Fund

@@ -59,7 +59,7 @@ $badge = ['sent' => 'success', 'failed' => 'danger', 'skipped' => 'secondary'];
             </div>
             <div class="col-md-7">
                 <label class="form-label small fw-semibold text-muted">Message</label>
-                <input type="text" name="message" class="form-control rm-input" maxlength="<?= SMS_MAX_LENGTH; ?>" value="Test message from RISE MOTIVE." required>
+                <input type="text" name="message" class="form-control rm-input" maxlength="<?= SMS_MAX_LENGTH; ?>" value="Test message from <?= htmlspecialchars(company_profile()['name'], ENT_QUOTES, 'UTF-8'); ?>." required>
             </div>
             <div class="col-md-2">
                 <button type="submit" name="send_test" value="1" class="rm-btn rm-btn-primary w-100">Send Test</button>

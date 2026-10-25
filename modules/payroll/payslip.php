@@ -273,7 +273,7 @@ function money($value) {
 <div class="sheet">
     <div class="sheet-header">
         <div>
-            <div class="brand">RISE MOTIVE</div>
+            <div class="brand"><?= htmlspecialchars(company_profile()['name'], ENT_QUOTES, 'UTF-8'); ?></div>
             <div class="brand-sub">Payroll &amp; HR Management System</div>
         </div>
         <div class="doc-title">

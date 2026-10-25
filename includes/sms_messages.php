@@ -10,8 +10,14 @@
  */
 require_once __DIR__ . '/sms_helpers.php';
 
-const SMS_HELP_PHONE = '0795344768';  // EBM / Ikibazo / Ubufasha number in the messages
-const SMS_MOMO_CODE  = '070600';      // MTN MoMo payment code in the messages
+// A company's name, MoMo number, help number and website come from ITS OWN profile (the Business profile page),
+// never from this file, so every business's messages carry its own details and nobody else's.
+function sms_company(): string { return company_profile()['name']; }
+function sms_momo_phone(): string { $p = company_profile(); return $p['momo_phone'] !== '' ? $p['momo_phone'] : $p['phone']; }
+function sms_help_phone(): string { $p = company_profile(); return $p['help_phone'] !== '' ? $p['help_phone'] : $p['phone']; }
+function sms_website(): string { return company_profile()['website']; }
+/** " EBM/Ikibazo: 0795..." when the business has a help number, otherwise nothing. */
+function sms_help_tail(string $label = 'EBM/Ikibazo'): string { $h = sms_help_phone(); return $h !== '' ? ' ' . $label . ': ' . $h . '.' : ''; }
 
 // How often the automatic messages are repeated (spec: credit reminder 1 in 2 days, loyalty weekly).
 // A little under 2 days / 7 days, so a daily task that runs a few minutes early is not skipped.
@@ -54,7 +60,7 @@ function sms_greet(?string $name, string $fallback = 'Mukiliya', string $lang = 
 // The invoice number shown in the messages, in the same format as the printed receipt:
 // "RM" + the sale number with 6 digits, e.g. sale 46 -> RM000046.
 function sms_invoice_no(int $saleId): string {
-    return 'RM' . str_pad((string) $saleId, 6, '0', STR_PAD_LEFT);
+    return company_doc_no($saleId);   // this business's prefix + the sale number, e.g. RM000046
 }
 
 // True when this message was already sent for this record.
@@ -111,13 +117,13 @@ function sms_notify_sale_created(mysqli $conn, int $saleId, ?int $userId = null)
         if ($sale['payment_method'] === 'Credit') {
             // Message 3: goods or services given on credit.
             $text = $name . ', Invoice No: ' . $invoice . '. Itegereje kwishyurwa: ' . sms_money($sale['total_amount'])
-                . 'FRW, Ideni risigaye: ' . sms_money($balance) . 'FRW. MTN MoMo Code: ' . SMS_MOMO_CODE
-                . ' Murakoze guhitamo RISE MOTIVE';
+                . 'FRW, Ideni risigaye: ' . sms_money($balance) . 'FRW.' . (sms_momo_phone() !== '' ? ' Ishyura kuri Phone: ' . sms_momo_phone() . '.' : '')
+                . ' Murakoze guhitamo ' . sms_company();
         } else {
             // Message 2: the customer bought and paid (not on credit).
-            $text = $name . ', twakiriye ' . sms_money($sale['amount_paid']) . 'FRW wishyuye kuri Invoice No: ' . $invoice
-                . '. Ideni risigaye: ' . sms_money($balance) . 'FRW. EBM/Ikibazo: ' . SMS_HELP_PHONE
-                . '. Murakoze guhitamo RISE MOTIVE';
+            // Payment confirmation (immediate)
+            $text = $name . ', wishyuye ' . sms_money($sale['amount_paid']) . 'FRW kuri Invoice No: ' . $invoice
+                . '. Wahawe na ' . sms_company() . '. Ideni risigaye: ' . sms_money($balance) . 'FRW. Murakoze guhitamo ' . sms_company() . '.';
         }
         sms_send($conn, $sale['customer_phone'], $text, 'SALE_CREATED', 'SALE', $saleId, $userId);
     } catch (Throwable $e) {
@@ -136,9 +142,9 @@ function sms_notify_payment(mysqli $conn, int $saleId, int $paymentId, float $am
 
         // CHANGED: "Ideni risigaye" = ALL the customer still owes after this payment, on every unpaid sale.
         $balance = sms_customer_outstanding($conn, (int) $sale['customer_id']);
-        $text = sms_greet($sale['customer_name'], 'Mukiliya') . ', twakiriye ' . sms_money($amount) . 'FRW wishyuye kuri Invoice No: '
-            . sms_invoice_no($saleId) . '. Ideni risigaye: ' . sms_money($balance) . 'FRW. EBM/Ikibazo: ' . SMS_HELP_PHONE
-            . '. Murakoze guhitamo RISE MOTIVE';
+        // Payment confirmation (immediate)
+        $text = sms_greet($sale['customer_name'], 'Mukiliya') . ', wishyuye ' . sms_money($amount) . 'FRW kuri Invoice No: '
+            . sms_invoice_no($saleId) . '. Wahawe na ' . sms_company() . '. Ideni risigaye: ' . sms_money($balance) . 'FRW. Murakoze guhitamo ' . sms_company() . '.';
         sms_send($conn, $sale['customer_phone'], $text, 'PAYMENT_RECEIVED', 'SALE_PAYMENT', $paymentId, $userId);
     } catch (Throwable $e) {
         error_log('sms_notify_payment failed for sale #' . $saleId . ': ' . $e->getMessage());
@@ -155,8 +161,8 @@ function sms_notify_sale_cancelled(mysqli $conn, int $saleId, ?int $userId = nul
         if (sms_already_sent($conn, 'SALE_CANCELLED', 'SALE', $saleId)) { return; }
 
         $text = sms_greet($sale['customer_name'], 'Mukiliya') . ', Invoice No:' . sms_invoice_no($saleId)
-            . ' yahagaritswe (Cancelled). Nta bwishyu bugisabwa kuri iyi Invoice. Ubufasha: ' . SMS_HELP_PHONE
-            . '. Murakoze guhitamo RISE MOTIVE!';
+            . ' yahagaritswe (Cancelled). Nta bwishyu bugisabwa kuri iyi Invoice.' . sms_help_tail('Ubufasha')
+            . ' Murakoze guhitamo ' . sms_company() . '!';
         sms_send($conn, $sale['customer_phone'], $text, 'SALE_CANCELLED', 'SALE', $saleId, $userId);
     } catch (Throwable $e) {
         error_log('sms_notify_sale_cancelled failed for sale #' . $saleId . ': ' . $e->getMessage());
@@ -180,7 +186,7 @@ function sms_notify_po_ordered(mysqli $conn, int $poId, ?int $userId = null): vo
         if (sms_already_sent($conn, 'PO_ORDERED', 'PO', $poId)) { return; }
 
         $due = !empty($po['expected_delivery_date']) ? date('d M Y', strtotime($po['expected_delivery_date'])) : 'as soon as possible';
-        $text = sms_greet($po['supplier_name'], 'Supplier', 'en') . ', RISE MOTIVE issued PO No: ' . $poId . ' to you, Estimated at '
+        $text = sms_greet($po['supplier_name'], 'Supplier', 'en') . ', ' . sms_company() . ' issued PO No: ' . $poId . ' to you, Estimated at '
             . sms_money($po['total_amount']) . 'FRW. Delivery Required by ' . $due . '. Please Confirm. Thank You!';
         sms_send($conn, $po['supplier_phone'], $text, 'PO_ORDERED', 'PO', $poId, $userId);
     } catch (Throwable $e) {
@@ -193,7 +199,7 @@ function sms_notify_po_ordered(mysqli $conn, int $poId, ?int $userId = null): vo
  * One SMS per customer with the TOTAL they still owe on all their unpaid sales.
  * Returns how many were sent.
  * ===================================================================== */
-function sms_send_credit_reminders(mysqli $conn): int {
+function sms_send_credit_reminders(mysqli $conn, bool $dryRun = false): int {
     $sent = 0;
     try {
         $phoneCol = sms_phone_column($conn, 'customers');
@@ -207,8 +213,10 @@ function sms_send_credit_reminders(mysqli $conn): int {
 
         foreach ($rows as $c) {
             if (sms_already_sent($conn, 'CREDIT_REMINDER', 'CUSTOMER', (int) $c['id'], SMS_CREDIT_REMINDER_EVERY_HOURS)) { continue; }
-            $text = sms_greet($c['name'], 'Mukiliya') . ', ubereyemo RISE MOTIVE ' . sms_money($c['balance']) . 'FRW. Ishyura nonaha kuri MTN MoMo Code: '
-                . SMS_MOMO_CODE . ', wongere Loyalty Points. EBM/Ikibazo: ' . SMS_HELP_PHONE . '. Murakoze!';
+            if ($dryRun) { $sent++; continue; }   // preview only: count the customers who would get a message
+            // Overdue or payment request invoice reminder
+            $text = sms_greet($c['name'], 'Mukiliya') . ', ubereyemo ' . sms_company() . ' ' . sms_money($c['balance']) . ' FRW.'
+                . (sms_momo_phone() !== '' ? ' Ishyura Ukoresheje Phone: ' . sms_momo_phone() . ',' : '') . ' wongere Loyalty Points. Murakoze!';
             if (sms_send($conn, $c['phone'], $text, 'CREDIT_REMINDER', 'CUSTOMER', (int) $c['id'])) { $sent++; }
         }
     } catch (Throwable $e) {
@@ -233,7 +241,7 @@ function sms_send_loyalty_weekly(mysqli $conn): int {
         foreach ($rows as $c) {
             if (sms_already_sent($conn, 'LOYALTY_WEEKLY', 'CUSTOMER', (int) $c['id'], SMS_LOYALTY_EVERY_HOURS)) { continue; }
             $text = sms_greet($c['name'], 'Customer', 'en') . ', You have ' . number_format((int) $c['loyalty_points'])
-                . ' Loyalty Points earned from your purchases with us. Use them for eligible discounts. Keep earning with RISE MOTIVE!';
+                . ' Loyalty Points earned from your purchases with us. Use them for eligible discounts. Keep earning with ' . sms_company() . '!';
             if (sms_send($conn, $c['phone'], $text, 'LOYALTY_WEEKLY', 'CUSTOMER', (int) $c['id'])) { $sent++; }
         }
     } catch (Throwable $e) {
@@ -304,7 +312,7 @@ function sms_notify_payroll_paid(mysqli $conn, int $payrollId, ?int $userId = nu
  * NEW: welcome message to a new customer (sent once, when the customer is registered)
  * ===================================================================== */
 
-const SMS_WEBSITE = 'www.risemotive.rw';
+// (the website now comes from the business profile: sms_website())
 
 /**
  * The Customer ID shown in the welcome SMS. Uses the customer's own code column if the table has
@@ -329,7 +337,7 @@ function sms_customer_code(mysqli $conn, int $customerId): string {
         $row = mysqli_fetch_assoc(mysqli_stmt_get_result($s));
         if ($row && trim((string) $row['code']) !== '') { return trim((string) $row['code']); }
     }
-    return 'RMC' . str_pad((string) $customerId, 6, '0', STR_PAD_LEFT);
+    return company_profile()['invoice_prefix'] . 'C' . str_pad((string) $customerId, 6, '0', STR_PAD_LEFT);
 }
 
 // Call right after a new customer is saved (customers create page). Sent only once per customer.
@@ -344,10 +352,11 @@ function sms_notify_customer_welcome(mysqli $conn, int $customerId, ?int $userId
         if (!$c || trim((string) $c['phone']) === '') { return; }
         if (sms_already_sent($conn, 'CUSTOMER_WELCOME', 'CUSTOMER', $customerId)) { return; }
 
-        $text = sms_greet($c['name'], 'Customer', 'en') . ', welcome to the RISE MOTIVE family! Your Customer ID is '
+        $text = sms_greet($c['name'], 'Customer', 'en') . ', welcome to the ' . sms_company() . ' family! Your Customer ID is '
             . sms_customer_code($conn, $customerId) . '. You will receive updates about your purchases and payments through this number. '
-            . 'Our products and services are also available at ' . SMS_WEBSITE . '. For assistance, call 0795 344 768. '
-            . 'Thank you for choosing RISE MOTIVE!';
+            . (sms_website() !== '' ? 'Our products and services are also available at ' . sms_website() . '. ' : '')
+            . (sms_help_phone() !== '' ? 'For assistance, call ' . sms_help_phone() . '. ' : '')
+            . 'Thank you for choosing ' . sms_company() . '!';
         sms_send($conn, $c['phone'], $text, 'CUSTOMER_WELCOME', 'CUSTOMER', $customerId, $userId);
     } catch (Throwable $e) {
         error_log('sms_notify_customer_welcome failed for customer #' . $customerId . ': ' . $e->getMessage());
@@ -377,7 +386,7 @@ function sms_notify_reward_fulfilled(mysqli $conn, int $rewardId, ?int $userId =
         $text = sms_greet($r['name'], 'Customer', 'en') . ' You have received a Loyalty Reward: ' . $r['type_name'] . ' - ' . $r['reward_details']
             . '. Points Redeemed: ' . number_format((int) $r['points_redeemed'])
             . '. Unredeemed Points Balance: ' . number_format((int) $r['loyalty_points'])
-            . '. Thank you for choosing RISE MOTIVE!';
+            . '. Thank you for choosing ' . sms_company() . '!';
         sms_send($conn, $r['phone'], $text, 'REWARD_FULFILLED', 'REWARD', $rewardId, $userId);
     } catch (Throwable $e) {
         error_log('sms_notify_reward_fulfilled failed for reward #' . $rewardId . ': ' . $e->getMessage());

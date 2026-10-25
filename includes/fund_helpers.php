@@ -67,6 +67,11 @@ function fund_cash_balance(mysqli $conn, int $fundId): float {
 // value of stock or assets. Before, the RM Capital Fund counted its whole ledger (stock + assets
 // included) as available.
 function fund_available(mysqli $conn, int $fundId): float {
+    // PACKAGES: only a company that has the RM Funds feature (RISE MOTIVE) spends from funds with a limit.
+    // For every other company the funds are only internal bookkeeping, and nothing is refused for lack of fund money.
+    if (function_exists('mm_has_feature') && !mm_has_feature('funds')) {
+        return 1.0E+12;
+    }
     return fund_cash_balance($conn, $fundId) - fund_pending_total($conn, $fundId);
 }
 

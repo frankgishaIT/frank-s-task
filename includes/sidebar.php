@@ -32,12 +32,13 @@ try {
 <div class="sidebar">
 
     <h3>
-        <img src="<?= BASE_URL ?>/assets/images/logo.jpg"
-             alt="Rise Motive Logo"
+        <img src="<?= htmlspecialchars(company_profile()['logo_url'], ENT_QUOTES, 'UTF-8') ?>"
+             alt="<?= htmlspecialchars(company_profile()['name'], ENT_QUOTES, 'UTF-8') ?> logo"
              style="width:36px; height:36px; object-fit:contain; vertical-align:middle; margin-right:8px; border-radius:8px;">
-        MY MOTIVE
+        <span style="display:inline-block; vertical-align:middle; max-width:150px; font-size:15px; line-height:1.2; white-space:normal;"><?= htmlspecialchars(company_profile()['name'], ENT_QUOTES, 'UTF-8') ?></span>
     </h3>
 
+    <?php ob_start(); // PACKAGES: menu entries the package does not include are removed below ?>
     <a href="../dashboard/index.php" class="<?= navActive('dashboard', $currentPath) ?>">
         <i class="bi bi-house-door-fill"></i> Dashboard
     </a>
@@ -65,13 +66,15 @@ try {
     </a>
     <?php } ?>
 
-    <?php if (current_user_role() === 'Admin') { ?>
+      <?php if (current_user_role() === 'Admin') { ?>
     <!-- NEW (Task 3): Admin-managed categories (expense categories, asset types, leave types ...) -->
     <a href="../categories/index.php" class="<?= navActive('/categories/', $currentPath) ?>">
         <i class="bi bi-tags-fill"></i> Categories
     </a>
+    <a href="../company/profile.php" class="<?= navActive('company', $currentPath) ?>">
+        <i class="bi bi-sliders"></i> Business profile
+    </a>
     <?php } ?>
-
     <a href="../attendance/index.php" class="<?= navActive('attendance', $currentPath) ?>">
         <i class="bi bi-calendar-check"></i> Attendance
     </a>
@@ -93,7 +96,7 @@ try {
     </a>
 
     <a href="../products/index.php" class="<?= navActive('products', $currentPath) ?>">
-        <i class="bi bi-box-seam"></i> RM Offerings
+        <i class="bi bi-box-seam"></i> Inventory
     </a>
 
     <?php if (in_array(current_user_role(), ['Admin', 'Manager'], true)) { ?>
@@ -143,6 +146,8 @@ try {
     <a href="../notifications/index.php" class="<?= navActive('notifications', $currentPath) ?>">
         <i class="bi bi-bell-fill"></i> Notifications
     </a>
+
+    <?php echo mm_filter_menu(ob_get_clean()); ?>
 
     <div style="border-top:1px solid rgba(255,255,255,.08); margin:14px 10px 10px; padding-top:14px;">
 

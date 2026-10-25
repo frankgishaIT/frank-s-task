@@ -42,7 +42,7 @@ function customer_report_code(int $customerId): string
 
 function customer_report_invoice_no(int $saleId): string
 {
-    return 'RM' . str_pad((string) $saleId, 6, '0', STR_PAD_LEFT);
+    return company_doc_no((int) $saleId);
 }
 
 function customer_report_credit_threshold(): int

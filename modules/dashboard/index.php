@@ -69,7 +69,7 @@ while ($row = mysqli_fetch_assoc($topCategoriesResult)) {
     $topCategories[] = $row;
     $topCategoriesTotal += (float) $row['total'];
 }
-$categoryPalette = ['#3B4FE0', '#0FA968', '#E68A1C', '#7C5CE0'];
+$categoryPalette = ['#3B4FE0', '#0FA968', '#1E2FE0', '#7C5CE0'];
 
 $recentTasksForFeed = mysqli_query($conn, "SELECT tasks.title, tasks.status, tasks.created_at, users.names AS assignee_name FROM tasks LEFT JOIN users ON tasks.assigned_to = users.id ORDER BY tasks.created_at DESC LIMIT 4");
 // CHANGED: deleted and rejected transactions are not shown as activity.
@@ -105,7 +105,7 @@ $activityFeed = array_slice($activityFeed, 0, 6);
 :root{
     --accent-blue:#3B4FE0; --accent-blue-bg:#E8EDFD;
     --accent-teal:#0FA968; --accent-teal-bg:#E1F7EE;
-    --accent-amber:#E68A1C; --accent-amber-bg:#FDF1DF;
+    --accent-amber:#1E2FE0; --accent-amber-bg:#EEF3FF;
     --accent-purple:#7C5CE0; --accent-purple-bg:#F0EBFD;
     --accent-cyan:#159AA8; --accent-cyan-bg:#E2F6F8;
     --accent-red:#E24B4A; --accent-red-bg:#FCEAEA;

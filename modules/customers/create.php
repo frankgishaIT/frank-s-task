@@ -4,9 +4,14 @@ require '../../includes/notification_helper.php';
 require_once '../../includes/sms_messages.php'; // NEW: welcome SMS to the new customer
 // NEW: this page had no role check of its own (every other page has one).
 require_role(['Admin', 'Manager', 'Employee']);
+require_once '../../includes/customer_name_helpers.php'; // NEW (Task 2A): First / Last Name
+customer_names_ensure($conn);
 
 if (isset($_POST['save'])) {
-    $name = trim($_POST['name'] ?? '');
+    // CHANGED (Task 2A): First Name and Last Name; the full name is kept for every page that shows it.
+    $firstName = mb_substr(trim($_POST['first_name'] ?? ''), 0, 80);
+    $lastName = mb_substr(trim($_POST['last_name'] ?? ''), 0, 80);
+    $name = customer_full_name($firstName, $lastName);
     $phone = trim($_POST['phone'] ?? '');
     $email = trim($_POST['email'] ?? '');
     $province = trim($_POST['province'] ?? '');
@@ -14,7 +19,7 @@ if (isset($_POST['save'])) {
     $sector = trim($_POST['sector'] ?? '');
     $address = trim($_POST['address'] ?? '');
 
-    if ($name === '') { $error = 'Customer name is required.'; }
+    if ($firstName === '') { $error = 'The First Name is required.'; }
     elseif ($phone === '') { $error = 'Phone number is required.'; }
     elseif (!preg_match('/^\d{10}$/', $phone)) { $error = 'Phone number must be exactly 10 digits.'; }
     // NEW: a Rwandan mobile number starts with 07. Other 10-digit numbers cannot receive SMS.
@@ -35,8 +40,9 @@ if (isset($_POST['save'])) {
         if ($existing) {
             $error = 'A customer with this phone number already exists.';
         } else {
-            $statement = mysqli_prepare($conn, 'INSERT INTO customers (name, phone, email, province, district, sector, address) VALUES (?, ?, ?, ?, ?, ?, ?)');
-            mysqli_stmt_bind_param($statement, 'sssssss', $name, $phone, $email, $province, $district, $sector, $address);
+            $lastValue = $lastName !== '' ? $lastName : null;
+            $statement = mysqli_prepare($conn, 'INSERT INTO customers (name, first_name, last_name, phone, email, province, district, sector, address) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+            mysqli_stmt_bind_param($statement, 'sssssssss', $name, $firstName, $lastValue, $phone, $email, $province, $district, $sector, $address);
             if (mysqli_stmt_execute($statement)) {
                 $customerId = (int) mysqli_insert_id($conn);
                 // NEW: welcome SMS with the Customer ID (sent once, only after the customer is saved).
@@ -63,7 +69,11 @@ $modal_subtitle = 'Create a new customer profile.';
         <?php if (isset($error)) { ?>
         <div class="alert alert-danger d-flex align-items-center gap-2 mb-3" style="border-radius:10px; border:none; background:var(--accent-red-bg); color:var(--accent-red); font-size:13px; padding:10px 14px;"><i class="bi bi-exclamation-circle-fill"></i><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?></div><?php } ?>
         <form method="POST">
-            <div class="mb-3"><label class="form-label small fw-semibold text-muted">Customer Name</label><input type="text" name="name" class="form-control rm-input" value="<?= htmlspecialchars($name ?? '', ENT_QUOTES, 'UTF-8'); ?>" required></div>
+            <div class="row g-3 mb-3">
+                <div class="col-6"><label class="form-label small fw-semibold text-muted">First Name <span class="text-danger">*</span></label><input type="text" name="first_name" maxlength="80" class="form-control rm-input" value="<?= htmlspecialchars($firstName ?? '', ENT_QUOTES, 'UTF-8'); ?>" required></div>
+                <div class="col-6"><label class="form-label small fw-semibold text-muted">Last Name</label><input type="text" name="last_name" maxlength="80" class="form-control rm-input" value="<?= htmlspecialchars($lastName ?? '', ENT_QUOTES, 'UTF-8'); ?>"></div>
+                <div class="col-12 form-text mt-1">Messages (SMS) greet the customer by First Name.</div>
+            </div>
             <div class="row g-3 mb-3">
                 <div class="col-6">
                     <label class="form-label small fw-semibold text-muted">Phone</label>

@@ -61,8 +61,13 @@ if (isset($_POST['save'])) {
             if ($type === 'Expense') {
                 fund_lock($conn, $fundId);
                 $fund = fund_get($conn, $fundId);
-                if ($amount > fund_available($conn, $fundId)) {
-                    throw new InsufficientFundException('No Available Money in ' . $fund['name'] . '.');
+                // CHANGED (Task 4): checked on the server (the screen check can be bypassed), with the figures.
+                $availableNow = round(fund_available($conn, $fundId), 2);
+                if ($amount > $availableNow + 0.001) {
+                    throw new InsufficientFundException($availableNow <= 0
+                        ? $fund['name'] . ' has no available money, so this expense cannot be recorded against it. Choose another fund.'
+                        : 'Not enough money in ' . $fund['name'] . ': available RWF ' . number_format($availableNow, 2)
+                          . ', this expense needs RWF ' . number_format($amount, 2) . '. Nothing was recorded.');
                 }
             }
 

@@ -57,9 +57,13 @@ if ($transaction) {
             // This expense is itself still "pending", so its own amount is already
             // reserved inside fund_pending_total(). Exclude it before comparing,
             // so it is not counted against itself.
-            $availableForThis = fund_balance($conn, $fundId) - (fund_pending_total($conn, $fundId) - $amount);
+            // CHANGED (Task 3): the same rule as when the employee submitted it: the MONEY in the fund
+            // (fund_cash_balance: never the value of stock or assets), and a message with the figures.
+            $availableForThis = round(fund_cash_balance($conn, $fundId) - (fund_pending_total($conn, $fundId) - $amount), 2);
             if ($amount > $availableForThis + 0.001) {
-                throw new InsufficientFundException(fund_insufficient_message($fund['name']));
+                throw new InsufficientFundException('Not enough money in ' . $fund['name'] . ': available RWF '
+                    . number_format(max(0, $availableForThis), 2) . ', this ' . strtolower($transaction['transaction_type'])
+                    . ' needs RWF ' . number_format($amount, 2) . '. Nothing was deducted; the request is still pending.');
             }
         }
 
@@ -74,7 +78,13 @@ if ($transaction) {
 
         // Money now leaves the fund. Linked to the transaction (transaction_id), so editing or
         // deleting the transaction later reverses exactly this entry.
-        if ($isExpense) {
+        // NEW (Task 3): never two deductions for one transaction, even if an earlier attempt half-ran.
+        $already = mysqli_prepare($conn, "SELECT COUNT(*) FROM fund_movements WHERE transaction_id = ? AND movement_type = 'EXPENSE'");
+        mysqli_stmt_bind_param($already, 'i', $id);
+        mysqli_stmt_execute($already);
+        $alreadyDeducted = (int) mysqli_fetch_row(mysqli_stmt_get_result($already))[0] > 0;
+
+        if ($isExpense && !$alreadyDeducted) {
             fund_record_movement(
                 $conn, $fundId, 'EXPENSE', 'OUT', $amount,
                 substr($transaction['transaction_date'], 0, 7), $id, $adminId,
@@ -94,9 +104,10 @@ if ($transaction) {
         mysqli_rollback($conn);
         // CHANGED: the cause is logged; a "already reviewed" message is shown as it is.
         error_log('approve transaction #' . $id . ' failed: ' . $e->getMessage());
+        // CHANGED (Task 3): the exact reason is shown (this page is for Admins only), never a silent failure.
         $message = ($e instanceof RuntimeException && !($e instanceof mysqli_sql_exception))
             ? $e->getMessage()
-            : 'Unable to approve the transaction.';
+            : 'Unable to approve the transaction #' . $id . '. Nothing was changed: no money was deducted and it is still pending. Reason: ' . $e->getMessage();
         header('Location: index.php?error=' . urlencode($message));
         exit;
     }
@@ -115,5 +126,12 @@ if ($transaction) {
     exit;
 }
 
-header('Location: index.php?error=' . urlencode('Transaction not found or already reviewed.'));
+// CHANGED (Task 3): says what happened to it.
+$state = mysqli_prepare($conn, 'SELECT status FROM transactions WHERE id = ?');
+mysqli_stmt_bind_param($state, 'i', $id);
+mysqli_stmt_execute($state);
+$current = mysqli_fetch_row(mysqli_stmt_get_result($state))[0] ?? null;
+header('Location: index.php?error=' . urlencode($current === null
+    ? 'Transaction #' . $id . ' was not found.'
+    : 'Transaction #' . $id . ' is already ' . $current . ', so it cannot be approved again (nothing was deducted twice).'));
 exit;

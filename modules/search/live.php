@@ -248,6 +248,7 @@ function departmentsHeaderRow(?string $role): string
 // CHANGED: only the user's OWN notifications (before, searching showed everyone's).
 function renderNotificationsRows(mysqli $conn, string $like, int $limit, int $userId): string
 {
+    $isAdmin = current_user_role() === 'Admin'; // NEW (Task 2B): only Administrators get Delete
     $sql = "SELECT notifications.id, notifications.title, notifications.message, notifications.is_read, notifications.created_at, users.names
             FROM notifications
             LEFT JOIN users ON notifications.user_id = users.id
@@ -275,9 +276,12 @@ function renderNotificationsRows(mysqli $conn, string $like, int $limit, int $us
             $html .= '<form method="POST" action="../notifications/action.php" class="d-inline"><input type="hidden" name="action" value="mark_one">'
                 . '<input type="hidden" name="id" value="' . $id . '"><button type="submit" class="rm-btn rm-btn-success btn-sm">Mark Read</button></form> ';
         }
-        $html .= '<form method="POST" action="../notifications/action.php" class="d-inline" onsubmit="return confirm(\'Delete this notification?\')">'
-            . '<input type="hidden" name="action" value="delete_one"><input type="hidden" name="id" value="' . $id . '">'
-            . '<button type="submit" class="rm-btn rm-btn-danger btn-sm">Delete</button></form>';
+        // CHANGED (Task 2B): only Administrators can delete notifications.
+        if ($isAdmin) {
+            $html .= '<form method="POST" action="../notifications/action.php" class="d-inline" onsubmit="return confirm(\'Delete this notification?\')">'
+                . '<input type="hidden" name="action" value="delete_one"><input type="hidden" name="id" value="' . $id . '">'
+                . '<button type="submit" class="rm-btn rm-btn-danger btn-sm">Delete</button></form>';
+        }
         $html .= '</td>';
         $html .= '</tr>';
     }
@@ -406,7 +410,7 @@ function renderSalesRows(mysqli $conn, string $like, int $limit, ?string $role, 
             } elseif (!empty($sale['cancel_requested_by'])) {
                 $html .= '<span class="badge bg-secondary">Cancel Requested</span>';
             } else {
-                $html .= '<a href="../sales/request_cancel.php?id=' . $id . '" class="btn btn-outline-warning btn-sm">Request Cancel</a>';
+                $html .= '<a href="../sales/request_cancel.php?id=' . $id . '" class="btn btn-outline-danger btn-sm">Request Cancel</a>';
             }
         }
 

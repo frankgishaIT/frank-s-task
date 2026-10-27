@@ -63,11 +63,12 @@ $fundRows = mysqli_fetch_all(mysqli_query($conn, "SELECT id, code, name, allocat
 
 // The colour is only a thin bar at the top of each card. Balances stay dark and neutral.
 $fundColor = [
-    'FUTURE_PLANS' => '#4f46e5',
+    // CHANGED (Task 5): only the approved colours (green, blue, red, black).
+    'FUTURE_PLANS' => '#1E2FE0',
     'EMERGENCY'    => '#dc3545',
-    'TEAM_GROWTH'  => '#7f9eeb',
+    'TEAM_GROWTH'  => '#1E2333',
     'OPERATING'    => '#198754',
-    'CAPITAL'      => '#0dcaf0',
+    'CAPITAL'      => '#0B1A8C',
 ];
 
 // Add the numbers each card needs, then split: Operating is the featured card.
@@ -160,10 +161,14 @@ $statusBadge = [
             </ul>
         </div>
         <?php } ?>
+        <?php if ($isAdmin) { ?><a href="audit.php" class="rm-btn rm-btn-secondary"><i class="bi bi-journal-text me-1"></i>Audit Trail</a><?php } ?>
         <a href="create.php" class="rm-btn rm-btn-primary">+ Add Transaction</a>
     </div>
 </div>
 
+<?php if ($isAdmin) { ?>
+<!-- CHANGED (Task 4): the Fund cards and the Total Income / Expenses / Balance / Profit cards are for
+     Administrators only. Employees see only the transactions and the actions they need. -->
 <!-- RM FUND CARDS -->
 <?php if ($operatingCard) { $fc = $operatingCard; ?>
 <div class="card rm-fund-card rm-fund-main mb-3" style="--fund-color: <?= $fc['color']; ?>;">
@@ -257,19 +262,19 @@ $statusBadge = [
 <h5 class="mb-3">Profit Overview</h5>
 <div class="row mb-4">
     <div class="col-md-4">
-        <div class="card border-primary">
+        <div class="card border-info">
             <div class="card-body">
                 <small class="text-muted">Product Profit</small>
-                <h4 class="text-primary mb-0">RWF <?= number_format($productProfit, 2); ?></h4>
+                <h4 class="text-info mb-0">RWF <?= number_format($productProfit, 2); ?></h4>
                 <small class="text-muted">Selling Price − Buying Price</small>
             </div>
         </div>
     </div>
     <div class="col-md-4">
-        <div class="card border-primary">
+        <div class="card border-warning">
             <div class="card-body">
                 <small class="text-muted">Service Profit</small>
-                <h4 class="text-primary mb-0">RWF <?= number_format($serviceProfit, 2); ?></h4>
+                <h4 class="text-warning mb-0">RWF <?= number_format($serviceProfit, 2); ?></h4>
                 <small class="text-muted"><?= (int) round(SALES_SERVICE_PROFIT_RATE * 100); ?>% of the service amount (after discount)</small>
             </div>
         </div>
@@ -283,6 +288,7 @@ $statusBadge = [
         </div>
     </div>
 </div>
+<?php } ?>
 
 <div class="card border-0 shadow-sm">
     <div class="card-body p-0">
@@ -329,7 +335,7 @@ $statusBadge = [
             <i class="bi bi-info-circle" title="<?= htmlspecialchars($transaction['rejection_reason'], ENT_QUOTES, 'UTF-8'); ?>"></i>
         <?php } ?>
         <?php if (!$isManual) { ?>
-            <span class="badge bg-light text-muted border" title="Created automatically. Change it from its own module (e.g. cancel the sale or purchase order).">Auto</span>
+            <span class="badge bg-light text-muted border" title="Created automatically. Correct it at its source (the Source button shows where).">Auto</span>
         <?php } ?>
     </td>
     <td class="text-nowrap">
@@ -338,7 +344,11 @@ $statusBadge = [
             <a href="../sales/invoice.php?id=<?= (int) $transaction['linked_sale_id']; ?>" class="rm-btn rm-btn-light rm-btn-sm">Sale</a>
         <?php } ?>
         <?php if ($isAdmin && $transaction['status'] === 'pending') { ?>
-            <a href="approve.php?id=<?= (int) $transaction['id']; ?>" class="rm-btn rm-btn-success rm-btn-sm">Approve</a>
+            <!-- CHANGED: Approve is a POST button (approve.php no longer accepts a plain link). -->
+            <form method="POST" action="approve.php" class="d-inline" onsubmit="return confirm('Approve this transaction?')">
+                <input type="hidden" name="id" value="<?= (int) $transaction['id']; ?>">
+                <button type="submit" class="rm-btn rm-btn-success rm-btn-sm">Approve</button>
+            </form>
             <button type="button" class="rm-btn rm-btn-danger rm-btn-sm" data-bs-toggle="modal" data-bs-target="#rejectModal<?= (int) $transaction['id']; ?>">Reject</button>
 
             <div class="modal fade" id="rejectModal<?= (int) $transaction['id']; ?>" tabindex="-1">
@@ -365,10 +375,11 @@ $statusBadge = [
         <?php } ?>
         <?php if ($isAdmin && $isManual && !$isDeleted) { ?>
          <a href="edit.php?id=<?= (int) $transaction['id']; ?>" class="rm-btn rm-btn-warning rm-btn-sm">Edit</a>
-         <form method="POST" action="delete.php" class="d-inline" onsubmit="return confirm('Delete this transaction?')">
-            <input type="hidden" name="id" value="<?= (int) $transaction['id']; ?>">
-            <button type="submit" class="rm-btn rm-btn-danger rm-btn-sm">Delete</button>
-        </form>
+         <!-- CHANGED (Task 1): Delete opens the warning page (consequences + required reason). -->
+         <a href="delete_confirm.php?id=<?= (int) $transaction['id']; ?>" class="rm-btn rm-btn-danger rm-btn-sm">Delete</a>
+        <?php } elseif ($isAdmin && !$isDeleted) { ?>
+         <!-- NEW (Task 1): an automatic transaction is corrected at its source; this explains where and links to it. -->
+         <a href="delete_confirm.php?id=<?= (int) $transaction['id']; ?>" class="rm-btn rm-btn-light rm-btn-sm" title="Where to cancel or correct it">Source</a>
         <?php } ?>
         </td></tr><?php } ?></table></div>
         </div>

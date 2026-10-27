@@ -76,7 +76,8 @@ $link = function (array $change) use ($scope, $filter) {
                 <i class="bi bi-check2-all me-1"></i>Mark all as read<?= $myUnread > 0 ? ' (' . $myUnread . ')' : ''; ?>
             </button>
         </form>
-        <!-- NEW: Delete all read (my notifications) -->
+        <!-- NEW: Delete all read (my notifications). CHANGED (Task 2B): Administrators only. -->
+        <?php if ($isAdmin) { ?>
         <form method="POST" action="action.php" class="d-inline" onsubmit="return confirm('Delete all <?= $myRead; ?> read notification(s)? This cannot be undone.');">
             <input type="hidden" name="action" value="delete_read">
             <input type="hidden" name="back" value="<?= $e($link([])); ?>">
@@ -84,6 +85,7 @@ $link = function (array $change) use ($scope, $filter) {
                 <i class="bi bi-trash me-1"></i>Delete all read
             </button>
         </form>
+        <?php } ?>
     </div>
 </div>
 
@@ -143,7 +145,7 @@ $link = function (array $change) use ($scope, $filter) {
                 <button type="submit" class="rm-btn rm-btn-success rm-btn-sm">Mark Read</button>
             </form>
         <?php } ?>
-        <?php if ($isMine || $isAdmin) { ?>
+        <?php if ($isAdmin) { // CHANGED (Task 2B): only Administrators delete notifications ?>
             <form method="POST" action="action.php" class="d-inline" onsubmit="return confirm('Delete this notification?');">
                 <input type="hidden" name="action" value="delete_one"><input type="hidden" name="id" value="<?= $id; ?>">
                 <input type="hidden" name="back" value="<?= $e($link(['page' => $currentPage])); ?>">

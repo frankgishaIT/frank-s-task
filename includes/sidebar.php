@@ -21,12 +21,22 @@ try {
 }
 ?>
 
-<!-- NEW: system-wide colour for "warning" badges (Medium priority, Partially Paid, Pending, Low Stock, Late ...).
-     The yellow is replaced by grey with white text. To use another colour, change --rm-warning-badge only. -->
+<!-- CHANGED (Task 5): NO yellow anywhere in MY MOTIVE. Every Bootstrap "warning" style (buttons, outline buttons,
+     badges, alerts, text, backgrounds, borders, table rows) uses the approved colours only: blue, with white or
+     black text. It applies to every page that has the sidebar, including pages not edited one by one. -->
 <style>
-    :root { --rm-warning-badge: #6B7280; }
-    .badge.bg-warning,
-    .badge.bg-warning.text-dark { background-color: var(--rm-warning-badge) !important; color: #FFFFFF !important; }
+    :root { --rm-warning-badge: #1E2FE0; --rm-blue: #1E2FE0; --rm-blue-light: #EEF3FF; --rm-black: #1E2333; }
+    .badge.bg-warning, .badge.bg-warning.text-dark { background-color: var(--rm-warning-badge) !important; color: #FFFFFF !important; }
+    .btn-warning, .rm-btn-warning, .btn-warning:focus, .rm-btn-warning:focus {
+        background-color: var(--rm-blue) !important; border-color: var(--rm-blue) !important; color: #FFFFFF !important; }
+    .btn-warning:hover, .rm-btn-warning:hover { background-color: #1726B8 !important; border-color: #1726B8 !important; color: #FFFFFF !important; }
+    .btn-outline-warning { color: var(--rm-blue) !important; border-color: var(--rm-blue) !important; background-color: #FFFFFF !important; }
+    .btn-outline-warning:hover { color: #FFFFFF !important; background-color: var(--rm-blue) !important; }
+    .alert-warning { background-color: var(--rm-blue-light) !important; border-color: #C7D2FE !important; color: var(--rm-black) !important; }
+    .text-warning { color: var(--rm-blue) !important; }
+    .bg-warning:not(.badge) { background-color: var(--rm-blue-light) !important; color: var(--rm-black) !important; }
+    .border-warning { border-color: var(--rm-blue) !important; }
+    .table-warning, .table-warning > td, .table-warning > th { --bs-table-bg: var(--rm-blue-light); background-color: var(--rm-blue-light) !important; }
 </style>
 
 <div class="sidebar">

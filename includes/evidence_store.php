@@ -160,7 +160,7 @@ function evidence_output(mysqli $conn, ?string $ref, string $downloadName, ?stri
         $why = 'The document file "' . basename($ref) . '" is not in the folder ' . ($legacyDir ? basename(dirname($legacyDir)) . '/' . basename($legacyDir) : '(unknown)')
             . ' on this server. It was saved by an older version of MY MOTIVE (possibly on another computer).';
     }
-    echo '<div style="font-family:sans-serif;margin:20px;padding:14px;border:1px solid #E68A1C;background:#FDF1DF;">'
+    echo '<div style="font-family:sans-serif;margin:20px;padding:14px;border:1px solid #1E2FE0;background:#EEF3FF;">'
         . '<strong>Evidence not found.</strong><br>' . htmlspecialchars($why, ENT_QUOTES, 'UTF-8') . '</div>';
     exit;
 }

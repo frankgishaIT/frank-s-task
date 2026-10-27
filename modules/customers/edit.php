@@ -7,6 +7,8 @@ require '../../includes/notification_helper.php';
 // CHANGED (Task 5): only Admins and Managers may edit customer records. Employees are refused here,
 // on the server, so a direct address or a manually sent form cannot get around it.
 require_role(['Admin', 'Manager']);
+require_once '../../includes/customer_name_helpers.php'; // NEW (Task 2A): First / Last Name
+customer_names_ensure($conn);
 
 // CHANGED: problems are sent as "error" (they were sent as "success"), and messages are urlencoded.
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
@@ -18,7 +20,10 @@ $customer = mysqli_fetch_assoc(mysqli_stmt_get_result($statement));
 if (!$customer) { header('Location: index.php?error=' . urlencode('Customer not found.')); exit; }
 
 if (isset($_POST['update'])) {
-    $name = trim($_POST['name'] ?? '');
+    // CHANGED (Task 2A): First Name and Last Name; the full name is kept for every page that shows it.
+    $firstName = mb_substr(trim($_POST['first_name'] ?? ''), 0, 80);
+    $lastName = mb_substr(trim($_POST['last_name'] ?? ''), 0, 80);
+    $name = customer_full_name($firstName, $lastName);
     $phone = trim($_POST['phone'] ?? '');
     $email = trim($_POST['email'] ?? '');
     $province = trim($_POST['province'] ?? '');
@@ -36,7 +41,7 @@ if (isset($_POST['update'])) {
         $dup = mysqli_fetch_assoc(mysqli_stmt_get_result($dupStatement));
     }
 
-    if ($name === '') { $error = 'Customer name is required.'; }
+    if ($firstName === '') { $error = 'The First Name is required.'; }
     elseif ($phone === '') { $error = 'Phone number is required.'; }
     elseif (!preg_match('/^\d{10}$/', $phone)) { $error = 'Phone number must be exactly 10 digits.'; }
     elseif (strpos($phone, '07') !== 0) { $error = 'Please enter a mobile number starting with 07 (e.g. 0788123456).'; }
@@ -44,8 +49,9 @@ if (isset($_POST['update'])) {
     elseif ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) { $error = 'Please enter a valid email address.'; }
     elseif ($province === '' || $district === '' || $sector === '') { $error = 'Please select Province, District, and Sector.'; }
     else {
-        $statement = mysqli_prepare($conn, 'UPDATE customers SET name = ?, phone = ?, email = ?, province = ?, district = ?, sector = ?, address = ? WHERE id = ?');
-        mysqli_stmt_bind_param($statement, 'sssssssi', $name, $phone, $email, $province, $district, $sector, $address, $id);
+        $lastValue = $lastName !== '' ? $lastName : null;
+        $statement = mysqli_prepare($conn, 'UPDATE customers SET name = ?, first_name = ?, last_name = ?, phone = ?, email = ?, province = ?, district = ?, sector = ?, address = ? WHERE id = ?');
+        mysqli_stmt_bind_param($statement, 'sssssssssi', $name, $firstName, $lastValue, $phone, $email, $province, $district, $sector, $address, $id);
         mysqli_stmt_execute($statement);
 
         $editorName = $_SESSION['user_name'] ?? 'A user';
@@ -57,7 +63,7 @@ if (isset($_POST['update'])) {
 
         header('Location: index.php?success=' . urlencode('Customer updated successfully.')); exit;
     }
-    $customer = array_merge($customer, ['name' => $name, 'phone' => $phone, 'email' => $email, 'province' => $province, 'district' => $district, 'sector' => $sector, 'address' => $address]);
+    $customer = array_merge($customer, ['name' => $name, 'first_name' => $firstName, 'last_name' => $lastName, 'phone' => $phone, 'email' => $email, 'province' => $province, 'district' => $district, 'sector' => $sector, 'address' => $address]);
 }
 
 include '../../includes/header.php';
@@ -72,9 +78,15 @@ $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APO
         <div class="alert alert-danger d-flex align-items-center gap-2 mb-3" style="border-radius:10px; border:none; background:var(--accent-red-bg); color:var(--accent-red); font-size:13px; padding:10px 14px;"><i class="bi bi-exclamation-circle-fill"></i>
         <?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?></div><?php } ?>
         <form method="POST">
-            <div class="mb-3">
-                <label class="form-label small fw-semibold text-muted">Customer Name</label>
-                <input type="text" name="name" class="form-control rm-input" value="<?= htmlspecialchars($customer['name'], ENT_QUOTES, 'UTF-8'); ?>" required>
+            <div class="row g-3 mb-3">
+                <div class="col-6">
+                    <label class="form-label small fw-semibold text-muted">First Name <span class="text-danger">*</span></label>
+                    <input type="text" name="first_name" maxlength="80" class="form-control rm-input" value="<?= htmlspecialchars($customer['first_name'] ?? '', ENT_QUOTES, 'UTF-8'); ?>" required>
+                </div>
+                <div class="col-6">
+                    <label class="form-label small fw-semibold text-muted">Last Name</label>
+                    <input type="text" name="last_name" maxlength="80" class="form-control rm-input" value="<?= htmlspecialchars($customer['last_name'] ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+                </div>
             </div>
             <div class="row g-3 mb-3">
                 <div class="col-6">

@@ -23,6 +23,12 @@ $go = function (string $type, string $msg) use ($back) {
     exit;
 };
 
+// CHANGED (Task 2B): only Administrators may delete notifications. Employees (and Managers) can read and
+// mark them as read, but a notification sent to them cannot be deleted, even by a manually sent request.
+if (in_array($action, ['delete_one', 'delete_read'], true) && !$isAdmin) {
+    $go('error', 'Only an Administrator can delete notifications.');
+}
+
 switch ($action) {
     case 'mark_one':
         if (!$id) { $go('error', 'Invalid notification.'); }
@@ -42,13 +48,8 @@ switch ($action) {
 
     case 'delete_one':
         if (!$id) { $go('error', 'Invalid notification.'); }
-        if ($isAdmin) {
-            $s = mysqli_prepare($conn, 'DELETE FROM notifications WHERE id = ?');
-            mysqli_stmt_bind_param($s, 'i', $id);
-        } else {
-            $s = mysqli_prepare($conn, 'DELETE FROM notifications WHERE id = ? AND user_id = ?');
-            mysqli_stmt_bind_param($s, 'ii', $id, $userId);
-        }
+        $s = mysqli_prepare($conn, 'DELETE FROM notifications WHERE id = ?'); // Admins only (checked above)
+        mysqli_stmt_bind_param($s, 'i', $id);
         mysqli_stmt_execute($s);
         mysqli_stmt_affected_rows($s) === 1 ? $go('success', 'Notification deleted.') : $go('error', 'That notification could not be deleted.');
         break;

@@ -63,7 +63,7 @@ function sale_status_badge($status) {
 function sale_pending_reason_badges($row) {
     $badges = [];
     if ((float) $row['discount_amount'] > 0) {
-        $badges[] = '<span class="badge text-white">Discount</span>';
+        $badges[] = '<span class="badge bg-info text-dark me-1">Discount</span>';
     }
     if (!empty($row['needs_credit_approval'])) {
         $badges[] = '<span class="badge bg-danger me-1">Credit &lt; 500 pts</span>';
@@ -86,6 +86,7 @@ function sale_pending_reason_badges($row) {
     <div class="d-flex gap-2">
         <?php if (in_array($role, ['Admin', 'Manager'], true)) { ?>
             <a href="reports.php" class="btn btn-outline-primary">Reports</a>
+            <!-- NEW (Task 6B) --><a href="category_profit.php" class="btn btn-outline-primary">Profit by Category</a>
         <?php } ?>
         <a href="create.php" class="btn btn-primary">+ New Sale</a>
     </div>
@@ -226,7 +227,7 @@ function sale_pending_reason_badges($row) {
                         <?php } elseif (!empty($sale['cancel_requested_by'])) { ?>
                             <span class="badge bg-secondary">Cancel Requested</span>
                         <?php } else { ?>
-                            <a href="request_cancel.php?id=<?= (int) $sale['id']; ?>" class="btn btn-outline-warning btn-sm">Request Cancel</a>
+                            <a href="request_cancel.php?id=<?= (int) $sale['id']; ?>" class="btn btn-outline-danger btn-sm">Request Cancel</a>
                         <?php } ?>
                     <?php } ?>
                 </td>

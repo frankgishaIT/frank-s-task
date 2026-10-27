@@ -45,6 +45,24 @@ function sms_money($v): string {
  *   Kinyarwanda messages ($lang 'rw') start with "Kuri", English messages ($lang 'en') with "Dear".
  * $fallback is used when the name is empty.
  */
+/**
+ * NEW (Task 2A): SQL for a customer's FIRST name (SMS greet customers by first name only): the First Name
+ * field when it is filled, otherwise the first word of the full name (customers saved before the change).
+ * $alias = the customers table alias in the query ('' when the query has no alias).
+ */
+function sms_first_name_sql(mysqli $conn, string $alias = 'c'): string {
+    static $hasFirst = null;
+    if ($hasFirst === null) {
+        try {
+            $hasFirst = (int) mysqli_fetch_row(mysqli_query($conn, "SELECT COUNT(*) FROM information_schema.columns
+                WHERE table_schema = DATABASE() AND table_name = 'customers' AND column_name = 'first_name'"))[0] > 0;
+        } catch (Throwable $e) { $hasFirst = false; }
+    }
+    $p = $alias !== '' ? $alias . '.' : '';
+    $fromName = "SUBSTRING_INDEX(TRIM({$p}name), ' ', 1)";
+    return $hasFirst ? "COALESCE(NULLIF(TRIM({$p}first_name), ''), $fromName)" : $fromName;
+}
+
 function sms_greet(?string $name, string $fallback = 'Mukiliya', string $lang = 'rw'): string {
     $name = trim((string) $name);
     if ($name === '') { $name = $fallback; }
@@ -85,7 +103,7 @@ function sms_customer_outstanding(mysqli $conn, int $customerId): float {
 function sms_load_sale(mysqli $conn, int $saleId): ?array {
     $phoneCol = sms_phone_column($conn, 'customers');
     $phoneSql = $phoneCol ? "c.`$phoneCol`" : 'NULL';
-    $s = mysqli_prepare($conn, "SELECT s.*, c.name AS customer_name, $phoneSql AS customer_phone
+    $s = mysqli_prepare($conn, "SELECT s.*, " . sms_first_name_sql($conn) . " AS customer_name, $phoneSql AS customer_phone
         FROM sales s LEFT JOIN customers c ON c.id = s.customer_id WHERE s.id = ?");
     mysqli_stmt_bind_param($s, 'i', $saleId);
     mysqli_stmt_execute($s);
@@ -198,7 +216,7 @@ function sms_send_credit_reminders(mysqli $conn): int {
     try {
         $phoneCol = sms_phone_column($conn, 'customers');
         if (!$phoneCol) { return 0; }
-        $rows = mysqli_fetch_all(mysqli_query($conn, "SELECT c.id, c.name, c.`$phoneCol` AS phone,
+        $rows = mysqli_fetch_all(mysqli_query($conn, "SELECT c.id, " . sms_first_name_sql($conn) . " AS name, c.`$phoneCol` AS phone,
                 SUM(s.total_amount - s.amount_paid + s.charges_accrued - s.charges_paid) AS balance
             FROM customers c JOIN sales s ON s.customer_id = c.id
             WHERE s.status IN ('Credit', 'Partially Paid') AND c.`$phoneCol` IS NOT NULL AND c.`$phoneCol` <> ''
@@ -227,7 +245,7 @@ function sms_send_loyalty_weekly(mysqli $conn): int {
     try {
         $phoneCol = sms_phone_column($conn, 'customers');
         if (!$phoneCol) { return 0; }
-        $rows = mysqli_fetch_all(mysqli_query($conn, "SELECT id, name, loyalty_points, `$phoneCol` AS phone
+        $rows = mysqli_fetch_all(mysqli_query($conn, "SELECT id, " . sms_first_name_sql($conn, '') . " AS name, loyalty_points, `$phoneCol` AS phone
             FROM customers WHERE is_active = 1 AND loyalty_points > 0 AND `$phoneCol` IS NOT NULL AND `$phoneCol` <> ''"), MYSQLI_ASSOC);
 
         foreach ($rows as $c) {
@@ -337,7 +355,7 @@ function sms_notify_customer_welcome(mysqli $conn, int $customerId, ?int $userId
     try {
         $phoneCol = sms_phone_column($conn, 'customers');
         if (!$phoneCol) { return; }
-        $s = mysqli_prepare($conn, "SELECT name, `$phoneCol` AS phone FROM customers WHERE id = ?");
+        $s = mysqli_prepare($conn, "SELECT " . sms_first_name_sql($conn, '') . " AS name, `$phoneCol` AS phone FROM customers WHERE id = ?");
         mysqli_stmt_bind_param($s, 'i', $customerId);
         mysqli_stmt_execute($s);
         $c = mysqli_fetch_assoc(mysqli_stmt_get_result($s));
@@ -365,7 +383,7 @@ function sms_notify_reward_fulfilled(mysqli $conn, int $rewardId, ?int $userId =
         $phoneCol = sms_phone_column($conn, 'customers');
         if (!$phoneCol) { return; }
         $s = mysqli_prepare($conn, "SELECT r.reward_details, r.points_redeemed, r.status, t.name AS type_name,
-                c.name, c.`$phoneCol` AS phone, c.loyalty_points
+                " . sms_first_name_sql($conn) . " AS name, c.`$phoneCol` AS phone, c.loyalty_points
             FROM customer_rewards r JOIN reward_types t ON t.id = r.reward_type_id JOIN customers c ON c.id = r.customer_id
             WHERE r.id = ?");
         mysqli_stmt_bind_param($s, 'i', $rewardId);

@@ -27,7 +27,7 @@ function money($v) { return number_format((float) $v, 2); }
 
 $statusBadge = [
     'Active' => ['#0FA968', '#E1F7EE'],
-    'Under Maintenance' => ['#E68A1C', '#FDF1DF'],
+    'Under Maintenance' => ['#1E2FE0', '#EEF3FF'],
     'Disposed' => ['#8A90A3', '#F1F3F9'],
     'Lost' => ['#E24B4A', '#FCEAEA'],
 ];

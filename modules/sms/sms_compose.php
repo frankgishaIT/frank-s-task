@@ -24,12 +24,13 @@ function compose_recipients(mysqli $conn): array {
     // Customers, with what they owe (Credit / Partially Paid sales) and their Loyalty Points.
     $cPhone = sms_phone_column($conn, 'customers');
     $cPhoneSql = $cPhone ? "c.`$cPhone`" : 'NULL';
-    $rows = mysqli_fetch_all(mysqli_query($conn, "SELECT c.id, c.name, $cPhoneSql AS phone, c.loyalty_points,
+    $rows = mysqli_fetch_all(mysqli_query($conn, "SELECT c.id, c.name, " . sms_first_name_sql($conn) . " AS first_name, $cPhoneSql AS phone, c.loyalty_points,
             COALESCE((SELECT SUM(s.total_amount - s.amount_paid + s.charges_accrued - s.charges_paid) FROM sales s
                       WHERE s.customer_id = c.id AND s.status IN ('Credit', 'Partially Paid')), 0) AS balance
         FROM customers c WHERE c.is_active = 1 ORDER BY c.name"), MYSQLI_ASSOC);
     foreach ($rows as $r) {
-        $out['customers'][] = ['id' => (int) $r['id'], 'name' => (string) $r['name'], 'phone' => sms_normalize_phone($r['phone']),
+        // CHANGED (Task 2A): 'first' fills {name} in the message (first name only); 'name' is shown in the list.
+        $out['customers'][] = ['id' => (int) $r['id'], 'name' => (string) $r['name'], 'first' => (string) $r['first_name'], 'phone' => sms_normalize_phone($r['phone']),
             'balance' => round(max(0, (float) $r['balance']), 2), 'points' => (int) $r['loyalty_points']];
     }
 
@@ -63,7 +64,8 @@ function compose_recipients(mysqli $conn): array {
 
 // Fills {name}, {balance}, {points} for one person.
 function compose_render(string $template, array $person): string {
-    $name = trim($person['name'] ?? '') !== '' ? mb_convert_case(trim($person['name']), MB_CASE_TITLE, 'UTF-8') : 'Mukiliya';
+    $nameForMessage = trim((string) ($person['first'] ?? '')) !== '' ? $person['first'] : ($person['name'] ?? ''); // customers: first name
+    $name = trim($nameForMessage) !== '' ? mb_convert_case(trim($nameForMessage), MB_CASE_TITLE, 'UTF-8') : 'Mukiliya';
     return strtr($template, [
         '{name}' => $name,
         '{balance}' => sms_money($person['balance'] ?? 0),

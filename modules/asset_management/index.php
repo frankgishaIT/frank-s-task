@@ -21,7 +21,9 @@ try {
 
 $assetsResult = mysqli_query($conn, 'SELECT assets.*, departments.name AS department_name
     FROM assets LEFT JOIN departments ON assets.responsible_department_id = departments.id
-    ORDER BY FIELD(assets.status, "Active","Under Maintenance","Disposed","Lost"), created_at DESC');
+    WHERE assets.status <> "Deleted"
+    ORDER BY FIELD(assets.status, "Active","Under Maintenance","Disposed","Lost"), created_at DESC'); // CHANGED (Task I): deleted assets are hidden
+$canExecDelete = function_exists('access_can') && access_can('asset_management.executive_delete', $conn); // NEW (Task I)
 
 function money($v) { return number_format((float) $v, 2); }
 
@@ -132,6 +134,10 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
                         <?php if ($inUse) { ?>
                             <!-- NEW: sold, stolen, damaged or thrown away (records the gain or loss and updates the RM Capital Fund). -->
                             <a href="dispose.php?id=<?= (int) $asset['id']; ?>" class="rm-btn rm-btn-danger rm-btn-sm">Remove</a>
+                        <?php } ?>
+                        <?php if ($canExecDelete) { ?>
+                            <!-- NEW (Task I): a record that should never have existed (Remove = sold, stolen, damaged, returned). -->
+                            <a href="executive_delete.php?id=<?= (int) $asset['id']; ?>" class="btn btn-outline-danger btn-sm">Delete</a>
                         <?php } ?>
                     </td>
                 </tr>

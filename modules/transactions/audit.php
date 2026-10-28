@@ -13,7 +13,8 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
 ?>
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h2 class="mb-0">Transaction Audit Trail</h2>
-    <a href="index.php" class="rm-btn rm-btn-light">Back to Transactions</a>
+    <div class="d-flex gap-2"><a href="record_deletions.php" class="rm-btn rm-btn-secondary">Deleted Loans &amp; Assets</a>
+    <a href="index.php" class="rm-btn rm-btn-light">Back to Transactions</a></div>
 </div>
 <p class="text-muted small">Every deletion of a transaction: what it was, why, by whom and when. Deleted transactions stay in the list (marked Deleted) and are no longer counted in totals and reports.</p>
 <div class="card border-0 shadow-sm"><div class="card-body p-0"><div class="table-responsive">

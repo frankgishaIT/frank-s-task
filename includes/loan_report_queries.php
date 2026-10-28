@@ -102,13 +102,13 @@ function loans_report_build(mysqli $conn, string $type, array $req): array
         if ($status === 'open') {
             $where[] = 'l.status IN ' . LOANS_REPORT_OPEN;
         } elseif ($status === 'not_cancelled') {
-            $where[] = "l.status <> 'Cancelled'";
+            $where[] = "l.status NOT IN ('Cancelled', 'Deleted')";
         } else {
             $where[] = 'l.status = ?'; $bt .= 's'; $params[] = $status;
         }
         $filters[] = ['Status', $lookups['statuses'][$status]];
     } elseif ($type === 'lenders') {
-        $where[] = "l.status <> 'Cancelled'";
+        $where[] = "l.status NOT IN ('Cancelled', 'Deleted')";
     } else {
         $where[] = 'l.status IN ' . LOANS_REPORT_OPEN;
     }

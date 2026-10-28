@@ -48,6 +48,7 @@ try {
         MY MOTIVE
     </h3>
 
+    <?php ob_start(); // NEW (Task II): links the employee may not open are removed below ?>
     <a href="../dashboard/index.php" class="<?= navActive('dashboard', $currentPath) ?>">
         <i class="bi bi-house-door-fill"></i> Dashboard
     </a>
@@ -79,6 +80,10 @@ try {
     <!-- NEW (Task 3): Admin-managed categories (expense categories, asset types, leave types ...) -->
     <a href="../categories/index.php" class="<?= navActive('/categories/', $currentPath) ?>">
         <i class="bi bi-tags-fill"></i> Categories
+    </a>
+    <!-- NEW (Task II): centralized employee access management -->
+    <a href="../access/index.php" class="<?= navActive('/access/', $currentPath) ?>">
+        <i class="bi bi-shield-lock-fill"></i> Roles &amp; Permissions
     </a>
     <?php } ?>
 
@@ -153,6 +158,8 @@ try {
     <a href="../notifications/index.php" class="<?= navActive('notifications', $currentPath) ?>">
         <i class="bi bi-bell-fill"></i> Notifications
     </a>
+
+    <?php $menuHtml = ob_get_clean(); echo function_exists('access_filter_menu') ? access_filter_menu($menuHtml) : $menuHtml; ?>
 
     <div style="border-top:1px solid rgba(255,255,255,.08); margin:14px 10px 10px; padding-top:14px;">
 

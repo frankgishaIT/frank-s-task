@@ -194,7 +194,7 @@ function fin_asset_results(mysqli $conn, ?string $start, ?string $end): array
     [$r, $t, $p] = fin_range('disposal_date', $start, $end);
     $rows = fin_rows($conn, "SELECT COALESCE(SUM(CASE WHEN gain_loss > 0 THEN gain_loss ELSE 0 END), 0) AS gains,
             COALESCE(SUM(CASE WHEN gain_loss < 0 THEN -gain_loss ELSE 0 END), 0) AS losses
-        FROM asset_disposals WHERE 1 = 1" . $r, $t, $p);
+        FROM asset_disposals WHERE asset_id NOT IN (SELECT id FROM assets WHERE status = 'Deleted')" . $r, $t, $p); // CHANGED (Task I)
     return ['gains' => round((float) ($rows[0]['gains'] ?? 0), 2), 'losses' => round((float) ($rows[0]['losses'] ?? 0), 2)];
 }
 
@@ -225,7 +225,7 @@ function fin_manual_expenses(mysqli $conn, ?string $start, ?string $end): array
 function fin_valuation_losses(mysqli $conn, ?string $start, ?string $end): float
 {
     [$r, $t, $p] = fin_range('valuation_date', $start, $end);
-    $v = -fin_value($conn, "SELECT COALESCE(SUM(to_profit_loss), 0) FROM asset_valuations WHERE 1 = 1" . $r, $t, $p);
+    $v = -fin_value($conn, "SELECT COALESCE(SUM(to_profit_loss), 0) FROM asset_valuations WHERE asset_id NOT IN (SELECT id FROM assets WHERE status = 'Deleted')" . $r, $t, $p);
     return abs($v) < 0.005 ? 0.0 : $v;
 }
 
@@ -240,13 +240,13 @@ function fin_rewards_paid(mysqli $conn, ?string $start, ?string $end): float
 function fin_depreciation(mysqli $conn, ?string $start, ?string $end): float
 {
     [$r, $t, $p] = fin_range('valuation_date', $start, $end);
-    return fin_value($conn, "SELECT COALESCE(SUM(daily_depreciation), 0) FROM asset_valuation_history WHERE 1 = 1" . $r, $t, $p);
+    return fin_value($conn, "SELECT COALESCE(SUM(daily_depreciation), 0) FROM asset_valuation_history WHERE asset_id NOT IN (SELECT id FROM assets WHERE status = 'Deleted')" . $r, $t, $p);
 }
 
 function fin_interest(mysqli $conn, ?string $start, ?string $end): float
 {
     [$r, $t, $p] = fin_range('payment_date', $start, $end);
-    return fin_value($conn, "SELECT COALESCE(SUM(interest_portion), 0) FROM loan_payments WHERE 1 = 1" . $r, $t, $p);
+    return fin_value($conn, "SELECT COALESCE(SUM(interest_portion), 0) FROM loan_payments WHERE loan_id NOT IN (SELECT id FROM loans WHERE status = 'Deleted')" . $r, $t, $p);
 }
 
 /** Stock corrections posted on the Capital Fund Check (positive = stock lost). */
@@ -328,7 +328,7 @@ function fin_fixed_assets(mysqli $conn, string $asOf): float
     try {
         $rows = sales_report_fetch($conn, "SELECT COALESCE(SUM($value), 0) AS v FROM assets a
             LEFT JOIN asset_disposals x ON x.asset_id = a.id
-            WHERE a.acquisition_date <= ? AND (x.id IS NULL OR x.disposal_date > ?)
+            WHERE a.acquisition_date <= ? AND a.status <> 'Deleted' AND (x.id IS NULL OR x.disposal_date > ?)
               AND (x.id IS NOT NULL OR a.status IN ('Active', 'Under Maintenance'))", 'sss', [$asOf, $asOf, $asOf]);
     } catch (mysqli_sql_exception $e) {
         $rows = fin_rows($conn, "SELECT COALESCE(SUM($value), 0) AS v FROM assets a
@@ -410,7 +410,7 @@ function fin_position(mysqli $conn, string $asOf): array
     } else {
         $loanPrincipal = fin_value($conn, "SELECT COALESCE(SUM(GREATEST(0, l.loan_amount - COALESCE(
                 (SELECT SUM(lp.principal_portion) FROM loan_payments lp WHERE lp.loan_id = l.id AND lp.payment_date <= ?), 0))), 0)
-            FROM loans l WHERE l.status <> 'Cancelled' AND l.loan_start_date <= ?", 'ss', [$asOf, $asOf]);
+            FROM loans l WHERE l.status NOT IN ('Cancelled', 'Deleted') AND l.loan_start_date <= ?", 'ss', [$asOf, $asOf]);
     }
     $loanCurrent = fin_value($conn, "SELECT COALESCE(SUM(GREATEST(0, s.principal_due - GREATEST(0, s.paid_amount - s.interest_due))), 0)
         FROM loan_schedule s JOIN loans l ON l.id = s.loan_id

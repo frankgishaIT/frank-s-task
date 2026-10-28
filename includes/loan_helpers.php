@@ -213,14 +213,14 @@ function loan_record_payment($conn, $loanId, $paymentDate, $amount, $notes, $rec
         if ($interestApplied > 0.001) {
             fund_post_automatic_expense(
                 $conn, 'OPERATING', 'Loan Repayment', (float) $interestApplied, $paymentDate,
-                'Loan interest paid to ' . $lenderLabel . ' — RWF ' . number_format($interestApplied, 2), $userId
-            );
+                'Loan interest paid to ' . $lenderLabel . ' — RWF ' . number_format($interestApplied, 2),    $userId, null, 'LOAN', (int) $loanId
+   );
         }
         if ($principalApplied > 0.001) {
             fund_post_automatic_expense(
                 $conn, 'CAPITAL', 'Loan Repayment', (float) $principalApplied, $paymentDate,
-                'Loan principal repaid to ' . $lenderLabel . ' — RWF ' . number_format($principalApplied, 2), $userId
-            );
+                'Loan principal repaid to ' . $lenderLabel . ' — RWF ' . number_format($principalApplied, 2),    $userId, null, 'LOAN', (int) $loanId
+   );
         }
     } catch (InsufficientFundException $e) {
         // Only reached if another user spent the money in the last moment.

@@ -114,6 +114,7 @@ function asset_report_where(array $where, string $extra = ''): string
 {
     $all = $where;
     if ($extra !== '') { $all[] = $extra; }
+    $all[] = "a.status <> 'Deleted'"; // CHANGED (Task I): deleted assets are in no report
     return $all ? ' WHERE ' . implode(' AND ', $all) : '';
 }
 

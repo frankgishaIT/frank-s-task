@@ -1,4 +1,8 @@
 <?php
+// NEW: Rwanda time (Africa/Kigali, UTC+2) for every page. This file is in Git, so the setting reaches the
+// live server with a normal push (config/db.php is not in Git and is not updated by a push).
+date_default_timezone_set('Africa/Kigali');
+
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }

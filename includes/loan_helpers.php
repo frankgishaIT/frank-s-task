@@ -250,7 +250,7 @@ function loan_report_totals($conn) {
         COALESCE(SUM(interest_paid), 0) AS total_interest_paid,
         COALESCE(SUM(total_paid), 0) AS total_paid,
         COALESCE(SUM(CASE WHEN status = 'Active' THEN outstanding_balance ELSE 0 END), 0) AS active_balance
-        FROM loans WHERE status != 'Cancelled'"));
+                FROM loans WHERE status NOT IN ('Cancelled', 'Deleted')"));
     return $row;
 }
 // ---------------------------------------------------------------------

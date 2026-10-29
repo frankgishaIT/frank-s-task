@@ -68,19 +68,20 @@ function exec_delete_page(mysqli $conn, string $type): void
     $modal_subtitle = 'Executive deletion: restricted, justified, confirmed and recorded.';
     include __DIR__ . '/header.php'; include __DIR__ . '/sidebar.php';
     ?>
-    <div class="rm-modal-backdrop"><div class="rm-modal" style="max-width:860px;">
+    <!-- CHANGED: the standard window width (a wider window was pushed off the left edge). -->
+    <div class="rm-modal-backdrop"><div class="rm-modal">
         <?php include __DIR__ . '/model_header.php'; ?>
         <div class="rm-modal-body">
             <?php if (isset($error)) { ?><div class="alert alert-danger small"><?= $e($error); ?></div><?php } ?>
 
-            <table class="table table-sm mb-3" style="font-size:13px;">
+            <table class="table table-sm mb-3" style="font-size:13px; table-layout:fixed; width:100%;">
                 <?php if ($isLoan) { ?>
-                <tr><th style="width:35%;">Loan</th><td><?= $e($ref . ' · ' . $record['lender'] . ' (' . $record['loan_type'] . ')'); ?></td></tr>
+                <tr><th style="width:38%;">Loan</th><td><?= $e($ref . ' · ' . $record['lender'] . ' (' . $record['loan_type'] . ')'); ?></td></tr>
                 <tr><th>Amount borrowed</th><td>RWF <?= $m($record['loan_amount']); ?> on <?= date('d M Y', strtotime($record['loan_start_date'])); ?></td></tr>
                 <tr><th>Paid so far</th><td>RWF <?= $m($record['total_paid']); ?> (principal <?= $m($record['principal_repaid']); ?>, interest <?= $m($record['interest_paid']); ?>) in <?= count($plan['payments'] ?? []); ?> repayment(s)</td></tr>
                 <tr><th>Status</th><td><?= $e($record['status']); ?></td></tr>
                 <?php } else { ?>
-                <tr><th style="width:35%;">Asset</th><td><?= $e($ref . ' · ' . $record['asset_name'] . ' (' . $record['asset_type'] . ')'); ?></td></tr>
+                <tr><th style="width:38%;">Asset</th><td><?= $e($ref . ' · ' . $record['asset_name'] . ' (' . $record['asset_type'] . ')'); ?></td></tr>
                 <tr><th>Acquired</th><td>RWF <?= $m($record['acquisition_value']); ?> on <?= date('d M Y', strtotime($record['acquisition_date'])); ?> · <?= $e($record['funding_type'] ?? ''); ?></td></tr>
                 <tr><th>Value today</th><td>RWF <?= $m($record['current_value']); ?> · status <?= $e($record['status']); ?><?= !empty($plan['disposals']) ? ' · ' . count($plan['disposals']) . ' disposal record(s)' : ''; ?></td></tr>
                 <?php } ?>
@@ -101,8 +102,8 @@ function exec_delete_page(mysqli $conn, string $type): void
                     </ul>
                 </div>
                 <details class="mb-3 small" <?= count($plan['transactions']) + count($plan['movements']) <= 8 ? 'open' : ''; ?>><summary>Everything that will be reversed</summary>
-                    <table class="table table-sm mt-2 mb-0" style="font-size:12px;">
-                        <tr><th>Reference</th><th>What</th><th class="text-end">RWF</th></tr>
+                    <table class="table table-sm mt-2 mb-0" style="font-size:12px; table-layout:fixed; width:100%; word-wrap:break-word;">
+                        <tr><th style="width:24%;">Reference</th><th>What</th><th class="text-end" style="width:22%;">RWF</th></tr>
                         <?php foreach ($plan['transactions'] as $tx) { ?>
                         <tr><td><?= $e(tx_reference((int) $tx['id'])); ?></td><td><?= $e($tx['why'] . ' — ' . $tx['description']); ?></td><td class="text-end"><?= $m($tx['amount']); ?></td></tr>
                         <?php } ?>

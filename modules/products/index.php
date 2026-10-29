@@ -46,16 +46,17 @@ function offering_type_label(string $type): string { return $type === 'Service' 
 </div>
 <?php } ?>
 
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h2>Products &amp; Services</h2>
-    <div class="d-flex gap-2">
-        <a href="../purchases/index.php" class="rm-btn rm-btn-secondary"><i class="bi bi-clock-history me-1"></i>Purchase History</a>
+<!-- CHANGED: the title and the buttons wrap onto a second line when the screen is narrow (nothing runs off the edge). -->
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+    <h2 class="mb-0" style="white-space:nowrap;">Products &amp; Services</h2>
+    <div class="d-flex flex-wrap gap-2">
+        <a href="../purchases/index.php" class="rm-btn rm-btn-secondary rm-btn-sm"><i class="bi bi-clock-history me-1"></i>Purchase History</a>
         <?php if ($canManagePurchaseOrders) { ?>
-        <a href="../purchase_orders/index.php" class="rm-btn rm-btn-secondary"><i class="bi bi-clipboard-check me-1"></i>Purchase Orders</a>
-        <a href="reports.php" class="rm-btn rm-btn-secondary"><i class="bi bi-bar-chart-fill me-1"></i>Reports</a>
+        <a href="../purchase_orders/index.php" class="rm-btn rm-btn-secondary rm-btn-sm"><i class="bi bi-clipboard-check me-1"></i>Purchase Orders</a>
+        <a href="reports.php" class="rm-btn rm-btn-secondary rm-btn-sm"><i class="bi bi-bar-chart-fill me-1"></i>Reports</a>
         <?php } ?>
         <?php if ($isAdmin) { ?>
-        <a href="create.php" class="rm-btn rm-btn-primary">+ Add Product or Service</a>
+        <a href="create.php" class="rm-btn rm-btn-primary rm-btn-sm">+ Add Product or Service</a>
         <?php } ?>
     </div>
 </div>
@@ -87,8 +88,8 @@ function offering_type_label(string $type): string { return $type === 'Service' 
      on page load and swaps it out for filtered results as you type in the
      topbar search box, restoring it when the box is cleared. -->
 <div id="pageResultsContainer">
-<div style="overflow-x:auto;">
-<table class="table table-bordered table-hover">
+<div class="table-responsive">
+<table class="table table-bordered table-hover align-middle mb-0" style="font-size:14px;">
 <tr>
     <th>No.</th><th>Type</th><th>Name</th><th>Code</th><th>Quantity</th><th>Unit</th><th>Buying Price</th><th>Selling Price</th><th>Status</th><th>Action</th>
 </tr>
@@ -121,7 +122,7 @@ function offering_type_label(string $type): string { return $type === 'Service' 
             <span class="badge bg-danger">Inactive</span>
         <?php } ?>
     </td>
-    <td class="text-nowrap">
+    <td class="text-nowrap" style="width:1%;">
         <a href="view.php?id=<?= (int) $row['id']; ?>" class="rm-btn rm-btn-info rm-btn-sm">View</a>
         <?php if ($isAdmin) { ?>
         <a href="edit.php?id=<?= (int) $row['id']; ?>" class="rm-btn rm-btn-warning rm-btn-sm">Edit</a>

@@ -159,7 +159,11 @@ try {
         <i class="bi bi-bell-fill"></i> Notifications
     </a>
 
-    <?php $menuHtml = ob_get_clean(); echo function_exists('access_filter_menu') ? access_filter_menu($menuHtml) : $menuHtml; ?>
+    <?php
+    $menuHtml = ob_get_clean();
+    try { require_once __DIR__ . '/access_control.php'; echo access_filter_menu($menuHtml); } // works even before config/db.php loads it
+    catch (Throwable $accessError) { echo $menuHtml; }
+    ?>
 
     <div style="border-top:1px solid rgba(255,255,255,.08); margin:14px 10px 10px; padding-top:14px;">
 

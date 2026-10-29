@@ -8,7 +8,8 @@ $totals = loan_report_totals($conn);
 $loansResult = mysqli_query($conn, 'SELECT loans.*, (SELECT COUNT(*) FROM loan_payments WHERE loan_payments.loan_id = loans.id) AS payment_count
     FROM loans WHERE status <> "Deleted" ORDER BY FIELD(status, "Active","Defaulted","Fully Paid","Cancelled"), created_at DESC'); // CHANGED (Task I): deleted loans are hidden
 // NEW (Task I): deleting a loan is for the Managing Director / explicitly authorized people only.
-$canExecDelete = function_exists('access_can') && access_can('loans.executive_delete', $conn);
+require_once __DIR__ . '/../../includes/access_control.php'; // loaded here too, so this works even before config/db.php loads it
+$canExecDelete = access_can('loans.executive_delete', $conn);
 
 function money($v) { return number_format((float) $v, 2); }
 

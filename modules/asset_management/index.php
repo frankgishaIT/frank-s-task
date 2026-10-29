@@ -23,7 +23,8 @@ $assetsResult = mysqli_query($conn, 'SELECT assets.*, departments.name AS depart
     FROM assets LEFT JOIN departments ON assets.responsible_department_id = departments.id
     WHERE assets.status <> "Deleted"
     ORDER BY FIELD(assets.status, "Active","Under Maintenance","Disposed","Lost"), created_at DESC'); // CHANGED (Task I): deleted assets are hidden
-$canExecDelete = function_exists('access_can') && access_can('asset_management.executive_delete', $conn); // NEW (Task I)
+require_once __DIR__ . '/../../includes/access_control.php'; // loaded here too, so this works even before config/db.php loads it
+$canExecDelete = access_can('asset_management.executive_delete', $conn); // NEW (Task I)
 
 function money($v) { return number_format((float) $v, 2); }
 

@@ -177,6 +177,12 @@ if ($rmCompactUi) { ?>
       <i class="bi bi-building-gear"></i> Assets
      </a>
    <?php } ?>
+    <?php if (rm_feature_enabled('forecasting')) { ?>
+    <!-- NEW (Task 3): RM Business Forecasting (RISE MOTIVE only) -->
+    <a href="../forecasting/index.php" class="<?= navActive('/forecasting/', $currentPath) ?>">
+        <i class="bi bi-graph-up"></i> RM Forecasting
+    </a>
+    <?php } ?>
     <?php if (in_array(current_user_role(), ['Admin', 'Manager'], true)) { ?>
     <!-- NEW: Financial Reports module (Profit & Loss, Balance Sheet, ...) -->
     <a href="../financial_reports/index.php" class="<?= navActive('financial_reports', $currentPath) ?>">

@@ -52,7 +52,7 @@ function evidence_chunk_size(mysqli $conn): int
  * Saves an uploaded file ($_FILES[...] entry) and returns its reference "db:<id>",
  * null when nothing was uploaded, or throws RuntimeException with a clear reason.
  */
-function evidence_save(mysqli $conn, ?array $file, ?int $userId = null, ?array $types = null): ?string
+function evidence_save(mysqli $conn, ?array $file, ?int $userId = null, ?array $types = null, int $maxBytes = EVIDENCE_MAX_BYTES): ?string
 {
     // NEW: a caller may allow other document types ($types: mime => extension), e.g. Messages.
     $types = $types ?? EVIDENCE_TYPES;
@@ -65,8 +65,8 @@ function evidence_save(mysqli $conn, ?array $file, ?int $userId = null, ?array $
     if ($file['error'] !== UPLOAD_ERR_OK || !is_uploaded_file($file['tmp_name'])) {
         throw new RuntimeException('The evidence file could not be uploaded. Please try again.');
     }
-    if ($file['size'] > EVIDENCE_MAX_BYTES) {
-        throw new RuntimeException('The evidence file is too large (maximum 5 MB).');
+    if ($file['size'] > $maxBytes) {
+        throw new RuntimeException('The file is too large (maximum ' . round($maxBytes / 1048576) . ' MB).');
     }
     $mime = (new finfo(FILEINFO_MIME_TYPE))->file($file['tmp_name']);
     if (!isset($types[$mime])) {
@@ -112,7 +112,7 @@ function evidence_save(mysqli $conn, ?array $file, ?int $userId = null, ?array $
  * Sends a stored document to the browser (inline) and ends the request.
  * $legacyDir: folder of older references that are plain file names.
  */
-function evidence_output(mysqli $conn, ?string $ref, string $downloadName, ?string $legacyDir = null): void
+function evidence_output(mysqli $conn, ?string $ref, string $downloadName, ?string $legacyDir = null, bool $forceDownload = false): void
 {
     $downloadName = preg_replace('/[^A-Za-z0-9_-]/', '', $downloadName) ?: 'evidence';
     if ($ref && strpos($ref, 'db:') === 0) {
@@ -131,7 +131,7 @@ function evidence_output(mysqli $conn, ?string $ref, string $downloadName, ?stri
             if ($pieces) { $f['content'] = implode('', array_column($pieces, 0)); }
             header('Content-Type: ' . $f['mime']);
             header('Content-Length: ' . strlen($f['content']));
-            $inline = in_array($f['ext'], ['pdf', 'jpg', 'png', 'txt'], true);
+            $inline = !$forceDownload && in_array($f['ext'], ['pdf', 'jpg', 'png', 'webp', 'txt'], true);
             header('Content-Disposition: ' . ($inline ? 'inline' : 'attachment') . '; filename="' . $downloadName . '.' . $f['ext'] . '"');
             header('X-Content-Type-Options: nosniff');
             echo $f['content'];

@@ -86,6 +86,12 @@ if ($rmCompactUi) { ?>
     try { require_once __DIR__ . '/comm_helpers.php'; $commUnread = comm_unread_total($conn, (int) current_user_id(), current_user_role()); }
     catch (Throwable $commError) { $commUnread = 0; }
     ?>
+    <?php require_once __DIR__ . '/rm_org.php'; if (rm_feature_enabled('digital_library')) { ?>
+    <!-- NEW (Task 1): RM Digital Library (RISE MOTIVE only) -->
+    <a href="../library/index.php" class="<?= navActive('/library/', $currentPath) ?>">
+        <i class="bi bi-journal-bookmark-fill"></i> RM Digital Library
+    </a>
+    <?php } ?>
     <a href="../messages/index.php" class="<?= navActive('/messages/', $currentPath) ?>">
         <i class="bi bi-chat-dots-fill"></i> Messages
         <?php if ($commUnread > 0) { ?><span class="badge rounded-pill ms-1" style="background:#E24B4A;"><?= $commUnread > 99 ? '99+' : $commUnread; ?></span><?php } ?>
@@ -157,12 +163,6 @@ if ($rmCompactUi) { ?>
     <a href="../sales/index.php" class="<?= navActive('sales', $currentPath) ?>">
         <i class="bi bi-cart-check-fill"></i> Sales
     </a>
-    <?php if (in_array(current_user_role(), ['Admin', 'Manager'], true)) { ?>
-    <!-- NEW: every Digital Payment (MTN MoMo), and the ones that need attention -->
-    <a href="../sales/digital_payments.php" class="<?= navActive('digital_payments', $currentPath) ?>">
-        <i class="bi bi-phone-fill"></i> Digital Payments
-    </a>
-    <?php } ?>
     <a href="../loans/index.php" class="<?= navActive('loans', $currentPath) ?>">
     <i class="bi bi-bank"></i> Loans
      </a>

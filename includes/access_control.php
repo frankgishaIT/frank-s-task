@@ -44,6 +44,7 @@ function access_catalog(): array
         'notifications'     => ['Notifications', ['view']],
         'messages'          => ['Messages (internal communication)', ['view', 'create']],
         'sms'               => ['SMS', ['view', 'create']],
+        'library'           => ['RM Digital Library', ['view', 'create', 'edit', 'replace', 'download', 'share', 'approve', 'archive', 'delete', 'manage']],
         'tools'             => ['Tools (database migrations)', ['manage']],
         'access'            => ['Roles & Permissions', ['manage']],
     ];
@@ -52,6 +53,18 @@ function access_catalog(): array
 const ACCESS_ACTION_LABELS = [
     'view' => 'View', 'create' => 'Create', 'edit' => 'Edit', 'approve' => 'Approve / reject', 'delete' => 'Delete / cancel',
     'reports' => 'Reports', 'manage' => 'Manage', 'executive_delete' => 'Executive delete (fully paid / processed)',
+    'replace' => 'Replace (new version)', 'download' => 'Download', 'share' => 'Share',
+    'archive' => 'Archive',
+];
+/**
+ * Permissions added after Roles & Permissions was first set up, and which starting roles get them.
+ * (Everything else that is new goes to the Administrator role only.)
+ */
+const ACCESS_NEW_DEFAULTS = [
+    'library.view' => ['admin', 'manager', 'employee'], 'library.download' => ['admin', 'manager', 'employee'],
+    'library.create' => ['admin', 'manager'], 'library.edit' => ['admin', 'manager'], 'library.replace' => ['admin', 'manager'],
+    'library.share' => ['admin', 'manager'], 'library.approve' => ['admin', 'manager'], 'library.archive' => ['admin'],
+    'library.delete' => ['admin'], 'library.manage' => ['admin'],
 ];
 /** Permissions only the Managing Director holds at the start (not in any system role). */
 const ACCESS_EXECUTIVE = ['loans.executive_delete', 'asset_management.executive_delete'];
@@ -96,7 +109,8 @@ function access_ensure(mysqli $conn): void
 
     // First run: the three system roles (same access as today) and each employee's role from their current one.
     if ((int) mysqli_fetch_row(mysqli_query($conn, 'SELECT COUNT(*) FROM acl_roles'))[0] === 0) {
-        $everything = array_values(array_diff(access_all_permissions(), ACCESS_EXECUTIVE));
+        // (Permissions with their own starting rule, ACCESS_NEW_DEFAULTS, are given just below.)
+        $everything = array_values(array_diff(access_all_permissions(), ACCESS_EXECUTIVE, array_keys(ACCESS_NEW_DEFAULTS)));
         foreach (['admin' => 'Administrator', 'manager' => 'Manager', 'employee' => 'Employee'] as $key => $name) {
             $s = mysqli_prepare($conn, 'INSERT INTO acl_roles (name, description, system_key) VALUES (?, ?, ?)');
             $desc = 'Starting role: same access as the "' . $name . '" account type had before Roles & Permissions. '
@@ -124,9 +138,28 @@ function access_ensure(mysqli $conn): void
         }
         access_log($conn, null, null, null, 'setup', 'Roles & Permissions started: Administrator, Manager and Employee roles created with the same access as before; executive delete given to the first Administrator account.');
     }
+    // NEW: permissions added to the catalog later (new modules) reach the starting roles once.
+    mysqli_query($conn, 'CREATE TABLE IF NOT EXISTS acl_known_permissions (permission VARCHAR(60) NOT NULL, PRIMARY KEY (permission)) ENGINE=InnoDB');
+    $known = array_column(mysqli_fetch_all(mysqli_query($conn, 'SELECT permission FROM acl_known_permissions'), MYSQLI_ASSOC), 'permission');
+    if (!$known) { // first time: everything that exists now is already handled by the setup above
+        $known = array_column(mysqli_fetch_all(mysqli_query($conn, 'SELECT DISTINCT permission FROM acl_role_permissions'), MYSQLI_ASSOC), 'permission');
+        $known = array_values(array_diff($known, array_keys(ACCESS_NEW_DEFAULTS)));
+        foreach (array_merge($known, ACCESS_EXECUTIVE) as $p) { mysqli_query($conn, "INSERT IGNORE INTO acl_known_permissions VALUES ('" . mysqli_real_escape_string($conn, $p) . "')"); }
+        $known = array_merge($known, ACCESS_EXECUTIVE);
+    }
+    foreach (array_diff(access_all_permissions(), $known) as $perm) {
+        $roles = ACCESS_NEW_DEFAULTS[$perm] ?? ['admin'];
+        foreach ($roles as $key) {
+            $k = mysqli_real_escape_string($conn, $key); $pp = mysqli_real_escape_string($conn, $perm);
+            mysqli_query($conn, "INSERT IGNORE INTO acl_role_permissions (role_id, permission) SELECT id, '$pp' FROM acl_roles WHERE system_key = '$k'");
+        }
+        mysqli_query($conn, "INSERT IGNORE INTO acl_known_permissions VALUES ('" . mysqli_real_escape_string($conn, $perm) . "')");
+        access_log($conn, null, null, null, 'permission_added', 'New permission "' . access_label($perm) . '" given to the starting roles: ' . implode(', ', $roles) . '.');
+    }
+
     // An employee added later without any role gets the starting role of their account type.
     mysqli_query($conn, "INSERT IGNORE INTO acl_user_roles (user_id, role_id)
-        SELECT u.id, r.id FROM users u JOIN acl_roles r ON r.system_key = LOWER(u.role) COLLATE utf8mb4_general_ci
+        SELECT u.id, r.id FROM users u JOIN acl_roles r ON r.system_key = LOWER(u.role)
         WHERE NOT EXISTS (SELECT 1 FROM acl_user_roles x WHERE x.user_id = u.id)");
 }
 
@@ -200,11 +233,13 @@ function access_page_permission(string $script): ?string
     if ($module === 'categories') { return 'categories.manage'; }
     if ($module === 'tools') { return 'tools.manage'; }
     if ($module === 'messages') { return $f === 'create' ? 'messages.create' : 'messages.view'; }
+    // RM Digital Library: each page checks its finer permissions itself (download, share, archive ...).
+    if ($module === 'library') { return ['upload' => 'library.create', 'folders' => 'library.manage'][$f] ?? 'library.view'; }
     if (($module === 'loans' || $module === 'asset_management') && strpos($f, 'executive') !== false) { return $module . '.executive_delete'; }
     if ($module === 'asset_management' && in_array($f, ['valuation', 'valuation_evidence', 'refund_receive', 'sync_capital_fund'], true)) { return 'asset_management.edit'; }
     if ($module === 'sales' && in_array($f, ['ledger', 'invoice', 'receipt'], true)) { return 'sales.view'; }
     if ($module === 'sales' && in_array($f, ['pay_credit', 'record_payment'], true)) { return 'sales.create'; }
-    if ($module === 'sales' && in_array($f, ['category_profit', 'category_profit_pdf', 'digital_payments'], true)) { return 'sales.reports'; }
+    if ($module === 'sales' && in_array($f, ['category_profit', 'category_profit_pdf'], true)) { return 'sales.reports'; }
     if ($module === 'customers' && preg_match('/^reward/', $f)) { return in_array($f, ['rewards', 'reward_evidence'], true) ? 'customers.view' : 'customers.edit'; }
 
     // Everything else: the module = folder, the action = file name.

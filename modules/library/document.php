@@ -30,11 +30,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($t === '') { throw new RuntimeException('The title cannot be empty.'); }
                 foreach ([$issue, $expiry] as $d) { if ($d !== '' && !DateTime::createFromFormat('Y-m-d', $d)) { throw new RuntimeException('Check the dates.'); } }
                 if ($issue !== '' && $expiry !== '' && $expiry < $issue) { throw new RuntimeException('The expiry date cannot be before the issue date.'); }
-                $desc = trim((string) $_POST['description']); $ref = mb_substr(trim((string) $_POST['reference_no']), 0, 80);
-                $iV = $issue ?: null; $eV = $expiry ?: null; $dV = $desc ?: null; $rV = $ref ?: null;
-                $s = mysqli_prepare($conn, 'UPDATE lib_documents SET title = ?, description = ?, reference_no = ?, issue_date = ?, expiry_date = ?, updated_at = NOW(),
+                $desc = trim((string) $_POST['description']);
+                $iV = $issue ?: null; $eV = $expiry ?: null; $dV = $desc ?: null;
+                // CHANGED: the reference number is automatic and never edited.
+                $s = mysqli_prepare($conn, 'UPDATE lib_documents SET title = ?, description = ?, issue_date = ?, expiry_date = ?, updated_at = NOW(),
                     reminded_30 = IF(expiry_date <=> ?, reminded_30, 0), reminded_0 = IF(expiry_date <=> ?, reminded_0, 0) WHERE id = ?');
-                mysqli_stmt_bind_param($s, 'sssssssi', $t, $dV, $rV, $iV, $eV, $eV, $eV, $id);
+                mysqli_stmt_bind_param($s, 'ssssssi', $t, $dV, $iV, $eV, $eV, $eV, $id);
                 mysqli_stmt_execute($s);
                 lib_log($conn, $id, (int) $doc['folder_id'], 'edited', 'Details changed');
                 $msg = 'Details saved.';
@@ -190,7 +191,6 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
             <form method="POST"><input type="hidden" name="id" value="<?= $id; ?>"><input type="hidden" name="action" value="edit">
                 <input name="title" class="form-control form-control-sm mb-2" maxlength="200" value="<?= $e($doc['title']); ?>" required>
                 <textarea name="description" class="form-control form-control-sm mb-2" rows="2" placeholder="Description"><?= $e($doc['description']); ?></textarea>
-                <input name="reference_no" class="form-control form-control-sm mb-2" maxlength="80" value="<?= $e($doc['reference_no']); ?>" placeholder="Reference no.">
                 <div class="row g-2 mb-2"><div class="col"><label class="small text-muted">Issue</label><input type="date" name="issue_date" class="form-control form-control-sm" value="<?= $e($doc['issue_date']); ?>"></div>
                 <div class="col"><label class="small text-muted">Expiry</label><input type="date" name="expiry_date" class="form-control form-control-sm" value="<?= $e($doc['expiry_date']); ?>"></div></div>
                 <button class="btn btn-primary btn-sm">Save</button></form></div></details>

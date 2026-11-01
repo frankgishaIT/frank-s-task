@@ -17,7 +17,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $files = lib_files($_FILES['files'] ?? null);
     $title = trim((string) ($_POST['title'] ?? ''));
     $desc = trim((string) ($_POST['description'] ?? ''));
-    $ref = mb_substr(trim((string) ($_POST['reference_no'] ?? '')), 0, 80);
     $issue = (string) ($_POST['issue_date'] ?? '');
     $expiry = (string) ($_POST['expiry_date'] ?? '');
     $status = $canApprove && ($_POST['status'] ?? '') === 'Pending Review' ? 'Pending Review' : ($canApprove ? 'Active' : 'Pending Review');
@@ -28,19 +27,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     elseif (count($files) === 1 && $title === '') { $error = 'Give the document a title.'; }
     elseif (!$validDate($issue) || !$validDate($expiry) || ($issue !== '' && $expiry !== '' && $expiry < $issue)) { $error = 'Check the dates (the expiry date cannot be before the issue date).'; }
     else {
-        $done = 0; $failed = [];
+        $done = 0; $failed = []; $refs = [];
         foreach ($files as $file) {
             // Bulk: each file becomes a document titled after its file name (the shared details apply to all).
             $t = count($files) === 1 ? $title : ($title !== '' ? $title . ' — ' : '') . pathinfo((string) $file['name'], PATHINFO_FILENAME);
             mysqli_begin_transaction($conn);
             try {
                 $uid = (int) current_user_id();
-                $issueV = $issue !== '' ? $issue : null; $expiryV = $expiry !== '' ? $expiry : null; $refV = $ref !== '' ? $ref : null; $descV = $desc !== '' ? $desc : null;
+                $issueV = $issue !== '' ? $issue : null; $expiryV = $expiry !== '' ? $expiry : null; $refV = null; $descV = $desc !== '' ? $desc : null;
                 $t = mb_substr($t, 0, 200);
                 $s = mysqli_prepare($conn, 'INSERT INTO lib_documents (folder_id, title, description, reference_no, issue_date, expiry_date, status, uploaded_by, current_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)');
                 mysqli_stmt_bind_param($s, 'issssssi', $folderId, $t, $descV, $refV, $issueV, $expiryV, $status, $uid);
                 mysqli_stmt_execute($s);
                 $docId = (int) mysqli_insert_id($conn);
+                $refs[] = lib_assign_reference($conn, $docId); // CHANGED: automatic reference number
                 lib_add_version($conn, $docId, $file, 'Original');
                 lib_log($conn, $docId, $folderId, 'uploaded', $file['name'] . ' into ' . lib_folder_path($conn, $folderId) . ' (' . $status . ')');
                 mysqli_commit($conn);
@@ -51,7 +51,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         if ($done && !$failed) {
-            header('Location: index.php?f=' . $folderId . '&success=' . urlencode($done . ' document(s) uploaded' . ($status === 'Pending Review' ? ' and waiting for review.' : '.')));
+            header('Location: index.php?f=' . $folderId . '&success=' . urlencode($done . ' document(s) uploaded' . ($status === 'Pending Review' ? ' and waiting for review' : '')
+                . ' · reference' . ($done > 1 ? 's ' . $refs[0] . ' to ' . end($refs) : ' ' . $refs[0]) . '.'));
             exit;
         }
         $error = ($done ? $done . ' uploaded. ' : '') . 'Not uploaded: ' . implode('; ', $failed);
@@ -77,11 +78,11 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
             <div class="form-text">Required for one file. For several files, each is titled after its file name (this title is put in front, if given).</div></div>
         <div class="mb-3"><label class="form-label small fw-semibold text-muted">Description</label>
             <textarea name="description" class="form-control rm-input" rows="2"><?= $e($_POST['description'] ?? ''); ?></textarea></div>
-        <div class="row g-3 mb-3">
-            <div class="col-md-4"><label class="form-label small fw-semibold text-muted">Reference no.</label><input type="text" name="reference_no" maxlength="80" class="form-control rm-input" value="<?= $e($_POST['reference_no'] ?? ''); ?>"></div>
-            <div class="col-md-4"><label class="form-label small fw-semibold text-muted">Issue date</label><input type="date" name="issue_date" class="form-control rm-input" value="<?= $e($_POST['issue_date'] ?? ''); ?>"></div>
-            <div class="col-md-4"><label class="form-label small fw-semibold text-muted">Expiry date</label><input type="date" name="expiry_date" class="form-control rm-input" value="<?= $e($_POST['expiry_date'] ?? ''); ?>"></div>
+        <div class="row g-3 mb-1">
+            <div class="col-md-6"><label class="form-label small fw-semibold text-muted">Issue date</label><input type="date" name="issue_date" class="form-control rm-input" value="<?= $e($_POST['issue_date'] ?? ''); ?>"></div>
+            <div class="col-md-6"><label class="form-label small fw-semibold text-muted">Expiry date</label><input type="date" name="expiry_date" class="form-control rm-input" value="<?= $e($_POST['expiry_date'] ?? ''); ?>"></div>
         </div>
+        <div class="form-text mb-3">The reference number (e.g. RM-DOC-<?= date('Y'); ?>-00042) is created automatically.</div>
         <?php if ($canApprove) { ?>
         <div class="mb-3"><label class="form-label small fw-semibold text-muted">Status</label>
             <select name="status" class="form-select rm-input"><option value="Active">Active</option><option value="Pending Review">Pending review</option></select></div>

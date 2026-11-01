@@ -77,10 +77,33 @@ function lib_ensure(mysqli $conn): void
         PRIMARY KEY (id), KEY document_id (document_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
     mysqli_query($conn, 'CREATE TABLE IF NOT EXISTS lib_settings (name VARCHAR(40) NOT NULL, value VARCHAR(255) NULL, PRIMARY KEY (name)) ENGINE=InnoDB');
 
+    // Documents uploaded before references were automatic get theirs now.
+    mysqli_query($conn, "UPDATE lib_documents SET reference_no = CONCAT('RM-DOC-', YEAR(created_at), '-', LPAD(id, 5, '0'))
+        WHERE reference_no IS NULL OR reference_no = ''");
+
     if ((int) mysqli_fetch_row(mysqli_query($conn, 'SELECT COUNT(*) FROM lib_folders'))[0] === 0) {
         $s = mysqli_prepare($conn, 'INSERT INTO lib_folders (name, sort_order) VALUES (?, ?)');
         foreach (LIB_START_FOLDERS as $i => $name) { $o = $i + 1; mysqli_stmt_bind_param($s, 'si', $name, $o); mysqli_stmt_execute($s); }
     }
+}
+
+/** NEW: the automatic reference number of a document, e.g. RM-DOC-2026-00042 (year of upload + running number). */
+function lib_reference(int $docId, string $createdAt): string
+{
+    return 'RM-DOC-' . date('Y', strtotime($createdAt ?: 'now')) . '-' . str_pad((string) $docId, 5, '0', STR_PAD_LEFT);
+}
+
+/** Gives a document its automatic reference number (only if it has none). */
+function lib_assign_reference(mysqli $conn, int $docId): string
+{
+    $row = mysqli_fetch_assoc(mysqli_query($conn, 'SELECT reference_no, created_at FROM lib_documents WHERE id = ' . $docId));
+    if (!$row) { return ''; }
+    if (trim((string) $row['reference_no']) !== '') { return $row['reference_no']; }
+    $ref = lib_reference($docId, (string) $row['created_at']);
+    $s = mysqli_prepare($conn, 'UPDATE lib_documents SET reference_no = ? WHERE id = ?');
+    mysqli_stmt_bind_param($s, 'si', $ref, $docId);
+    mysqli_stmt_execute($s);
+    return $ref;
 }
 
 function lib_log(mysqli $conn, ?int $docId, ?int $folderId, string $action, string $details = ''): void

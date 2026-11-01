@@ -44,6 +44,7 @@ function access_catalog(): array
         'notifications'     => ['Notifications', ['view']],
         'messages'          => ['Messages (internal communication)', ['view', 'create']],
         'sms'               => ['SMS', ['view', 'create']],
+        'portal'            => ['RM Customer Portal (staff side)', ['view', 'edit', 'manage']],
         'library'           => ['RM Digital Library', ['view', 'create', 'edit', 'replace', 'download', 'share', 'approve', 'archive', 'delete', 'manage']],
         'tools'             => ['Tools (database migrations)', ['manage']],
         'access'            => ['Roles & Permissions', ['manage']],
@@ -65,6 +66,7 @@ const ACCESS_NEW_DEFAULTS = [
     'library.create' => ['admin', 'manager'], 'library.edit' => ['admin', 'manager'], 'library.replace' => ['admin', 'manager'],
     'library.share' => ['admin', 'manager'], 'library.approve' => ['admin', 'manager'], 'library.archive' => ['admin'],
     'library.delete' => ['admin'], 'library.manage' => ['admin'],
+    'portal.view' => ['admin', 'manager'], 'portal.edit' => ['admin', 'manager'], 'portal.manage' => ['admin'],
 ];
 /** Permissions only the Managing Director holds at the start (not in any system role). */
 const ACCESS_EXECUTIVE = ['loans.executive_delete', 'asset_management.executive_delete'];
@@ -234,6 +236,7 @@ function access_page_permission(string $script): ?string
     if ($module === 'tools') { return 'tools.manage'; }
     if ($module === 'messages') { return $f === 'create' ? 'messages.create' : 'messages.view'; }
     // RM Digital Library: each page checks its finer permissions itself (download, share, archive ...).
+    if ($module === 'portal') { return in_array($f, ['accounts', 'settings'], true) ? 'portal.manage' : (in_array($f, ['documents', 'records'], true) ? 'portal.edit' : 'portal.view'); }
     if ($module === 'library') { return ['upload' => 'library.create', 'folders' => 'library.manage'][$f] ?? 'library.view'; }
     if (($module === 'loans' || $module === 'asset_management') && strpos($f, 'executive') !== false) { return $module . '.executive_delete'; }
     if ($module === 'asset_management' && in_array($f, ['valuation', 'valuation_evidence', 'refund_receive', 'sync_capital_fund'], true)) { return 'asset_management.edit'; }

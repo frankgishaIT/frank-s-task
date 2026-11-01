@@ -38,6 +38,33 @@ try {
     .border-warning { border-color: var(--rm-blue) !important; }
     .table-warning, .table-warning > td, .table-warning > th { --bs-table-bg: var(--rm-blue-light); background-color: var(--rm-blue-light) !important; }
 </style>
+<?php
+require_once __DIR__ . '/rm_org.php';
+$rmCompactUi = rm_is_rise_motive(); // Task 5: RISE MOTIVE only (other organizations keep their interface)
+if ($rmCompactUi) { ?>
+<!-- NEW (Task 5): compact, consistent action buttons and a responsive layout on every page (RISE MOTIVE only). -->
+<style>
+    td .rm-btn, td .btn, .rm-btn-sm, .btn-sm {
+        padding: .28rem .6rem !important; font-size: .8125rem !important; line-height: 1.25 !important;
+        min-height: 32px; border-radius: 8px !important; display: inline-flex; align-items: center; gap: .25rem; }
+    td .rm-btn i, td .btn i { font-size: .85rem; }
+    td.text-nowrap > * + *, td > form.d-inline + *, td > a + a { margin-left: 4px; }
+    td form.d-inline { display: inline-flex !important; }
+    .rm-btn { padding: .5rem 1rem; font-size: .9rem; }
+    .rm-actions-menu .dropdown-item { cursor: pointer; font-size: .875rem; padding: .45rem 1rem; }
+    .rm-actions-menu form { margin: 0; }
+    .rm-kebab { min-width: 36px; min-height: 34px; }
+    @media (max-width: 767.98px) {
+        .content h2 { font-size: 1.35rem; }
+        .content .d-flex.justify-content-between { flex-wrap: wrap; gap: .5rem; }
+        .content .d-flex.justify-content-between > .d-flex { flex-wrap: wrap; }
+        .rm-modal { width: calc(100% - 16px) !important; max-width: none !important; }
+        .rm-modal-body { padding: 14px !important; }
+        .card-body.p-4 { padding: 1rem !important; }
+        .table { font-size: .85rem; }
+    }
+</style>
+<?php } ?>
 
 <div class="sidebar">
 
@@ -275,6 +302,7 @@ try {
 
 <!-- NEW: every long dropdown (8+ choices) becomes a type-to-search box, on every page -->
 <script src="<?= BASE_URL ?>/includes/searchable_select.js?v=1"></script>
+<?php if (!empty($rmCompactUi)) { ?><script src="<?= BASE_URL ?>/includes/rm_ui.js?v=1"></script><?php } // Task 5: three-dot menus on small screens ?>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     // Live-search: types into the topbar box, filters the CURRENT page's own

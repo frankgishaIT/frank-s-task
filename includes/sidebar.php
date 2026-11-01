@@ -177,6 +177,15 @@ if ($rmCompactUi) { ?>
       <i class="bi bi-building-gear"></i> Assets
      </a>
    <?php } ?>
+    <?php if (rm_feature_enabled('kpi')) { ?>
+    <!-- NEW (Task 4): Performance & KPI Management (RISE MOTIVE only) -->
+    <a href="../kpi/index.php" class="<?= navActive('/kpi/index', $currentPath) ?>">
+        <i class="bi bi-speedometer2"></i> Performance &amp; KPIs
+    </a>
+    <a href="../kpi/my.php" class="<?= navActive('/kpi/my', $currentPath) ?>">
+        <i class="bi bi-person-check"></i> My Performance
+    </a>
+    <?php } ?>
     <?php if (rm_feature_enabled('forecasting')) { ?>
     <!-- NEW (Task 3): RM Business Forecasting (RISE MOTIVE only) -->
     <a href="../forecasting/index.php" class="<?= navActive('/forecasting/', $currentPath) ?>">

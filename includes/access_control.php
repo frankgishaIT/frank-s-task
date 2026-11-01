@@ -46,6 +46,7 @@ function access_catalog(): array
         'sms'               => ['SMS', ['view', 'create']],
         'portal'            => ['RM Customer Portal (staff side)', ['view', 'edit', 'manage']],
         'forecasting'       => ['RM Business Forecasting', ['view', 'reports', 'manage']],
+        'kpi'               => ['Performance & KPI Management', ['view', 'create', 'edit', 'approve', 'reports', 'manage']],
         'library'           => ['RM Digital Library', ['view', 'create', 'edit', 'replace', 'download', 'share', 'approve', 'archive', 'delete', 'manage']],
         'tools'             => ['Tools (database migrations)', ['manage']],
         'access'            => ['Roles & Permissions', ['manage']],
@@ -69,6 +70,8 @@ const ACCESS_NEW_DEFAULTS = [
     'library.delete' => ['admin'], 'library.manage' => ['admin'],
     'portal.view' => ['admin', 'manager'], 'portal.edit' => ['admin', 'manager'], 'portal.manage' => ['admin'],
     'forecasting.view' => ['admin', 'manager'], 'forecasting.reports' => ['admin', 'manager'], 'forecasting.manage' => ['admin'],
+    'kpi.view' => ['admin', 'manager'], 'kpi.create' => ['admin', 'manager'], 'kpi.edit' => ['admin', 'manager'],
+    'kpi.approve' => ['admin', 'manager'], 'kpi.reports' => ['admin', 'manager'], 'kpi.manage' => ['admin'],
 ];
 /** Permissions only the Managing Director holds at the start (not in any system role). */
 const ACCESS_EXECUTIVE = ['loans.executive_delete', 'asset_management.executive_delete'];
@@ -238,6 +241,8 @@ function access_page_permission(string $script): ?string
     if ($module === 'tools') { return 'tools.manage'; }
     if ($module === 'messages') { return $f === 'create' ? 'messages.create' : 'messages.view'; }
     // RM Digital Library: each page checks its finer permissions itself (download, share, archive ...).
+    // Performance & KPIs: "My performance", a KPI page and reviews check the person's own records inside the page.
+    if ($module === 'kpi') { return ['my' => '*', 'kpi' => '*', 'reviews' => '*', 'settings' => 'kpi.manage', 'teams' => 'kpi.create'][$f] ?? 'kpi.view'; }
     if ($module === 'forecasting') { return 'forecasting.view'; } // finer checks inside (export, scenario settings)
     if ($module === 'portal') { return in_array($f, ['accounts', 'settings'], true) ? 'portal.manage' : (in_array($f, ['documents', 'records'], true) ? 'portal.edit' : 'portal.view'); }
     if ($module === 'library') { return ['upload' => 'library.create', 'folders' => 'library.manage'][$f] ?? 'library.view'; }

@@ -159,6 +159,18 @@ if ($rmCompactUi) { ?>
     <a href="../customers/index.php" class="<?= navActive('customers', $currentPath) ?>">
         <i class="bi bi-person-lines-fill"></i> Customers
     </a>
+    <?php if (rm_feature_enabled('customer_loans')) { ?>
+    <!-- NEW: RM Loan Management (customer loans, RISE MOTIVE only) -->
+    <a href="../rm_loans/index.php" class="<?= navActive('/rm_loans/', $currentPath) ?>">
+        <i class="bi bi-cash-coin"></i> RM Loan Management
+    </a>
+    <?php } ?>
+    <?php if (rm_feature_enabled('customer_invest')) { ?>
+    <!-- NEW: RM Investment Management (RISE MOTIVE only) -->
+    <a href="../rm_invest/index.php" class="<?= navActive('/rm_invest/', $currentPath) ?>">
+        <i class="bi bi-graph-up-arrow"></i> RM Investment Management
+    </a>
+    <?php } ?>
     <?php if (rm_feature_enabled('customer_portal')) { ?>
     <!-- NEW (Task 2): RM Customer Portal, staff side (RISE MOTIVE only) -->
     <a href="../portal/index.php" class="<?= navActive('/modules/portal/', $currentPath) ?>">

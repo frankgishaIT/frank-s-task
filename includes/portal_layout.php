@@ -9,6 +9,9 @@ function portal_header(string $title, ?array $customer = null): void
 {
     $nav = ['index.php' => ['house', 'Home'], 'lookup.php' => ['search', 'Find invoice'], 'history.php' => ['clock-history', 'My history'],
             'documents.php' => ['folder2-open', 'My documents'], 'requests.php' => ['chat-left-text', 'Requests'], 'profile.php' => ['person', 'Profile']];
+    // NEW: RM Loans, RM Invest and the customer's notifications.
+    if ($customer) { $nav = array_slice($nav, 0, 3, true) + ['loans.php' => ['cash-coin', 'RM Loans'], 'invest.php' => ['graph-up-arrow', 'RM Invest']] + array_slice($nav, 3, null, true); }
+    if ($customer) { $nav['notifications.php'] = ['bell', 'Notifications' . (!empty($GLOBALS['PORTAL_UNREAD']) ? ' (' . (int) $GLOBALS['PORTAL_UNREAD'] . ')' : '')]; }
     if ($customer && !empty($GLOBALS['PORTAL_RECORDS_ON'])) { $nav = array_slice($nav, 0, 4, true) + ['records.php' => ['award', 'My records']] + array_slice($nav, 4, null, true); }
     $here = basename($_SERVER['SCRIPT_NAME'] ?? '');
     ?><!doctype html>

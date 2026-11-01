@@ -46,6 +46,8 @@ function access_catalog(): array
         'sms'               => ['SMS', ['view', 'create']],
         'portal'            => ['RM Customer Portal (staff side)', ['view', 'edit', 'manage']],
         'forecasting'       => ['RM Business Forecasting', ['view', 'reports', 'manage']],
+        'rm_loans'          => ['RM Loan Management (customer loans)', ['view', 'edit', 'approve', 'reports', 'manage']],
+        'rm_invest'         => ['RM Investment Management', ['view', 'create', 'edit', 'approve', 'reports', 'manage']],
         'kpi'               => ['Performance & KPI Management', ['view', 'create', 'edit', 'approve', 'reports', 'manage']],
         'library'           => ['RM Digital Library', ['view', 'create', 'edit', 'replace', 'download', 'share', 'approve', 'archive', 'delete', 'manage']],
         'tools'             => ['Tools (database migrations)', ['manage']],
@@ -72,6 +74,10 @@ const ACCESS_NEW_DEFAULTS = [
     'forecasting.view' => ['admin', 'manager'], 'forecasting.reports' => ['admin', 'manager'], 'forecasting.manage' => ['admin'],
     'kpi.view' => ['admin', 'manager'], 'kpi.create' => ['admin', 'manager'], 'kpi.edit' => ['admin', 'manager'],
     'kpi.approve' => ['admin', 'manager'], 'kpi.reports' => ['admin', 'manager'], 'kpi.manage' => ['admin'],
+    'rm_loans.view' => ['admin', 'manager'], 'rm_loans.edit' => ['admin', 'manager'], 'rm_loans.reports' => ['admin', 'manager'],
+    'rm_loans.approve' => ['admin'], 'rm_loans.manage' => ['admin'],
+    'rm_invest.view' => ['admin', 'manager'], 'rm_invest.create' => ['admin', 'manager'], 'rm_invest.edit' => ['admin', 'manager'],
+    'rm_invest.reports' => ['admin', 'manager'], 'rm_invest.approve' => ['admin'], 'rm_invest.manage' => ['admin'],
 ];
 /** Permissions only the Managing Director holds at the start (not in any system role). */
 const ACCESS_EXECUTIVE = ['loans.executive_delete', 'asset_management.executive_delete'];
@@ -242,6 +248,8 @@ function access_page_permission(string $script): ?string
     if ($module === 'messages') { return $f === 'create' ? 'messages.create' : 'messages.view'; }
     // RM Digital Library: each page checks its finer permissions itself (download, share, archive ...).
     // Performance & KPIs: "My performance", a KPI page and reviews check the person's own records inside the page.
+    if ($module === 'rm_invest') { return ['settings' => 'rm_invest.manage', 'reports' => 'rm_invest.reports'][$f] ?? 'rm_invest.view'; }
+    if ($module === 'rm_loans') { return ['settings' => 'rm_loans.manage', 'reports' => 'rm_loans.reports'][$f] ?? 'rm_loans.view'; }
     if ($module === 'kpi') { return ['my' => '*', 'kpi' => '*', 'reviews' => '*', 'settings' => 'kpi.manage', 'teams' => 'kpi.create'][$f] ?? 'kpi.view'; }
     if ($module === 'forecasting') { return 'forecasting.view'; } // finer checks inside (export, scenario settings)
     if ($module === 'portal') { return in_array($f, ['accounts', 'settings'], true) ? 'portal.manage' : (in_array($f, ['documents', 'records'], true) ? 'portal.edit' : 'portal.view'); }

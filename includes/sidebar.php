@@ -159,6 +159,12 @@ if ($rmCompactUi) { ?>
     <a href="../customers/index.php" class="<?= navActive('customers', $currentPath) ?>">
         <i class="bi bi-person-lines-fill"></i> Customers
     </a>
+    <?php if (rm_feature_enabled('customer_portal')) { ?>
+    <!-- NEW (Task 2): RM Customer Portal, staff side (RISE MOTIVE only) -->
+    <a href="../portal/index.php" class="<?= navActive('/modules/portal/', $currentPath) ?>">
+        <i class="bi bi-person-badge"></i> Customer Portal
+    </a>
+    <?php } ?>
 
     <a href="../sales/index.php" class="<?= navActive('sales', $currentPath) ?>">
         <i class="bi bi-cart-check-fill"></i> Sales

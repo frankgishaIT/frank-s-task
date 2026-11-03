@@ -26,16 +26,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 portal_header('Sign in');
 ?>
-<div class="row justify-content-center"><div class="col-md-6 col-lg-5"><div class="card"><div class="card-body p-4">
-    <h1 class="h4 mb-3">Sign in</h1>
-    <?php portal_alerts(); if (isset($error)) { ?><div class="alert alert-danger"><?= portal_e($error); ?></div><?php } ?>
+<!-- CHANGED (UX/UI): the sign-in card centered on the page, clean and modern. -->
+<div class="d-flex align-items-center justify-content-center" style="min-height:calc(100vh - 260px);">
+<div class="card w-100" style="max-width:440px;"><div class="card-body p-4 p-md-5">
+    <div class="text-center mb-4">
+        <div class="mx-auto mb-3 d-flex align-items-center justify-content-center rounded-circle" style="width:64px; height:64px; background:#EEF3FF;"><i class="bi bi-person-lock" style="font-size:1.9rem; color:#1E2FE0;"></i></div>
+        <h1 class="mb-1" style="font-size:1.5rem;">Welcome back</h1>
+        <div class="text-muted">Sign in to your RM Customer Portal</div>
+    </div>
+    <?php portal_alerts(); if (isset($error)) { ?><div class="alert alert-danger small"><?= portal_e($error); ?></div><?php } ?>
     <form method="POST"><?= portal_csrf_field(); ?>
-        <label class="form-label small text-muted">Phone number or Customer ID</label>
-        <input name="identifier" class="form-control mb-3" required autocomplete="username" placeholder="07XXXXXXXX or RMC000025" value="<?= portal_e($_POST['identifier'] ?? ''); ?>">
-        <label class="form-label small text-muted">Password</label>
-        <input type="password" name="password" class="form-control mb-3" required autocomplete="current-password">
-        <button class="btn btn-primary w-100">Sign in</button>
+        <label class="form-label fw-semibold" for="idf">Phone number or Customer ID</label>
+        <div class="input-group mb-3"><span class="input-group-text bg-white"><i class="bi bi-phone"></i></span>
+            <input id="idf" name="identifier" class="form-control form-control-lg" required autocomplete="username" placeholder="e.g. 0788123456" value="<?= portal_e($_POST['identifier'] ?? ''); ?>"></div>
+        <div class="d-flex justify-content-between"><label class="form-label fw-semibold" for="pw">Password</label><a href="activate.php?reset=1" class="small fw-semibold">Forgot password?</a></div>
+        <div class="input-group mb-4"><span class="input-group-text bg-white"><i class="bi bi-key"></i></span>
+            <input id="pw" type="password" name="password" class="form-control form-control-lg" required autocomplete="current-password">
+            <button type="button" class="btn btn-outline-secondary" onclick="var f=document.getElementById('pw'); f.type = f.type === 'password' ? 'text' : 'password'; this.firstElementChild.className = f.type === 'password' ? 'bi bi-eye' : 'bi bi-eye-slash';" aria-label="Show password"><i class="bi bi-eye"></i></button></div>
+        <button class="btn btn-primary btn-lg w-100">Sign in</button>
     </form>
-    <div class="d-flex justify-content-between small mt-3"><a href="activate.php">First time? Activate your account</a><a href="activate.php?reset=1">Forgot password?</a></div>
-</div></div></div></div>
+    <hr class="my-4">
+    <div class="text-center">New to the portal? <a href="activate.php" class="fw-semibold">Activate your account</a></div>
+</div></div>
+</div>
 <?php portal_footer();

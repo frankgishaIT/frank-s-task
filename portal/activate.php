@@ -51,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 portal_header($reset ? 'Reset password' : 'Activate account');
 ?>
-<div class="row justify-content-center"><div class="col-md-6 col-lg-5"><div class="card"><div class="card-body p-4">
+<div class="d-flex align-items-center justify-content-center" style="min-height:calc(100vh - 260px);"><div class="card w-100" style="max-width:460px;"><div class="card-body p-4 p-md-5">
     <h1 class="h4 mb-3"><?= $reset ? 'Reset your password' : 'Activate your account'; ?></h1>
     <?php if (isset($error)) { ?><div class="alert alert-danger"><?= portal_e($error); ?></div><?php } ?>
     <?php if (isset($info)) { ?><div class="alert alert-info"><?= portal_e($info); ?></div><?php } ?>
@@ -73,6 +73,6 @@ portal_header($reset ? 'Reset password' : 'Activate account');
     <form method="POST" class="mt-2"><?= portal_csrf_field(); ?><input type="hidden" name="purpose" value="<?= $purpose; ?>"><input type="hidden" name="identifier" value="<?= portal_e(portal_customer_code((int) $step['customer_id'])); ?>">
         <button class="btn btn-link btn-sm p-0">Send a new code</button></form>
     <?php } ?>
-    <div class="small mt-3"><a href="login.php">Back to sign in</a></div>
-</div></div></div></div>
+    <hr class="my-4"><div class="text-center"><a href="login.php" class="fw-semibold">Back to sign in</a></div>
+</div></div></div>
 <?php portal_footer();

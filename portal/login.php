@@ -47,6 +47,8 @@ portal_header('Sign in');
     </form>
     <hr class="my-4">
     <div class="text-center">New to the portal? <a href="activate.php" class="fw-semibold">Activate your account</a></div>
+    <!-- NEW: for staff who landed on the customer sign-in page. -->
+    <div class="text-center small text-muted mt-2">Staff member? <a href="<?= in_array(explode(':', strtolower($_SERVER['HTTP_HOST'] ?? ''))[0], ['localhost', '127.0.0.1'], true) ? '../login.php' : 'https://staff.risemotive.rw/login.php'; ?>">Sign in to MY MOTIVE</a></div>
 </div></div>
 </div>
 <?php portal_footer();

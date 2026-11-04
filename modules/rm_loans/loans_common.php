@@ -13,7 +13,7 @@ function cl_tabs(string $active): void {
     if (access_can('rm_loans.reports')) { $t['reports.php'] = 'Portfolio reports'; }
     $t['audit.php'] = 'Audit log';
     if (access_can('rm_loans.manage')) { $t['settings.php'] = 'Settings'; }
-    echo '<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2"><h2 class="mb-0">RM Loan Management</h2>'
+    echo '<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2"><h2 class="mb-0">RM Credit Hub</h2>'
        . (cl_testing($GLOBALS['conn']) ? '<span class="badge bg-warning">Testing mode: assessment only, no disbursement</span>' : '<span class="badge bg-danger">LIVE lending</span>') . '</div>';
     echo '<ul class="nav nav-tabs mb-3 flex-nowrap overflow-auto">';
     foreach ($t as $f => $l) { echo '<li class="nav-item"><a class="nav-link text-nowrap' . ($active === $f ? ' active' : '') . '" href="' . $f . '">' . $l . '</a></li>'; }

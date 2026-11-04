@@ -25,7 +25,7 @@ $tiles = [
     ['invest.php', 'graph-up-arrow', 'Open RM Investment Opportunities', number_format($opps), $opps === 1 ? 'opportunity open now' : 'opportunities open now', 'See opportunities', '#1E2FE0', '#0B1A8C'],
     ['loans.php', 'cash-coin', 'Eligible Unsecured Loan', $el['limit'] > 0 ? cl_money($el['limit']) : 'Not yet', $el['limit'] > 0 ? 'you can apply for up to this amount' : 'grows with your fully paid purchases', 'Check eligibility', '#0FA968', '#087A4B'],
     ['rewards.php', 'gift', 'Request Loyalty Reward', number_format($points) . ' pts', 'free services, discounts or cash rewards', 'Request a reward', '#2A3352', '#11162B'],
-    ['invest.php', 'rocket-takeoff', 'Invest Now', $myInv ? $myInv . ' active' : 'Start', $myInv ? 'investment(s) in your portfolio' : 'grow with RISE MOTIVE projects', 'Explore & invest', '#3D5BFF', '#1E2FE0'],
+    ['invest.php', 'piggy-bank-fill', 'Invest Now', $myInv ? $myInv . ' active' : 'Start', $myInv ? 'investment(s) in your portfolio' : 'grow with RISE MOTIVE projects', 'Explore & invest', '#3D5BFF', '#1E2FE0'],
 ];
 ?>
 <h1 class="p-title">Hello, <?= portal_e($first); ?>! Welcome to RM Customer Portal.</h1>
@@ -44,7 +44,7 @@ $tiles = [
 <style>.p-tile { transition: transform .15s ease, box-shadow .15s ease; } .p-tile:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(16,24,64,.18); color: #fff; }</style>
 <a href="#" data-bs-toggle="modal" data-bs-target="#pricesModal" class="card mb-4 text-decoration-none"><div class="card-body d-flex align-items-center gap-3">
     <div class="p-card-ico flex-shrink-0 d-flex align-items-center justify-content-center rounded-4" style="width:54px; height:54px; background:#EEF3FF;"><i class="bi bi-tags-fill" style="font-size:1.6rem; color:#1E2FE0;"></i></div>
-    <div><div class="fw-bold" style="color:#0B1A8C;">Services &amp; Products Pricing</div><div class="small text-muted">Check the latest prices of all RISE MOTIVE services and products before you buy or request anything.</div></div>
+    <div><div class="fw-bold" style="color:#0B1A8C;">Tariff Schedule</div><div class="small text-muted">Check the latest prices of all RISE MOTIVE services and products before you buy or request anything.</div></div>
     <i class="bi bi-chevron-right ms-auto" style="color:#1E2FE0;"></i></div></a>
 <div class="row g-3 mb-4">
     <?php foreach ([['wallet2', 'Your Balance', portal_money($owed), count($open) . ' unpaid invoice(s)', null], ['file-earmark-text-fill', 'Total Invoices', number_format($totalInvoices), null, ['history.php', 'View all invoices']],

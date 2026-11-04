@@ -13,7 +13,7 @@ function inv_tabs(string $active): void {
     if (access_can('rm_invest.reports')) { $t['reports.php'] = 'Reports'; }
     $t['audit.php'] = 'Audit log';
     if (access_can('rm_invest.manage')) { $t['settings.php'] = 'Settings'; }
-    echo '<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2"><h2 class="mb-0">RM Investment Management</h2>'
+    echo '<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2"><h2 class="mb-0">RM Investors Hub</h2>'
        . (inv_testing($GLOBALS['conn']) ? '<span class="badge bg-warning">Testing mode: no contribution payments or payouts</span>' : '<span class="badge bg-danger">LIVE: real contributions</span>') . '</div>';
     echo '<ul class="nav nav-tabs mb-3 flex-nowrap overflow-auto">';
     foreach ($t as $f => $l) { echo '<li class="nav-item"><a class="nav-link text-nowrap' . ($active === $f ? ' active' : '') . '" href="' . $f . '">' . $l . '</a></li>'; }

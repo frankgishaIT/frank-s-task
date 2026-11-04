@@ -160,15 +160,15 @@ if ($rmCompactUi) { ?>
         <i class="bi bi-person-lines-fill"></i> Customers
     </a>
     <?php if (rm_feature_enabled('customer_loans')) { ?>
-    <!-- NEW: RM Loan Management (customer loans, RISE MOTIVE only) -->
+    <!-- RM Credit Hub (formerly RM Loan Management; customer loans, RISE MOTIVE only) -->
     <a href="../rm_loans/index.php" class="<?= navActive('/rm_loans/', $currentPath) ?>">
-        <i class="bi bi-cash-coin"></i> RM Loan Management
+        <i class="bi bi-cash-coin"></i> RM Credit Hub
     </a>
     <?php } ?>
     <?php if (rm_feature_enabled('customer_invest')) { ?>
-    <!-- NEW: RM Investment Management (RISE MOTIVE only) -->
+    <!-- RM Investors Hub (formerly RM Investment Management; RISE MOTIVE only) -->
     <a href="../rm_invest/index.php" class="<?= navActive('/rm_invest/', $currentPath) ?>">
-        <i class="bi bi-graph-up-arrow"></i> RM Investment Management
+        <i class="bi bi-graph-up-arrow"></i> RM Investors Hub
     </a>
     <?php } ?>
     <?php if (rm_feature_enabled('customer_portal')) { ?>
@@ -181,14 +181,6 @@ if ($rmCompactUi) { ?>
     <a href="../sales/index.php" class="<?= navActive('sales', $currentPath) ?>">
         <i class="bi bi-cart-check-fill"></i> Sales
     </a>
-
-        <?php if (in_array(current_user_role(), ['Admin', 'Manager'], true)) { ?>
-    <!-- NEW: every Digital Payment (MTN MoMo), and the ones that need attention -->
-    <a href="../sales/digital_payments.php" class="<?= navActive('digital_payments', $currentPath) ?>">
-        <i class="bi bi-phone-fill"></i> Digital Payments
-    </a>
-    <?php } ?>
-
     <a href="../loans/index.php" class="<?= navActive('loans', $currentPath) ?>">
     <i class="bi bi-bank"></i> Loans
      </a>

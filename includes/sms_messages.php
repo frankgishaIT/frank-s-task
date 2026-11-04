@@ -12,6 +12,7 @@ require_once __DIR__ . '/sms_helpers.php';
 
 const SMS_HELP_PHONE = '0795344768';  // EBM / Ikibazo / Ubufasha number in the messages
 const SMS_MOMO_CODE  = '070600';      // MTN MoMo payment code in the messages
+const SMS_PORTAL_URL = 'myspace.risemotive.rw/portal'; // NEW: the Customer Portal address in the messages
 
 // How often the automatic messages are repeated (spec: credit reminder 1 in 2 days, loyalty weekly).
 // A little under 2 days / 7 days, so a daily task that runs a few minutes early is not skipped.
@@ -133,9 +134,10 @@ function sms_notify_sale_created(mysqli $conn, int $saleId, ?int $userId = null)
                 . ' Murakoze guhitamo RISE MOTIVE';
         } else {
             // Message 2: the customer bought and paid (not on credit).
-            $text = $name . ', twakiriye ' . sms_money($sale['amount_paid']) . 'FRW wishyuye kuri Invoice No: ' . $invoice
-                . '. Ideni risigaye: ' . sms_money($balance) . 'FRW. EBM/Ikibazo: ' . SMS_HELP_PHONE
-                . '. Murakoze guhitamo RISE MOTIVE';
+            // CHANGED (new text): paid sale.
+            $text = $name . ', twakiriye ' . sms_money($sale['amount_paid']) . ' FRW wishyuye kuri Invoice No: ' . $invoice
+                . '. Ideni risigaye: ' . sms_money($balance) . ' FRW. Sura: ' . SMS_PORTAL_URL . ' winjire muri konti yawe umenye amakuru yose ari kuri Invoice,'
+                . ' uhakure Facture ya EBM, unahasabire ibihembo (Loyalty Rewards) wemerewe! Murakoze guhitamo RISE MOTIVE!';
         }
         sms_send($conn, $sale['customer_phone'], $text, 'SALE_CREATED', 'SALE', $saleId, $userId);
     } catch (Throwable $e) {
@@ -154,9 +156,10 @@ function sms_notify_payment(mysqli $conn, int $saleId, int $paymentId, float $am
 
         // CHANGED: "Ideni risigaye" = ALL the customer still owes after this payment, on every unpaid sale.
         $balance = sms_customer_outstanding($conn, (int) $sale['customer_id']);
-        $text = sms_greet($sale['customer_name'], 'Mukiliya') . ', twakiriye ' . sms_money($amount) . 'FRW wishyuye kuri Invoice No: '
-            . sms_invoice_no($saleId) . '. Ideni risigaye: ' . sms_money($balance) . 'FRW. EBM/Ikibazo: ' . SMS_HELP_PHONE
-            . '. Murakoze guhitamo RISE MOTIVE';
+        // CHANGED (new text): payment received on an invoice.
+        $text = sms_greet($sale['customer_name'], 'Mukiliya') . ', twakiriye ' . sms_money($amount) . ' FRW wishyuye kuri Invoice No: ' . sms_invoice_no($saleId)
+                . '. Ideni risigaye: ' . sms_money($balance) . ' FRW. Sura: ' . SMS_PORTAL_URL . ' winjire muri konti yawe umenye amakuru yose ari kuri Invoice,'
+                . ' uhakure Facture ya EBM, unahasabire ibihembo (Loyalty Rewards) wemerewe! Murakoze guhitamo RISE MOTIVE!';
         sms_send($conn, $sale['customer_phone'], $text, 'PAYMENT_RECEIVED', 'SALE_PAYMENT', $paymentId, $userId);
     } catch (Throwable $e) {
         error_log('sms_notify_payment failed for sale #' . $saleId . ': ' . $e->getMessage());
@@ -225,7 +228,8 @@ function sms_send_credit_reminders(mysqli $conn): int {
 
         foreach ($rows as $c) {
             if (sms_already_sent($conn, 'CREDIT_REMINDER', 'CUSTOMER', (int) $c['id'], SMS_CREDIT_REMINDER_EVERY_HOURS)) { continue; }
-            $text = sms_greet($c['name'], 'Mukiliya') . ', ubereyemo RISE MOTIVE ' . sms_money($c['balance']) . 'FRW. Ishyura nonaha kuri MTN MoMo Code: '
+            // CHANGED (new text): payment reminder.
+            $text = sms_greet($c['name'], 'Mukiliya') . ', ubereyemo RISE MOTIVE ' . sms_money($c['balance']) . 'FRW. Ishyura Ukoresheje MTN MoMo Code: '
                 . SMS_MOMO_CODE . ', wongere Loyalty Points. EBM/Ikibazo: ' . SMS_HELP_PHONE . '. Murakoze!';
             if (sms_send($conn, $c['phone'], $text, 'CREDIT_REMINDER', 'CUSTOMER', (int) $c['id'])) { $sent++; }
         }
@@ -251,7 +255,8 @@ function sms_send_loyalty_weekly(mysqli $conn): int {
         foreach ($rows as $c) {
             if (sms_already_sent($conn, 'LOYALTY_WEEKLY', 'CUSTOMER', (int) $c['id'], SMS_LOYALTY_EVERY_HOURS)) { continue; }
             $text = sms_greet($c['name'], 'Customer', 'en') . ', You have ' . number_format((int) $c['loyalty_points'])
-                . ' Loyalty Points earned from your purchases with us. Use them for eligible discounts. Keep earning with RISE MOTIVE!';
+                . ' Loyalty Points earned from your purchases with us. Visit: ' . SMS_PORTAL_URL . ', log in to your account to access all your invoice information'
+                . ' and claim your eligible Loyalty Rewards! Keep earning with RISE MOTIVE!'; // CHANGED (new text)
             if (sms_send($conn, $c['phone'], $text, 'LOYALTY_WEEKLY', 'CUSTOMER', (int) $c['id'])) { $sent++; }
         }
     } catch (Throwable $e) {

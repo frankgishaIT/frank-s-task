@@ -1,7 +1,10 @@
 <?php
-require '../../config/db.php';
-require '../../vendor/autoload.php'; // adjust path if your vendor folder is elsewhere
-require_once '../../includes/credit_charge_helpers.php'; // NEW: overdue charges
+// CHANGED: also used by the Customer Portal for the customer's invoice COPY (portal/invoice_pdf.php defines RM_INVOICE_COPY
+// after checking that the invoice belongs to the signed-in customer). Paths are relative to this file, so it works from both.
+$isCustomerCopy = defined('RM_INVOICE_COPY');
+if (!$isCustomerCopy) { require __DIR__ . '/../../config/db.php'; }
+require_once __DIR__ . '/../../vendor/autoload.php'; // adjust path if your vendor folder is elsewhere
+require_once __DIR__ . '/../../includes/credit_charge_helpers.php'; // NEW: overdue charges
 
 use Mpdf\Mpdf;
 
@@ -28,9 +31,9 @@ mysqli_stmt_execute($statement);
 $sale = mysqli_fetch_assoc(mysqli_stmt_get_result($statement));
 if (!$sale) { header('Location: index.php?error=' . urlencode('Sale not found.')); exit; }
 
-if (current_user_role() === 'Employee' && (int) $sale['recorded_by'] !== (int) current_user_id()) {
+if (!$isCustomerCopy && current_user_role() === 'Employee' && (int) $sale['recorded_by'] !== (int) current_user_id()) {
     http_response_code(403);
-    include '../../includes/access_denied.php';
+    include __DIR__ . '/../../includes/access_denied.php';
     exit;
 }
 
@@ -332,7 +335,13 @@ $mpdf = new Mpdf([
 ]);
 
 // ---- Real, page-covering watermark ----
-if ($isPending) {
+if ($isCustomerCopy) {
+    // NEW: the customer's copy from the Customer Portal: same invoice, clearly marked as a duplicate.
+    $mpdf->SetWatermarkText('COPY');
+    $mpdf->showWatermarkText = true;
+    $mpdf->watermark_font = 'DejaVuSansCondensed';
+    $mpdf->watermarkTextAlpha = 0.12;
+} elseif ($isPending) {
     $mpdf->SetWatermarkText('PENDING APPROVAL');
     $mpdf->showWatermarkText = true;
     $mpdf->watermark_font = 'DejaVuSansCondensed';
@@ -352,4 +361,5 @@ $mpdf->WriteHTML($bodyHtml);
 $filename = ($isPending ? 'Draft-Invoice' : ($isCancelled ? 'Cancelled-Sale' : ($isUnpaidInvoice ? 'Invoice' : 'Receipt')))
     . '-RM' . str_pad($sale['id'], 6, '0', STR_PAD_LEFT) . '.pdf';
 
-$mpdf->Output($filename, \Mpdf\Output\Destination::INLINE);
+if ($isCustomerCopy) { $filename = 'COPY-' . $filename; }
+$mpdf->Output($filename, $isCustomerCopy && !empty($_GET['download']) ? \Mpdf\Output\Destination::DOWNLOAD : \Mpdf\Output\Destination::INLINE);

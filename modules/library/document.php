@@ -114,6 +114,7 @@ $versions = mysqli_fetch_all(mysqli_query($conn, "SELECT v.*, u.names FROM lib_v
 $current = $versions[0] ?? null;
 $ext = $current ? strtolower(pathinfo($current['original_name'], PATHINFO_EXTENSION)) : '';
 $previewable = in_array($ext, ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'txt'], true);
+$officeView = in_array($ext, ['docx', 'xlsx', 'xls', 'csv', 'doc', 'ppt', 'pptx', 'pub'], true); // NEW: Word / Excel preview, or a clear message + Download
 $showLog = lib_can('manage') || lib_can('edit');
 $activity = $showLog ? mysqli_fetch_all(mysqli_query($conn, "SELECT a.*, u.names FROM lib_activity a LEFT JOIN users u ON u.id = a.user_id WHERE a.document_id = $id ORDER BY a.id DESC LIMIT 100"), MYSQLI_ASSOC) : [];
 $people = lib_can('share') ? mysqli_fetch_all(mysqli_query($conn, "SELECT id, names FROM users WHERE is_active = 1 AND id <> $uid ORDER BY names"), MYSQLI_ASSOC) : [];
@@ -140,6 +141,8 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
             <?php } else { ?>
                 <iframe src="file.php?v=<?= (int) $current['id']; ?>" style="width:100%; height:70vh; border:0;" title="Preview"></iframe>
             <?php } ?>
+        <?php } elseif ($current && $officeView && !$doc['deleted_at']) { ?>
+            <iframe src="view.php?v=<?= (int) $current['id']; ?>" style="width:100%; height:70vh; border:0;" title="Preview"></iframe>
         <?php } else { ?>
             <div class="text-center text-muted py-5"><i class="bi bi-file-earmark fs-1 d-block mb-2"></i><?= $e($current['original_name'] ?? ''); ?><br>
                 <?= $doc['deleted_at'] ? 'In the Trash.' : 'This type of file cannot be shown in the browser.' . (lib_can('download') ? ' Use Download.' : ''); ?></div>

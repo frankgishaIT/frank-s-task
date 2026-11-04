@@ -69,6 +69,13 @@ function evidence_save(mysqli $conn, ?array $file, ?int $userId = null, ?array $
         throw new RuntimeException('The file is too large (maximum ' . round($maxBytes / 1048576) . ' MB).');
     }
     $mime = (new finfo(FILEINFO_MIME_TYPE))->file($file['tmp_name']);
+    // NEW: Word, Excel, PowerPoint and Publisher files are often detected only as a generic container (ZIP for .docx/.xlsx/
+    // .pptx, "CDFV2"/OLE for .doc/.xls/.ppt/.pub). Accept them by their extension when that extension is allowed here.
+    if (!isset($types[$mime]) && in_array($mime, ['application/zip', 'application/octet-stream', 'application/CDFV2', 'application/x-ole-storage', 'application/vnd.ms-office', 'application/encrypted'], true)) {
+        $byExt = strtolower(pathinfo((string) $file['name'], PATHINFO_EXTENSION));
+        $canon = array_search($byExt, $types, true);
+        if ($canon !== false) { $mime = $canon; }
+    }
     if (!isset($types[$mime])) {
         throw new RuntimeException($types === EVIDENCE_TYPES ? 'Evidence must be a PDF or a photo (JPG, PNG).'
             : 'This type of file is not allowed (' . $mime . ').');
@@ -129,6 +136,24 @@ function evidence_output(mysqli $conn, ?string $ref, string $downloadName, ?stri
             mysqli_stmt_execute($c);
             $pieces = mysqli_fetch_all(mysqli_stmt_get_result($c), MYSQLI_NUM);
             if ($pieces) { $f['content'] = implode('', array_column($pieces, 0)); }
+            // NEW: discard anything already queued for output (e.g. the line break after the closing PHP tag of config/db.php): a single
+            // extra byte corrupts Word / Excel / PowerPoint files (they are ZIP files). Also no output compression, so the
+            // declared length is exact.
+            while (ob_get_level()) { ob_end_clean(); }
+            if (function_exists('ini_set')) { @ini_set('zlib.output_compression', 'Off'); }
+            header_remove('Content-Encoding');
+            if (strlen((string) $f['content']) === 0) {
+                http_response_code(410);
+                echo '<div style="font-family:sans-serif;margin:20px;padding:14px;border:1px solid #E24B4A;background:#FDECEC;"><strong>This file is empty or incomplete.</strong> Please upload it again.</div>';
+                exit;
+            }
+            $known = ['pdf' => 'application/pdf', 'jpg' => 'image/jpeg', 'png' => 'image/png', 'webp' => 'image/webp', 'txt' => 'text/plain', 'csv' => 'text/csv',
+                'doc' => 'application/msword', 'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                'xls' => 'application/vnd.ms-excel', 'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'ppt' => 'application/vnd.ms-powerpoint', 'pptx' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                'pub' => 'application/x-mspublisher'];
+            $f['mime'] = $known[$f['ext']] ?? $f['mime'];
+            header('Cache-Control: private, no-transform');
             header('Content-Type: ' . $f['mime']);
             header('Content-Length: ' . strlen($f['content']));
             $inline = !$forceDownload && in_array($f['ext'], ['pdf', 'jpg', 'png', 'webp', 'txt'], true);

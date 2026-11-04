@@ -27,7 +27,8 @@ function portal_header(string $title, ?array $customer = null): void
         ['index.php', 'house-door-fill', 'Home'],
         ['history.php', 'file-earmark-text', 'My Invoices'],
         ['lookup.php', 'search', 'Find Invoice'],
-        ['#prices', 'tags', 'Services & Products Pricing'],
+        ['ebm.php', 'receipt-cutoff', 'Request EBM Receipt'],
+        ['#prices', 'tags', 'Tariff Schedule'],
         ['RM Mutual Growth', 'people', [['loans.php', 'cash-coin', 'RM Loans'], ['invest.php', 'graph-up-arrow', 'RM Invest'], ['rewards.php', 'gift', 'Request Loyalty Reward']]],
         ['my_investments.php', 'graph-up', 'My Investments'],
         ['documents.php', 'folder2-open', 'My Documents'],
@@ -160,9 +161,9 @@ function portal_footer(): void
 </div>
 <footer class="p-foot">Your Information Is Shown Only to You<span class="sep">|</span>Secure &amp; Trusted<span class="sep">|</span>Rise Beyond Limits</footer>
 <?php if ($signedIn) { ?>
-<!-- Services & Products Pricing: live from MY MOTIVE's registered services and products. -->
+<!-- Tariff Schedule (services & products prices): live from MY MOTIVE's registered services and products. -->
 <div class="modal fade" id="pricesModal" tabindex="-1" aria-labelledby="pricesTitle" aria-hidden="true"><div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down"><div class="modal-content" style="border-radius:16px;">
-    <div class="modal-header text-white" style="background:linear-gradient(90deg,#0B1A8C,#1E2FE0);"><h2 class="modal-title text-white mb-0" id="pricesTitle"><i class="bi bi-tags me-2"></i>Services &amp; Products Pricing</h2><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button></div>
+    <div class="modal-header text-white" style="background:linear-gradient(90deg,#0B1A8C,#1E2FE0);"><h2 class="modal-title text-white mb-0" id="pricesTitle"><i class="bi bi-tags me-2"></i>Tariff Schedule</h2><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button></div>
     <div class="modal-body">
         <div class="btn-group w-100 mb-3" role="group" aria-label="Category">
             <input type="radio" class="btn-check" name="pType" id="pServices" value="Service" checked><label class="btn btn-outline-primary" for="pServices"><i class="bi bi-tools me-1"></i>Services</label>

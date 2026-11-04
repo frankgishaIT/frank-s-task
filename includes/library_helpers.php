@@ -24,8 +24,9 @@ const LIB_TYPES = [
     'application/vnd.ms-powerpoint' => 'ppt', 'application/vnd.openxmlformats-officedocument.presentationml.presentation' => 'pptx',
     'image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp',
     'text/plain' => 'txt', 'text/csv' => 'csv',
+    'application/x-mspublisher' => 'pub', // NEW: Microsoft Publisher
 ];
-const LIB_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.webp,.txt,.csv';
+const LIB_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.pub,.jpg,.jpeg,.png,.webp,.txt,.csv';
 const LIB_STATUSES = ['Active', 'Pending Review', 'Archived'];
 const LIB_START_FOLDERS = ['Legal & Company Registration', 'Management & Governance', 'Human Resources', 'Finance & Accounting',
     'Contracts & Agreements', 'Projects & Proposals', 'Operations & Administration', 'Products & Technology',

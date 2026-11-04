@@ -258,8 +258,8 @@ function sms_send_loyalty_weekly(mysqli $conn): int {
         foreach ($rows as $c) {
             if (sms_already_sent($conn, 'LOYALTY_WEEKLY', 'CUSTOMER', (int) $c['id'], SMS_LOYALTY_EVERY_HOURS)) { continue; }
             $text = sms_greet($c['name'], 'Customer', 'en') . ', You have ' . number_format((int) $c['loyalty_points'])
-                . ' Loyalty Points earned from your purchases with us. Visit: ' . SMS_PORTAL_URL . ', log in to your account to access all your invoice information'
-                . ' and claim your eligible Loyalty Rewards! Keep earning with RISE MOTIVE!'; // CHANGED (new text)
+                . ' Loyalty Points earned from your purchases with us.' . "\n\nVisit: " . SMS_PORTAL_URL . ', log in to your account to access all your invoice information'
+                . ' and claim your eligible Loyalty Rewards!' . "\nKeep earning with RISE MOTIVE!"; // CHANGED (new text, with line breaks)
             if (sms_send($conn, $c['phone'], $text, 'LOYALTY_WEEKLY', 'CUSTOMER', (int) $c['id'])) { $sent++; }
         }
     } catch (Throwable $e) {

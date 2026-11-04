@@ -129,9 +129,11 @@ function sms_notify_sale_created(mysqli $conn, int $saleId, ?int $userId = null)
 
         if ($sale['payment_method'] === 'Credit') {
             // Message 3: goods or services given on credit.
+            // CHANGED (new text): credit sale, with the MoMo USSD payment code and the portal address.
             $text = $name . ', Invoice No: ' . $invoice . '. Itegereje kwishyurwa: ' . sms_money($sale['total_amount'])
-                . 'FRW, Ideni risigaye: ' . sms_money($balance) . 'FRW. MTN MoMo Code: ' . SMS_MOMO_CODE
-                . ' Murakoze guhitamo RISE MOTIVE';
+                . 'FRW, Ideni risigaye: ' . sms_money($balance) . 'FRW. Kanda *182*8*1*' . SMS_MOMO_CODE . '# kugira ngo wishyure.'
+                . "\n\nSura: " . SMS_PORTAL_URL . ' winjire muri konti yawe umenye amakuru yose ari kuri Invoice. Ubufasha: ' . SMS_HELP_PHONE
+                . "\nMurakoze guhitamo RISE MOTIVE!";
         } else {
             // Message 2: the customer bought and paid (not on credit).
             // CHANGED (new text): paid sale.

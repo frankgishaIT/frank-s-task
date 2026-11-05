@@ -25,7 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $msg = 'Transfer request ' . bdg_ref('transfer', $new) . ' sent for approval. Nothing moves until it is approved.'; break;
             case 'transfer_approve':
                 if (!$canApprove) { throw new RuntimeException('Only the Managing Director (or an authorised officer) approves transfers.'); }
-                bdg_transfer_approve($conn, (int) $_POST['id'], $me, $reason); $msg = 'Transfer approved and executed.'; break;
+                bdg_transfer_approve($conn, (int) $_POST['id'], $me, $reason, current_user_role() === 'Admin'); $msg = 'Transfer approved and executed.'; break;
             case 'transfer_reject':
                 if (!$canApprove || mb_strlen($reason) < 5) { throw new RuntimeException('Write the reason for rejecting.'); }
                 $id = (int) $_POST['id']; $s = mysqli_prepare($conn, "UPDATE fund_transfers SET status = 'Rejected', decided_by = ?, decision_note = ?, decided_at = NOW() WHERE id = ? AND status = 'Pending'");
@@ -45,13 +45,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!$canApprove) { throw new RuntimeException('Only the Managing Director (or an authorised officer) approves allocation changes.'); }
                 $id = (int) $_POST['id']; $r = mysqli_fetch_assoc(mysqli_query($conn, "SELECT * FROM fund_alloc_revisions WHERE id = $id AND status = 'Pending'"));
                 if (!$r) { throw new RuntimeException('This change is no longer pending.'); }
-                if ((int) $r['requested_by'] === $me) { throw new RuntimeException('It must be approved by someone other than the person who requested it.'); }
+                // CHANGED: Administrators (Managing Director) may approve their own request, with a note; others may not.
+                $self = (int) $r['requested_by'] === $me;
+                if ($self && current_user_role() !== 'Admin') { throw new RuntimeException('It must be approved by someone other than the person who requested it (or by an Administrator).'); }
+                if ($self && $act === 'alloc_approve' && mb_strlen($reason) < 5) { throw new RuntimeException('You requested this change yourself: write a short approval note (it is kept in the audit trail).'); }
                 mysqli_begin_transaction($conn);
                 $to = $act === 'alloc_approve' ? 'Approved' : 'Rejected';
                 if ($to === 'Approved') { $s = mysqli_prepare($conn, 'UPDATE funds SET allocation_percent = ? WHERE id = ?');
                     foreach (json_decode($r['new_values'], true) as $fid => $pct) { $p = (float) $pct; $fi = (int) $fid; mysqli_stmt_bind_param($s, 'di', $p, $fi); mysqli_stmt_execute($s); } }
                 $s = mysqli_prepare($conn, 'UPDATE fund_alloc_revisions SET status = ?, decided_by = ?, decision_note = ?, decided_at = NOW() WHERE id = ?'); mysqli_stmt_bind_param($s, 'sisi', $to, $me, $reason, $id); mysqli_stmt_execute($s);
-                bdg_audit($conn, 'Allocation change ' . strtolower($to) . ($to === 'Approved' ? ' (applies to new allocations; past allocations unchanged)' : ''), bdg_ref('allocation', $id), json_decode($r['old_values'], true), json_decode($r['new_values'], true), $reason ?: $r['reason'], $me);
+                bdg_audit($conn, 'Allocation change ' . strtolower($to) . ($self && $to === 'Approved' ? ' (self-approved by Administrator)' : '') . ($to === 'Approved' ? ' (applies to new allocations; past allocations unchanged)' : ''), bdg_ref('allocation', $id), json_decode($r['old_values'], true), json_decode($r['new_values'], true), $reason ?: $r['reason'], $me);
                 mysqli_commit($conn); $msg = 'Allocation change ' . strtolower($to) . '.'; break;
             default: throw new RuntimeException('Unknown action.');
         }
@@ -110,7 +113,7 @@ bdg_tabs('funds.php');
         <div class="text-muted mt-1">Must add up to 100%. Applies to future allocations only; past allocations are kept as they were.</div></form><?php } ?>
     <?php foreach ($allocs as $r) { $o = json_decode($r['old_values'], true); $n = json_decode($r['new_values'], true); ?><div class="border-top py-2 mt-2"><div class="d-flex justify-content-between"><span><?= bdg_ref('allocation', (int) $r['id']); ?> · <?= $e($r['requester']); ?> · <?= date('d M Y', strtotime($r['created_at'])); ?></span><?= bdg_badge($r['status']); ?></div>
         <?php foreach ($n as $fid => $pct) { ?><div><?= $e($names[$fid] ?? $fid); ?>: <?= (float) ($o[$fid] ?? 0); ?>% → <strong><?= (float) $pct; ?>%</strong></div><?php } ?><div class="text-muted"><?= $e($r['reason']); ?></div>
-        <?php if ($r['status'] === 'Pending' && $canApprove) { ?><div class="d-flex gap-1 mt-1"><form method="POST"><input type="hidden" name="action" value="alloc_approve"><input type="hidden" name="id" value="<?= (int) $r['id']; ?>"><button class="btn btn-sm btn-success">Approve</button></form>
+        <?php if ($r['status'] === 'Pending' && $canApprove) { ?><div class="d-flex gap-1 mt-1"><form method="POST" class="d-flex gap-1"><input type="hidden" name="action" value="alloc_approve"><input type="hidden" name="id" value="<?= (int) $r['id']; ?>"><input name="reason" class="form-control form-control-sm" placeholder="Approval note"><button class="btn btn-sm btn-success">Approve</button></form>
             <form method="POST" class="d-flex gap-1"><input type="hidden" name="action" value="alloc_reject"><input type="hidden" name="id" value="<?= (int) $r['id']; ?>"><input name="reason" class="form-control form-control-sm" placeholder="Reason"><button class="btn btn-sm btn-outline-danger">Reject</button></form></div><?php } ?></div><?php } ?>
 </div></div></div></div>
 <?php include '../../includes/footer.php'; ?>

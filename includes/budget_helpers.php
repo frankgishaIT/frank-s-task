@@ -366,13 +366,16 @@ function bdg_commitment_cancel(mysqli $conn, int $id, int $uid, string $reason, 
 /* ------------------------------------------------------------------ fund transfers */
 
 /** Executes an APPROVED transfer: two linked ledger entries; never beyond the source's available balance. */
-function bdg_transfer_approve(mysqli $conn, int $id, int $uid, string $note): void
+function bdg_transfer_approve(mysqli $conn, int $id, int $uid, string $note, bool $isAdmin = false): void
 {
     mysqli_begin_transaction($conn);
     try {
         $t = mysqli_fetch_assoc(mysqli_query($conn, "SELECT * FROM fund_transfers WHERE id = $id FOR UPDATE"));
         if (!$t || $t['status'] !== 'Pending') { throw new RuntimeException('This transfer is no longer pending.'); }
-        if ((int) $t['requested_by'] === $uid) { throw new RuntimeException('A transfer must be approved by someone other than the person who requested it.'); }
+        // CHANGED: Administrators (Managing Director) may approve their own request, with a note; others may not.
+        $self = (int) $t['requested_by'] === $uid;
+        if ($self && !$isAdmin) { throw new RuntimeException('A transfer must be approved by someone other than the person who requested it (or by an Administrator).'); }
+        if ($self && mb_strlen(trim($note)) < 5) { throw new RuntimeException('You requested this transfer yourself: write a short approval note (it is kept in the audit trail).'); }
         $from = (int) $t['from_fund_id']; $to = (int) $t['to_fund_id'];
         foreach ([min($from, $to), max($from, $to)] as $fid) { fund_lock($conn, $fid); } // always the same order: no deadlock
         $src = fund_get($conn, $from); $dst = fund_get($conn, $to);
@@ -383,7 +386,7 @@ function bdg_transfer_approve(mysqli $conn, int $id, int $uid, string $note): vo
         fund_record_movement($conn, $to, 'TRANSFER_IN', 'IN', (float) $t['amount'], $per, null, $uid, $ref . ' from ' . $src['name'] . ': ' . mb_substr($t['reason'], 0, 150), null, 'FUND_TRANSFER', $id);
         $s = mysqli_prepare($conn, "UPDATE fund_transfers SET status = 'Executed', decided_by = ?, decision_note = ?, decided_at = NOW() WHERE id = ?");
         mysqli_stmt_bind_param($s, 'isi', $uid, $note, $id); mysqli_stmt_execute($s);
-        bdg_audit($conn, 'Fund transfer approved and executed: RWF ' . number_format((float) $t['amount'], 2) . ' ' . $src['name'] . ' → ' . $dst['name'], $ref, 'Pending', 'Executed', $note ?: $t['reason'], $uid);
+        bdg_audit($conn, 'Fund transfer approved and executed' . ($self ? ' (self-approved by Administrator)' : '') . ': RWF ' . number_format((float) $t['amount'], 2) . ' ' . $src['name'] . ' → ' . $dst['name'], $ref, 'Pending', 'Executed', $note ?: $t['reason'], $uid);
         mysqli_commit($conn);
     } catch (Throwable $e) { mysqli_rollback($conn); throw $e; }
 }

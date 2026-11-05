@@ -17,8 +17,8 @@ function evidence_ensure_table(mysqli $conn): void
     // (If this fails, e.g. the database user may not create tables, the caller shows the real reason.)
     mysqli_query($conn, 'CREATE TABLE IF NOT EXISTS evidence_files (
         id INT(11) NOT NULL AUTO_INCREMENT,
-        mime VARCHAR(50) NOT NULL,
-        ext VARCHAR(5) NOT NULL,
+        mime VARCHAR(150) NOT NULL,
+        ext VARCHAR(10) NOT NULL,
         size_bytes INT(11) NOT NULL,
         content LONGBLOB NOT NULL,
         uploaded_by INT(11) NULL,
@@ -33,6 +33,14 @@ function evidence_ensure_table(mysqli $conn): void
         data MEDIUMBLOB NOT NULL,
         PRIMARY KEY (file_id, seq)
     ) ENGINE=InnoDB');
+    // FIX: the file type column was 50 characters, too short for Word / Excel / PowerPoint types
+    // (e.g. "application/vnd.openxmlformats-officedocument.wordprocessingml.document" = 71). Widened once,
+    // also on databases where the table already exists.
+    $c = mysqli_query($conn, "SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'evidence_files' AND column_name = 'mime'");
+    $len = $c ? (int) (mysqli_fetch_row($c)[0] ?? 0) : 0;
+    if ($len > 0 && $len < 150) {
+        mysqli_query($conn, 'ALTER TABLE evidence_files MODIFY mime VARCHAR(150) NOT NULL, MODIFY ext VARCHAR(10) NOT NULL');
+    }
     $ok = true;
 }
 

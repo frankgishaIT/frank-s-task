@@ -189,6 +189,10 @@ if ($rmCompactUi) { ?>
       <i class="bi bi-building-gear"></i> Assets
      </a>
    <?php } ?>
+    <!-- NEW: Budget & Fund Control (budgets, reserved funds, transfers, budget vs actual) -->
+    <a href="../budget/index.php" class="<?= navActive('/budget/', $currentPath) ?>">
+        <i class="bi bi-wallet2"></i> Budget &amp; Fund Control
+    </a>
     <?php if (rm_feature_enabled('kpi')) { ?>
     <!-- NEW (Task 4): Performance & KPI Management (RISE MOTIVE only) -->
     <a href="../kpi/index.php" class="<?= navActive('/kpi/index', $currentPath) ?>">

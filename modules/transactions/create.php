@@ -16,6 +16,12 @@ $payeeList = business_parties_of_type($conn, 'Payee');
 $partnerList = business_parties_of_type($conn, 'Partner');
 $fundList = funds_all($conn);
 $categoryList = categories_active($conn, 'expense'); // CHANGED (Task 3): managed by Admins under Categories
+// NEW (Budget module): an expense can be attributed to a department and a project (departmental / project budgets).
+require_once '../../includes/budget_helpers.php';
+bdg_ensure($conn);
+$deptList = mysqli_fetch_all(mysqli_query($conn, 'SELECT id, name FROM departments ORDER BY name'), MYSQLI_ASSOC);
+$projectList = mysqli_fetch_all(mysqli_query($conn, 'SELECT id, ' . bdg_project_name_col($conn) . ' AS name FROM projects ORDER BY 2'), MYSQLI_ASSOC);
+$myDept = (int) (mysqli_fetch_row(mysqli_query($conn, 'SELECT department_id FROM users WHERE id = ' . (int) ($_SESSION['user_id'] ?? 0)))[0] ?? 0);
 
 if (isset($_POST['save'])) {
     $category = $_POST['category'] ?? '';
@@ -26,6 +32,8 @@ if (isset($_POST['save'])) {
     $partyId = filter_input(INPUT_POST, 'party_id', FILTER_VALIDATE_INT) ?: null;
     $fundId = filter_input(INPUT_POST, 'fund_id', FILTER_VALIDATE_INT) ?: null;
     $expenseCategory = trim($_POST['expense_category'] ?? '');
+    $deptId = filter_input(INPUT_POST, 'department_id', FILTER_VALIDATE_INT) ?: null;
+    $projectId = filter_input(INPUT_POST, 'project_id', FILTER_VALIDATE_INT) ?: null;
     $recordedBy = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
     $amount = ($amount === false || $amount === null) ? $amount : round($amount, 2); // NEW: no float leftovers in the fund
     $validDate = DateTime::createFromFormat('Y-m-d', $transactionDate);
@@ -71,8 +79,9 @@ if (isset($_POST['save'])) {
                 }
             }
 
-            $statement = mysqli_prepare($conn, 'INSERT INTO transactions (category, transaction_type, amount, transaction_date, description, recorded_by, status, party_id, fund_id, expense_category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-            mysqli_stmt_bind_param($statement, 'ssdssisiis', $category, $type, $amount, $transactionDate, $description, $recordedBy, $status, $partyId, $fundId, $expenseCategory);
+            $deptIdV = $type === 'Expense' ? $deptId : null; $projectIdV = $type === 'Expense' ? $projectId : null; // NEW (Budget module)
+            $statement = mysqli_prepare($conn, 'INSERT INTO transactions (category, transaction_type, amount, transaction_date, description, recorded_by, status, party_id, fund_id, expense_category, department_id, project_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+            mysqli_stmt_bind_param($statement, 'ssdssisiisii', $category, $type, $amount, $transactionDate, $description, $recordedBy, $status, $partyId, $fundId, $expenseCategory, $deptIdV, $projectIdV);
             mysqli_stmt_execute($statement);
             $newId = mysqli_insert_id($conn);
 
@@ -183,6 +192,16 @@ $modal_subtitle = $isAdmin ? 'Record a new income or expense entry.' : 'Submit a
                             <?php } ?>
                         </select>
                         <div id="fundBalance" class="small fw-semibold mt-1"></div>
+                        <!-- NEW (Budget module): everything about the fund, before submission. -->
+                        <div id="fundPanel" class="border rounded-3 p-2 mt-2 small" style="display:none; background:#F6F8FC;">
+                            <div class="d-flex justify-content-between"><span>Selected fund</span><strong id="fpFund"></strong></div>
+                            <div class="d-flex justify-content-between"><span>Current fund balance</span><span id="fpBalance"></span></div>
+                            <div class="d-flex justify-content-between"><span>Pending reserved amount</span><span id="fpReserved"></span></div>
+                            <div class="d-flex justify-content-between"><span>Available balance</span><strong id="fpAvailable"></strong></div>
+                            <div class="d-flex justify-content-between"><span>Expense amount</span><span id="fpAmount"></span></div>
+                            <div class="d-flex justify-content-between"><span>Expected remaining balance</span><strong id="fpAfter"></strong></div>
+                            <div class="d-flex justify-content-between"><span>Fund status</span><span id="fpStatus" class="badge"></span></div>
+                        </div>
                     </div>
 
                     <div class="mb-3">
@@ -194,6 +213,15 @@ $modal_subtitle = $isAdmin ? 'Record a new income or expense entry.' : 'Submit a
                             <?php } ?>
                         </select>
                     </div>
+                </div>
+
+                <div class="row g-3 mb-3" id="budgetFields">
+                    <div class="col-md-6"><label class="form-label small fw-semibold text-muted">Department (for budgets)</label>
+                        <select name="department_id" class="form-select rm-input"><option value="">—</option>
+                        <?php foreach ($deptList as $d) { ?><option value="<?= (int) $d['id']; ?>" <?= (int) ($deptId ?? $myDept) === (int) $d['id'] ? 'selected' : ''; ?>><?= htmlspecialchars($d['name'], ENT_QUOTES, 'UTF-8'); ?></option><?php } ?></select></div>
+                    <div class="col-md-6"><label class="form-label small fw-semibold text-muted">Project / RM Target (optional)</label>
+                        <select name="project_id" class="form-select rm-input"><option value="">—</option>
+                        <?php foreach ($projectList as $p) { ?><option value="<?= (int) $p['id']; ?>" <?= (int) ($projectId ?? 0) === (int) $p['id'] ? 'selected' : ''; ?>><?= htmlspecialchars($p['name'], ENT_QUOTES, 'UTF-8'); ?></option><?php } ?></select></div>
                 </div>
 
                 <div class="mb-3">
@@ -263,10 +291,31 @@ $modal_subtitle = $isAdmin ? 'Record a new income or expense entry.' : 'Submit a
     function toggleExpenseFields() {
         var isExpense = typeSelect.value === 'Expense';
         expenseFields.style.display = isExpense ? '' : 'none';
+        document.getElementById('budgetFields').style.display = isExpense ? '' : 'none';
         fundSelect.required = isExpense;
         document.getElementById('expenseCategorySelect').required = isExpense; // NEW (Task 3)
         if (!isExpense) { fundSelect.value = ''; fundBalance.textContent = ''; currentBalance = null; }
     }
+
+    // NEW (Budget module): the full fund panel (balance, reserved, available, amount, expected remaining, status).
+    var panelTimer = null, submitBtn = document.querySelector('button[name="save"]');
+    function fmt(v) { return Number(v).toLocaleString() + ' Frw'; }
+    function loadPanel() {
+        var panel = document.getElementById('fundPanel');
+        if (!fundSelect.value || typeSelect.value !== 'Expense') { panel.style.display = 'none'; if (submitBtn) { submitBtn.disabled = false; } return; }
+        fetch('fund_status.php?fund_id=' + encodeURIComponent(fundSelect.value) + '&amount=' + encodeURIComponent(amountInput.value || 0), { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); }).then(function (d) {
+                if (d.error) { return; }
+                panel.style.display = '';
+                document.getElementById('fpFund').textContent = d.fund; document.getElementById('fpBalance').textContent = fmt(d.balance);
+                document.getElementById('fpReserved').textContent = fmt(d.reserved); document.getElementById('fpAvailable').textContent = fmt(d.available);
+                document.getElementById('fpAmount').textContent = fmt(d.amount); var a = document.getElementById('fpAfter'); a.textContent = fmt(d.after); a.style.color = d.after < 0 ? '#E24B4A' : '';
+                var st = document.getElementById('fpStatus'); st.textContent = d.status; st.className = 'badge ' + (d.ok ? (d.status === 'Sufficient' ? 'bg-success' : 'bg-primary') : 'bg-danger');
+                if (submitBtn) { submitBtn.disabled = !d.ok && (parseFloat(amountInput.value) || 0) > 0; }
+            }).catch(function () {});
+    }
+    function schedulePanel() { clearTimeout(panelTimer); panelTimer = setTimeout(loadPanel, 250); }
+    fundSelect.addEventListener('change', schedulePanel); amountInput.addEventListener('input', schedulePanel); typeSelect.addEventListener('change', schedulePanel);
 
     function checkAmount() {
         if (currentBalance === null || typeSelect.value !== 'Expense') { return; }

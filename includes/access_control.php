@@ -47,6 +47,7 @@ function access_catalog(): array
         'portal'            => ['RM Customer Portal (staff side)', ['view', 'edit', 'manage']],
         'forecasting'       => ['RM Business Forecasting', ['view', 'reports', 'manage']],
         'rm_loans'          => ['RM Credit Hub (customer loans)', ['view', 'edit', 'approve', 'reports', 'manage']],
+        'budget'            => ['Budget & Fund Control', ['view', 'create', 'approve', 'manage', 'reports']],
         'rm_invest'         => ['RM Investors Hub', ['view', 'create', 'edit', 'approve', 'reports', 'manage']],
         'kpi'               => ['Performance & KPI Management', ['view', 'create', 'edit', 'approve', 'reports', 'manage']],
         'library'           => ['RM Digital Library', ['view', 'create', 'edit', 'replace', 'download', 'share', 'approve', 'archive', 'delete', 'manage']],
@@ -76,6 +77,8 @@ const ACCESS_NEW_DEFAULTS = [
     'kpi.approve' => ['admin', 'manager'], 'kpi.reports' => ['admin', 'manager'], 'kpi.manage' => ['admin'],
     'rm_loans.view' => ['admin', 'manager'], 'rm_loans.edit' => ['admin', 'manager'], 'rm_loans.reports' => ['admin', 'manager'],
     'rm_loans.approve' => ['admin'], 'rm_loans.manage' => ['admin'],
+    'budget.view' => ['admin', 'manager'], 'budget.create' => ['admin', 'manager'], 'budget.reports' => ['admin', 'manager'],
+    'budget.approve' => ['admin'], 'budget.manage' => ['admin'],
     'rm_invest.view' => ['admin', 'manager'], 'rm_invest.create' => ['admin', 'manager'], 'rm_invest.edit' => ['admin', 'manager'],
     'rm_invest.reports' => ['admin', 'manager'], 'rm_invest.approve' => ['admin'], 'rm_invest.manage' => ['admin'],
 ];
@@ -248,6 +251,7 @@ function access_page_permission(string $script): ?string
     if ($module === 'messages') { return $f === 'create' ? 'messages.create' : 'messages.view'; }
     // RM Digital Library: each page checks its finer permissions itself (download, share, archive ...).
     // Performance & KPIs: "My performance", a KPI page and reviews check the person's own records inside the page.
+    if ($module === 'budget') { return ['reports' => 'budget.reports', 'settings' => 'budget.manage'][$f] ?? 'budget.view'; }
     if ($module === 'rm_invest') { return ['settings' => 'rm_invest.manage', 'reports' => 'rm_invest.reports'][$f] ?? 'rm_invest.view'; }
     if ($module === 'rm_loans') { return ['settings' => 'rm_loans.manage', 'reports' => 'rm_loans.reports'][$f] ?? 'rm_loans.view'; }
     if ($module === 'kpi') { return ['my' => '*', 'kpi' => '*', 'reviews' => '*', 'settings' => 'kpi.manage', 'teams' => 'kpi.create'][$f] ?? 'kpi.view'; }

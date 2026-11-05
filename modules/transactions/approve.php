@@ -96,6 +96,8 @@ if ($transaction) {
         }
 
         mysqli_commit($conn);
+        // NEW (Budget module): spending alerts (70% / 90% / 100% / overspent) as soon as an expense is approved.
+        try { require_once __DIR__ . '/../../includes/budget_helpers.php'; bdg_ensure($conn); bdg_check_alerts($conn); } catch (Throwable $alertError) { error_log('budget alerts: ' . $alertError->getMessage()); }
     } catch (InsufficientFundException $e) {
         mysqli_rollback($conn);
         header('Location: index.php?error=' . urlencode($e->getMessage()));

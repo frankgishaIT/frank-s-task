@@ -41,7 +41,19 @@ function fund_pending_total(mysqli $conn, int $fundId): float {
     $s = mysqli_prepare($conn, "SELECT COALESCE(SUM(amount),0) AS p FROM transactions WHERE fund_id = ? AND transaction_type = 'Expense' AND status = 'pending'");
     mysqli_stmt_bind_param($s, 'i', $fundId);
     mysqli_stmt_execute($s);
-    return (float) mysqli_fetch_assoc(mysqli_stmt_get_result($s))['p'];
+    $pending = (float) mysqli_fetch_assoc(mysqli_stmt_get_result($s))['p'];
+    // NEW (Budget module): APPROVED commitments not yet paid are reserved too, so no module can spend that money.
+    static $hasCommitments = null;
+    if ($hasCommitments === null) {
+        $hasCommitments = (int) mysqli_fetch_row(mysqli_query($conn, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'bdg_commitments'"))[0] > 0;
+    }
+    if ($hasCommitments) {
+        $c = mysqli_prepare($conn, "SELECT COALESCE(SUM(amount), 0) FROM bdg_commitments WHERE fund_id = ? AND status = 'Approved'");
+        mysqli_stmt_bind_param($c, 'i', $fundId);
+        mysqli_stmt_execute($c);
+        $pending += (float) mysqli_fetch_row(mysqli_stmt_get_result($c))[0];
+    }
+    return $pending;
 }
 
 /**

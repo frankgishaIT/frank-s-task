@@ -51,6 +51,19 @@ function bdg_ensure(mysqli $conn): void
     $q("CREATE TABLE IF NOT EXISTS bdg_alerts (budget_id INT(11) NOT NULL, level VARCHAR(12) NOT NULL, sent_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (budget_id, level)) ENGINE=InnoDB");
     $q('ALTER TABLE bdg_audit MODIFY action VARCHAR(255) NOT NULL'); // tables created before it was widened
     $q('CREATE TABLE IF NOT EXISTS bdg_settings (name VARCHAR(40) NOT NULL, value VARCHAR(255) NULL, PRIMARY KEY (name)) ENGINE=InnoDB');
+    // FIX: on databases where fund_movements.movement_type is a fixed list (ENUM), add the transfer types,
+    // keeping every existing value (otherwise: "Data truncated for column 'movement_type'").
+    $mt = mysqli_fetch_assoc(mysqli_query($conn, "SELECT DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'fund_movements' AND column_name = 'movement_type'"));
+    if ($mt && strtolower($mt['DATA_TYPE']) === 'enum') {
+        preg_match_all("/'([^']*)'/", $mt['COLUMN_TYPE'], $m); // the listed values (type names never contain quotes)
+        $values = $m[1]; $missing = array_diff(['TRANSFER_OUT', 'TRANSFER_IN'], $values);
+        if ($missing) {
+            $list = implode(',', array_map(function ($v) use ($conn) { return "'" . mysqli_real_escape_string($conn, str_replace("''", "'", $v)) . "'"; }, array_merge($values, $missing)));
+            $def = $mt['COLUMN_DEFAULT'] !== null ? " DEFAULT '" . mysqli_real_escape_string($conn, trim($mt['COLUMN_DEFAULT'], "'")) . "'" : '';
+            $q("ALTER TABLE fund_movements MODIFY movement_type ENUM($list) " . ($mt['IS_NULLABLE'] === 'YES' ? 'NULL' : 'NOT NULL') . $def);
+        }
+    }
     // Expenses can be attributed to a department and a project (departmental / project budgets).
     foreach (['department_id', 'project_id'] as $c) {
         $s = mysqli_prepare($conn, "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'transactions' AND column_name = ?");

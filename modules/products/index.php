@@ -98,7 +98,7 @@ function offering_type_label(string $type): string { return $type === 'Service' 
 <?php while ($row = mysqli_fetch_assoc($result)) { $isService = $row['item_type'] === 'Service'; ?>
 <tr>
     <td><?= $rowNumber++; ?></td>
-    <td><span class="badge bg-<?= $isService ? 'info text-dark' : 'primary'; ?>"><?= offering_type_label($row['item_type']); ?></span></td>
+    <td><span class="badge <?= $isService ? 'bg-success text-white' : 'bg-primary'; ?>"><?= offering_type_label($row['item_type']); ?></span></td>
     <td><?= htmlspecialchars($row['product_name'], ENT_QUOTES, 'UTF-8'); ?></td>
     <td><?= htmlspecialchars($row['product_code'], ENT_QUOTES, 'UTF-8'); ?></td>
     <td>

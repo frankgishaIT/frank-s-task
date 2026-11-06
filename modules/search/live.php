@@ -627,7 +627,7 @@ function renderProductsRows(mysqli $conn, string $like, int $limit, bool $isAdmi
 
         $html .= '<tr>';
         $html .= '<td>' . $rowNumber++ . '</td>';
-        $html .= '<td><span class="badge bg-' . ($isService ? 'info text-dark' : 'primary') . '">' . esc($r['item_type']) . '</span></td>';
+        $html .= '<td><span class="badge ' . ($isService ? 'bg-success text-white' : 'bg-primary') . '">' . esc($r['item_type']) . '</span></td>';
         $html .= '<td>' . esc($r['product_name']) . '</td>';
         $html .= '<td>' . esc($r['product_code']) . '</td>';
 

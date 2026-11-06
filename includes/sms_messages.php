@@ -232,7 +232,7 @@ function sms_send_credit_reminders(mysqli $conn): int {
             if (sms_already_sent($conn, 'CREDIT_REMINDER', 'CUSTOMER', (int) $c['id'], SMS_CREDIT_REMINDER_EVERY_HOURS)) { continue; }
             // CHANGED (new text): payment reminder.
             $text = sms_greet($c['name'], 'Mukiliya') . ', ubereyemo RISE MOTIVE ' . sms_money($c['balance']) . 'FRW. Kanda *182*8*1*' . SMS_MOMO_CODE . '# Kugira ngo wishyure.'
-                . "\n\nSura: " . SMS_PORTAL_URL . ' winjire muri konti yawe umenye amakuru yose ari kuri Invoice. Ku bindi bisobanuro: ' . SMS_HELP_PHONE
+                . "\n\nKubindi bisobanuro, Sura: " . SMS_PORTAL_URL . ' winjire muri konti yawe umenye amakuru yose ari kuri Invoice. Ubufasha: ' . SMS_HELP_PHONE
                 . "\nMurakoze!";
             if (sms_send($conn, $c['phone'], $text, 'CREDIT_REMINDER', 'CUSTOMER', (int) $c['id'])) { $sent++; }
         }

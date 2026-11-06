@@ -7,7 +7,7 @@
 $host = strtolower($_SERVER['HTTP_HOST'] ?? '');
 $local = in_array(explode(':', $host)[0], ['localhost', '127.0.0.1'], true);
 $base = $local ? rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/\\') : '';
-$staffUrl = $local ? $base . '/login.php' : 'https://staff.risemotive.rw/login.php';
+$staffUrl = $local ? $base . '/login.php' : 'https://myspace.risemotive.rw/login.php'/login.php';
 $customerUrl = $local ? $base . '/portal/' : 'https://myspace.risemotive.rw/portal/';
 $logo = is_file(__DIR__ . '/assets/images/logo.png') ? 'assets/images/logo.png' : (is_file(__DIR__ . '/assets/images/logo.jpg') ? 'assets/images/logo.jpg' : '');
 ?><!doctype html>

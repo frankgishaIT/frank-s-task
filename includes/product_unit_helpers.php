@@ -52,7 +52,7 @@ function product_units_for($conn, $productId) {
     mysqli_stmt_bind_param($productStatement, 'i', $productId);
     mysqli_stmt_execute($productStatement);
     $product = mysqli_fetch_assoc(mysqli_stmt_get_result($productStatement));
-    $baseUnitName = ($product && $product['unit']) ? $product['unit'] : 'Pieces';
+    $baseUnitName = ($product && trim((string) $product['unit']) !== '') ? product_unit_clean($product['unit']) : 'Pieces'; // CHANGED: cleaned
 
     $units = [['unit_id' => null, 'unit_name' => $baseUnitName, 'pack_size' => 1, 'is_base' => true]];
 
@@ -63,10 +63,26 @@ function product_units_for($conn, $productId) {
     mysqli_stmt_execute($statement);
     $result = mysqli_stmt_get_result($statement);
     while ($row = mysqli_fetch_assoc($result)) {
-        $units[] = ['unit_id' => (int) $row['unit_id'], 'unit_name' => $row['unit_name'], 'pack_size' => (int) $row['conversion_rate'], 'is_base' => false];
+        $units[] = ['unit_id' => (int) $row['unit_id'], 'unit_name' => product_unit_clean($row['unit_name']), 'pack_size' => (int) $row['conversion_rate'], 'is_base' => false];
     }
 
     return $units;
+}
+
+/** NEW: a unit name without spaces at the ends or repeated spaces (what the forms show and send back). */
+function product_unit_clean($name): string {
+    return trim(preg_replace('/\s+/u', ' ', (string) $name));
+}
+
+/**
+ * NEW: the product's unit matching the name chosen in a form, or null. Ignores spaces at the ends, repeated spaces
+ * and capital letters ("Piece ", "piece" and "Piece" are the same unit). The pack size always comes from the product.
+ */
+function product_unit_match(array $productUnits, $selected): ?array {
+    $want = mb_strtolower(product_unit_clean($selected));
+    if ($want === '') { return null; }
+    foreach ($productUnits as $u) { if (mb_strtolower(product_unit_clean($u['unit_name'])) === $want) { return $u; } }
+    return null;
 }
 
 /** Every product's units in one call, keyed by product_id. */

@@ -46,8 +46,7 @@ if (isset($_POST['save'])) {
 
     // The chosen unit is resolved against this product's own units, so the conversion can never be
     // changed in the browser.
-    $matchedUnit = null;
-    foreach ($productUnits as $u) { if ($u['unit_name'] === $selectedUnitName) { $matchedUnit = $u; break; } }
+    $matchedUnit = product_unit_match($productUnits, $selectedUnitName); // CHANGED: ignores stray spaces / capitals
     $packLabel = $matchedUnit ? $matchedUnit['unit_name'] : $baseUnit;
     $packSize = $matchedUnit ? max(1, (int) $matchedUnit['pack_size']) : 1;
 

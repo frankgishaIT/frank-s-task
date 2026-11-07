@@ -49,8 +49,7 @@ if (isset($_POST['save'])) {
         // actual defined units — never trust a client-submitted pack size.
         $productUnits = $unitsMap[$productId] ?? [];
         $selectedUnitName = trim($unitChoices[$index] ?? '');
-        $matchedUnit = null;
-        foreach ($productUnits as $u) { if ($u['unit_name'] === $selectedUnitName) { $matchedUnit = $u; break; } }
+        $matchedUnit = product_unit_match($productUnits, $selectedUnitName); // CHANGED: ignores stray spaces / capitals
         if (!$matchedUnit) {
             $lineError = 'Please select a valid unit for "' . $found['product_name'] . '".';
             break;

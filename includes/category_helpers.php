@@ -50,11 +50,31 @@ function category_column_info(mysqli $conn, string $table, string $column): ?arr
  * Creates the table if needed and makes sure every category already used by a record is in the list
  * (so no existing record ever loses its category). Runs once per page load.
  */
+/**
+ * FIX: every column that stores a unit name (in ANY table: sale lines, purchase order lines, restocks ...) and is still a
+ * fixed list (ENUM) becomes plain text, so units added under Categories are accepted everywhere
+ * (otherwise: "Data truncated for column 'unit'" when selling). Existing values, NULL / NOT NULL and the default are kept.
+ */
+function category_free_unit_columns(mysqli $conn): void
+{
+    $res = mysqli_query($conn, "SELECT TABLE_NAME, COLUMN_NAME, IS_NULLABLE, COLUMN_DEFAULT FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND DATA_TYPE = 'enum' AND COLUMN_NAME IN ('unit', 'unit_name', 'base_unit', 'pack_label', 'sub_unit')");
+    foreach ($res ? mysqli_fetch_all($res, MYSQLI_ASSOC) : [] as $c) {
+        // MariaDB reports "no default" as the word NULL (and quotes real defaults): only a real value is kept.
+        $d = $c['COLUMN_DEFAULT'];
+        $def = ($d !== null && strtoupper($d) !== 'NULL') ? " DEFAULT '" . mysqli_real_escape_string($conn, trim($d, "'")) . "'" : '';
+        $sql = 'ALTER TABLE `' . str_replace('`', '', $c['TABLE_NAME']) . '` MODIFY `' . str_replace('`', '', $c['COLUMN_NAME']) . '` VARCHAR(100) '
+             . ($c['IS_NULLABLE'] === 'YES' ? 'NULL' : 'NOT NULL') . $def;
+        if (!mysqli_query($conn, $sql)) { error_log('category_free_unit_columns: ' . mysqli_error($conn)); }
+    }
+}
+
 function category_ensure(mysqli $conn): void
 {
     static $done = false;
     if ($done) { return; }
     $done = true;
+    try { category_free_unit_columns($conn); } catch (Throwable $e) { error_log('category_free_unit_columns: ' . $e->getMessage()); }
 
     // CHANGED: own table name (rm_categories). Some databases already have a table called
     // "categories" used by something else; it is never touched.

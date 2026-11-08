@@ -181,12 +181,6 @@ if ($rmCompactUi) { ?>
     <a href="../sales/index.php" class="<?= navActive('sales', $currentPath) ?>">
         <i class="bi bi-cart-check-fill"></i> Sales
     </a>
-    <?php if (in_array(current_user_role(), ['Admin', 'Manager'], true)) { ?>
-    <!-- NEW: every Digital Payment (MTN MoMo), and the ones that need attention -->
-    <a href="../sales/digital_payments.php" class="<?= navActive('digital_payments', $currentPath) ?>">
-        <i class="bi bi-phone-fill"></i> Digital Payments
-    </a>
-    <?php } ?>
     <a href="../loans/index.php" class="<?= navActive('loans', $currentPath) ?>">
     <i class="bi bi-bank"></i> Loans
      </a>
@@ -195,6 +189,10 @@ if ($rmCompactUi) { ?>
       <i class="bi bi-building-gear"></i> Assets
      </a>
    <?php } ?>
+    <!-- NEW: Marketing & Growth -->
+    <a href="../marketing/index.php" class="<?= navActive('/marketing/', $currentPath) ?>">
+        <i class="bi bi-megaphone"></i> Marketing &amp; Growth
+    </a>
     <!-- NEW: Budget & Fund Control (budgets, reserved funds, transfers, budget vs actual) -->
     <a href="../budget/index.php" class="<?= navActive('/budget/', $currentPath) ?>">
         <i class="bi bi-wallet2"></i> Budget &amp; Fund Control

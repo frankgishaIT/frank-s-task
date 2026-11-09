@@ -8,6 +8,7 @@ $L = mkt_lists($conn);
 $canCreate = access_can('marketing.create', $conn);
 $id = (int) ($_POST['id'] ?? ($_GET['edit'] ?? 0));
 $editing = $id ? mysqli_fetch_assoc(mysqli_query($conn, "SELECT * FROM mkt_plans WHERE id = $id")) : null;
+if ($editing && !mkt_may_run($editing, $me)) { header('Location: plan.php?id=' . $id . '&error=' . urlencode('Only its creator, its manager, or a Manager / Administrator can edit this draft.')); exit; }
 if ($editing && $editing['status'] !== 'Draft') { header('Location: plan.php?id=' . $id . '&error=' . urlencode('Only a draft can be edited.')); exit; }
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {

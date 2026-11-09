@@ -4,6 +4,7 @@ require __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../includes/mkt_helpers.php';
 require_once __DIR__ . '/../../includes/access_control.php';
 mkt_ensure($conn);
+mkt_ensure_leads($conn);
 if (!access_can('marketing.view', $conn)) { http_response_code(403); include __DIR__ . '/../../includes/access_denied.php'; exit; }
 $me = (int) current_user_id();
 $isAdmin = current_user_role() === 'Admin';
@@ -11,7 +12,7 @@ $e = function ($v) { return htmlspecialchars((string) ($v ?? ''), ENT_QUOTES, 'U
 $rwf = function ($v) { return 'RWF ' . number_format((float) $v, 0); };
 function mkt_tabs(string $active): void {
     // The submodules that exist so far (the others are added stage by stage).
-    $t = ['index.php' => 'Overview', 'plans.php' => 'Plans & Strategy', 'campaigns.php' => 'Campaigns'];
+    $t = ['index.php' => 'Overview', 'plans.php' => 'Plans & Strategy', 'campaigns.php' => 'Campaigns', 'leads.php' => 'Leads & Customers'];
     if (access_can('marketing.manage')) { $t['settings.php'] = 'Settings'; }
     if (access_can('marketing.reports') || access_can('marketing.approve') || access_can('marketing.manage')) { $t['audit.php'] = 'Audit trail'; }
     echo '<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2"><h2 class="mb-0">Marketing &amp; Growth</h2></div><ul class="nav nav-tabs mb-3 flex-nowrap overflow-auto">';
@@ -43,6 +44,7 @@ function mkt_apply_transition(mysqli $conn, string $kind, array $row, string $ac
     if (!isset($flow[$row['status']][$action])) { throw new RuntimeException('This action is not possible while the ' . $kind . ' is "' . $row['status'] . '".'); }
     [$to, $perm] = $flow[$row['status']][$action];
     if (!access_can('marketing.' . $perm, $conn)) { throw new RuntimeException('You are not authorised to ' . $action . ' ' . $kind . 's.'); }
+    if ($perm === 'create' && !mkt_may_run($row, $me)) { throw new RuntimeException('Only the ' . $kind . "'s creator, its manager, or a Manager / Administrator can " . $action . ' it.'); }
     if (in_array($action, ['approve', 'activate'], true) && (int) $row['created_by'] === $me) {
         if (!$isAdmin) { throw new RuntimeException('You created this ' . $kind . ': it must be approved by someone else (or an Administrator).'); }
         if (mb_strlen(trim($note)) < 5) { throw new RuntimeException('You created this ' . $kind . ' yourself: write a short approval note (kept in the audit trail).'); }

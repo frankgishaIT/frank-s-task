@@ -67,6 +67,13 @@ const ACCESS_ACTION_LABELS = [
  * Permissions added after Roles & Permissions was first set up, and which starting roles get them.
  * (Everything else that is new goes to the Administrator role only.)
  */
+/** One-time grants: see access_ensure(). */
+const ACCESS_ONE_TIME_GRANTS = [
+    'marketing_everyone_v1' => ['roles' => ['manager' => ['marketing.view', 'marketing.create', 'marketing.leads', 'marketing.reports'],
+                                            'employee' => ['marketing.view', 'marketing.create', 'marketing.leads', 'marketing.reports']],
+        'note' => 'Marketing & Growth opened to everyone (management decision): Managers and Employees can view, create, work leads and see reports; approvals, finance and settings stay with Administrators.'],
+];
+
 const ACCESS_NEW_DEFAULTS = [
     'library.view' => ['admin', 'manager', 'employee'], 'library.download' => ['admin', 'manager', 'employee'],
     'library.create' => ['admin', 'manager'], 'library.edit' => ['admin', 'manager'], 'library.replace' => ['admin', 'manager'],
@@ -80,8 +87,9 @@ const ACCESS_NEW_DEFAULTS = [
     'rm_loans.approve' => ['admin'], 'rm_loans.manage' => ['admin'],
     'budget.view' => ['admin', 'manager'], 'budget.create' => ['admin', 'manager'], 'budget.reports' => ['admin', 'manager'],
     'budget.approve' => ['admin'], 'budget.manage' => ['admin'],
-    'marketing.view' => ['admin', 'manager'], 'marketing.create' => ['admin', 'manager'], 'marketing.leads' => ['admin', 'manager'],
-    'marketing.reports' => ['admin', 'manager'], 'marketing.approve' => ['admin'], 'marketing.finance' => ['admin'], 'marketing.manage' => ['admin'],
+    // CHANGED: everyone uses Marketing & Growth; only Administrators approve, decide on money and change settings.
+    'marketing.view' => ['admin', 'manager', 'employee'], 'marketing.create' => ['admin', 'manager', 'employee'], 'marketing.leads' => ['admin', 'manager', 'employee'],
+    'marketing.reports' => ['admin', 'manager', 'employee'], 'marketing.approve' => ['admin'], 'marketing.finance' => ['admin'], 'marketing.manage' => ['admin'],
     'rm_invest.view' => ['admin', 'manager'], 'rm_invest.create' => ['admin', 'manager'], 'rm_invest.edit' => ['admin', 'manager'],
     'rm_invest.reports' => ['admin', 'manager'], 'rm_invest.approve' => ['admin'], 'rm_invest.manage' => ['admin'],
 ];
@@ -174,6 +182,21 @@ function access_ensure(mysqli $conn): void
         }
         mysqli_query($conn, "INSERT IGNORE INTO acl_known_permissions VALUES ('" . mysqli_real_escape_string($conn, $perm) . "')");
         access_log($conn, null, null, null, 'permission_added', 'New permission "' . access_label($perm) . '" given to the starting roles: ' . implode(', ', $roles) . '.');
+    }
+
+    // NEW: one-time grants (a decision taken after a permission already existed). Each runs ONCE, is logged, and is
+    // remembered: if an Administrator later removes the permission from a role, it stays removed.
+    foreach (ACCESS_ONE_TIME_GRANTS as $key => $grant) {
+        $marker = mysqli_real_escape_string($conn, 'grant:' . $key);
+        if ((int) mysqli_fetch_row(mysqli_query($conn, "SELECT COUNT(*) FROM acl_known_permissions WHERE permission = '$marker'"))[0]) { continue; }
+        foreach ($grant['roles'] as $roleKey => $perms) {
+            foreach ($perms as $perm) {
+                $k = mysqli_real_escape_string($conn, $roleKey); $pp = mysqli_real_escape_string($conn, $perm);
+                mysqli_query($conn, "INSERT IGNORE INTO acl_role_permissions (role_id, permission) SELECT id, '$pp' FROM acl_roles WHERE system_key = '$k'");
+            }
+        }
+        mysqli_query($conn, "INSERT IGNORE INTO acl_known_permissions VALUES ('$marker')");
+        access_log($conn, null, null, null, 'permission_added', $grant['note']);
     }
 
     // An employee added later without any role gets the starting role of their account type.

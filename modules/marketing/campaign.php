@@ -12,7 +12,7 @@ $id = (int) ($_POST['id'] ?? ($_GET['id'] ?? 0));
 $c = mysqli_fetch_assoc(mysqli_query($conn, "SELECT c.*, u.names AS manager, cr.names AS creator, p.title AS plan_title, p.created_at AS plan_created FROM mkt_campaigns c
     LEFT JOIN users u ON u.id = c.manager_id LEFT JOIN users cr ON cr.id = c.created_by LEFT JOIN mkt_plans p ON p.id = c.plan_id WHERE c.id = $id AND " . mkt_campaign_scope_sql($conn, $me)));
 if (!$c) { header('Location: campaigns.php?error=' . urlencode('Campaign not found, or you are not part of it.')); exit; }
-$isManager = (int) $c['manager_id'] === $me || mkt_sees_all($conn);
+$isManager = (int) $c['manager_id'] === $me || mkt_is_manager();
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         if (($_POST['action'] ?? '') === 'reach') {
@@ -76,8 +76,8 @@ mkt_tabs('campaigns.php');
 <div class="col-lg-4">
     <div class="card border-0 shadow-sm mb-3"><div class="card-body small"><h6>Workflow</h6>
         <div class="mb-2 text-muted"><?= implode(' → ', array_map(function ($s) use ($c) { return $s === $c['status'] ? '<strong class="text-body">' . $s . '</strong>' : $s; }, MKT_CAMPAIGN_FLOW)); ?></div>
-        <?php if ($c['status'] === 'Draft' && access_can('marketing.create', $conn)) { ?><a href="campaigns.php?edit=<?= $id; ?>" class="btn btn-sm btn-outline-primary mb-2">Edit draft</a><?php } ?>
-        <?php foreach ($actions as $act3 => [$to, $perm]) { if (!access_can('marketing.' . $perm, $conn)) { continue; } ?>
+        <?php if ($c['status'] === 'Draft' && access_can('marketing.create', $conn) && mkt_may_run($c, $me)) { ?><a href="campaigns.php?edit=<?= $id; ?>" class="btn btn-sm btn-outline-primary mb-2">Edit draft</a><?php } ?>
+        <?php foreach ($actions as $act3 => [$to, $perm]) { if (!access_can('marketing.' . $perm, $conn) || ($perm === 'create' && !mkt_may_run($c, $me))) { continue; } ?>
         <form method="POST" class="mb-2"><input type="hidden" name="id" value="<?= $id; ?>"><input type="hidden" name="action" value="<?= $act3; ?>">
             <?php if (in_array($act3, ['approve', 'reject', 'evaluate', 'activate', 'pause'], true)) { ?><textarea name="note" rows="<?= $act3 === 'evaluate' ? 3 : 1; ?>" class="form-control form-control-sm mb-1" placeholder="<?= $act3 === 'evaluate' ? 'Evaluation: results, lessons, recommendations' : (in_array($act3, ['reject', 'pause'], true) ? 'Reason' : 'Note'); ?>"></textarea><?php } ?>
             <button class="btn btn-sm <?= in_array($act3, ['reject', 'pause'], true) ? 'btn-outline-danger' : 'btn-primary'; ?>"><?= ucfirst($act3); ?> → <?= $e($to); ?></button></form><?php } ?>

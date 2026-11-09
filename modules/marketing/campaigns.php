@@ -9,6 +9,7 @@ $canCreate = access_can('marketing.create', $conn);
 $plans = mysqli_fetch_all(mysqli_query($conn, "SELECT id, title, created_at FROM mkt_plans WHERE status IN ('Approved', 'Active') ORDER BY title"), MYSQLI_ASSOC);
 $id = (int) ($_POST['id'] ?? ($_GET['edit'] ?? 0));
 $editing = $id ? mysqli_fetch_assoc(mysqli_query($conn, "SELECT * FROM mkt_campaigns WHERE id = $id")) : null;
+if ($editing && !mkt_may_run($editing, $me)) { header('Location: campaign.php?id=' . $id . '&error=' . urlencode('Only its creator, its manager, or a Manager / Administrator can edit this draft.')); exit; }
 if ($editing && $editing['status'] !== 'Draft') { header('Location: campaign.php?id=' . $id . '&error=' . urlencode('Only a draft can be edited.')); exit; }
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {

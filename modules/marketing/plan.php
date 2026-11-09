@@ -60,8 +60,8 @@ mkt_tabs('plans.php');
 <div class="col-lg-4">
     <div class="card border-0 shadow-sm mb-3"><div class="card-body small"><h6>Workflow</h6>
         <div class="mb-2 text-muted"><?= implode(' → ', array_map(function ($s) use ($p) { return $s === $p['status'] ? '<strong class="text-body">' . $s . '</strong>' : $s; }, MKT_PLAN_FLOW)); ?></div>
-        <?php if ($p['status'] === 'Draft' && access_can('marketing.create', $conn)) { ?><a href="plans.php?edit=<?= $id; ?>" class="btn btn-sm btn-outline-primary mb-2">Edit draft</a><?php } ?>
-        <?php foreach ($actions as $act2 => [$to, $perm]) { if (!access_can('marketing.' . $perm, $conn)) { continue; } ?>
+        <?php if ($p['status'] === 'Draft' && access_can('marketing.create', $conn) && mkt_may_run($p, $me)) { ?><a href="plans.php?edit=<?= $id; ?>" class="btn btn-sm btn-outline-primary mb-2">Edit draft</a><?php } ?>
+        <?php foreach ($actions as $act2 => [$to, $perm]) { if (!access_can('marketing.' . $perm, $conn) || ($perm === 'create' && !mkt_may_run($p, $me))) { continue; } ?>
         <form method="POST" class="mb-2"><input type="hidden" name="id" value="<?= $id; ?>"><input type="hidden" name="action" value="<?= $act2; ?>">
             <?php if (in_array($act2, ['approve', 'reject', 'evaluate', 'activate'], true)) { ?><textarea name="note" rows="<?= $act2 === 'evaluate' ? 3 : 1; ?>" class="form-control form-control-sm mb-1" placeholder="<?= $act2 === 'evaluate' ? 'Evaluation: results, lessons, recommendations' : ($act2 === 'reject' ? 'Reason' : 'Note'); ?>"></textarea><?php } ?>
             <button class="btn btn-sm <?= $act2 === 'reject' ? 'btn-outline-danger' : 'btn-primary'; ?>"><?= ucfirst($act2); ?> → <?= $e($to); ?></button></form><?php } ?>

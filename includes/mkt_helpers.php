@@ -257,18 +257,204 @@ function mkt_check_behind(mysqli $conn): int
 
 /* ------------------------------------------------------------------ visibility */
 
+/** Administrators and Managers (by account type): reassign leads, propose contributions, run anyone's campaigns. */
+function mkt_is_manager(): bool
+{
+    return function_exists('current_user_role') && in_array(current_user_role(), ['Admin', 'Manager'], true);
+}
+/** May this user run (submit, pause, complete, edit) this plan / campaign? Its creator, its manager, or a Manager / Admin. */
+function mkt_may_run(array $row, int $uid): bool
+{
+    return mkt_is_manager() || (int) $row['created_by'] === $uid || (int) $row['manager_id'] === $uid;
+}
+
 /** Users who see everything (approvers, settings managers); others see what they manage or are members of. */
 function mkt_sees_all(mysqli $conn): bool
 {
     return function_exists('access_can') && (access_can('marketing.approve', $conn) || access_can('marketing.manage', $conn));
 }
+/** CHANGED (management decision): everyone with access to Marketing & Growth sees all plans, campaigns and leads. */
 function mkt_campaign_scope_sql(mysqli $conn, int $uid, string $alias = 'c'): string
 {
-    if (mkt_sees_all($conn)) { return '1 = 1'; }
+    if (mkt_sees_all($conn) || (function_exists('access_can') && access_can('marketing.view', $conn))) { return '1 = 1'; }
     return "($alias.manager_id = $uid OR $alias.created_by = $uid OR EXISTS (SELECT 1 FROM mkt_campaign_members m WHERE m.campaign_id = $alias.id AND m.user_id = $uid))";
 }
 function mkt_plan_scope_sql(mysqli $conn, int $uid, string $alias = 'p'): string
 {
-    if (mkt_sees_all($conn)) { return '1 = 1'; }
+    if (mkt_sees_all($conn) || (function_exists('access_can') && access_can('marketing.view', $conn))) { return '1 = 1'; }
     return "($alias.manager_id = $uid OR $alias.created_by = $uid OR EXISTS (SELECT 1 FROM mkt_plan_members m WHERE m.plan_id = $alias.id AND m.user_id = $uid))";
+}
+
+/* ================================================================== STAGE 2: LEADS & CUSTOMER ACQUISITION */
+
+const MKT_CONTRIB_ROLES = ['Found the prospect', 'Designed promotional material', 'Conducted the demonstration', 'Followed up and closed', 'Prepared the proposal', 'Partnership introduction', 'Other support'];
+const MKT_FOLLOWUP_METHODS = ['Phone call', 'Visit', 'WhatsApp', 'Email', 'SMS', 'Meeting', 'Other'];
+
+function mkt_ensure_leads(mysqli $conn): void
+{
+    static $done = false;
+    if ($done) { return; }
+    $done = true;
+    mkt_ensure($conn);
+    mysqli_query($conn, "CREATE TABLE IF NOT EXISTS mkt_lead_contributors (id INT(11) NOT NULL AUTO_INCREMENT, lead_id INT(11) NOT NULL, user_id INT(11) NOT NULL,
+        role VARCHAR(60) NOT NULL, share_pct DECIMAL(5,2) NULL, points INT(11) NULL, reason VARCHAR(500) NULL, status VARCHAR(12) NOT NULL DEFAULT 'Proposed',
+        added_by INT(11) NULL, approved_by INT(11) NULL, approved_at DATETIME NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id), UNIQUE KEY one_role (lead_id, user_id, role), KEY user_id (user_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+
+/** Phone numbers compared on their last 9 digits (07XXXXXXXX, +2507XXXXXXXX and 2507XXXXXXXX are the same number). */
+function mkt_phone_key(?string $phone): string
+{
+    $d = preg_replace('/\D/', '', (string) $phone);
+    return strlen($d) >= 9 ? substr($d, -9) : $d;
+}
+
+function mkt_lead_open(array $l): bool { return !in_array($l['status'], ['Won', 'Lost'], true); }
+
+/** An OPEN lead with the same phone or email (duplicate), or null. */
+function mkt_duplicate_lead(mysqli $conn, ?string $phone, ?string $email, int $exceptId = 0): ?array
+{
+    $pk = mkt_phone_key($phone); $em = strtolower(trim((string) $email));
+    if ($pk === '' && $em === '') { return null; }
+    foreach (mysqli_fetch_all(mysqli_query($conn, "SELECT * FROM mkt_leads WHERE status NOT IN ('Won', 'Lost') AND id <> $exceptId AND (phone IS NOT NULL OR email IS NOT NULL)"), MYSQLI_ASSOC) as $l) {
+        if (($pk !== '' && strlen($pk) >= 9 && mkt_phone_key($l['phone']) === $pk) || ($em !== '' && strtolower(trim((string) $l['email'])) === $em)) { return $l; }
+    }
+    return null;
+}
+
+function mkt_col_exists(mysqli $conn, string $table, string $col): bool
+{
+    $s = mysqli_prepare($conn, 'SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?');
+    mysqli_stmt_bind_param($s, 'ss', $table, $col); mysqli_stmt_execute($s);
+    return (int) mysqli_fetch_row(mysqli_stmt_get_result($s))[0] > 0;
+}
+
+/** Existing customer with the same phone (last 9 digits) or email, or null. */
+function mkt_matching_customer(mysqli $conn, ?string $phone, ?string $email): ?array
+{
+    $pk = mkt_phone_key($phone);
+    if (strlen($pk) >= 9) {
+        $like = '%' . $pk;
+        $s = mysqli_prepare($conn, "SELECT * FROM customers WHERE REPLACE(REPLACE(REPLACE(phone, ' ', ''), '+', ''), '-', '') LIKE ? ORDER BY id LIMIT 1");
+        mysqli_stmt_bind_param($s, 's', $like); mysqli_stmt_execute($s);
+        if ($c = mysqli_fetch_assoc(mysqli_stmt_get_result($s))) { return $c; }
+    }
+    $em = strtolower(trim((string) $email));
+    if ($em !== '' && mkt_col_exists($conn, 'customers', 'email')) {
+        $s = mysqli_prepare($conn, 'SELECT * FROM customers WHERE LOWER(TRIM(email)) = ? ORDER BY id LIMIT 1');
+        mysqli_stmt_bind_param($s, 's', $em); mysqli_stmt_execute($s);
+        if ($c = mysqli_fetch_assoc(mysqli_stmt_get_result($s))) { return $c; }
+    }
+    return null;
+}
+
+/** A verified paid purchase BEFORE a date = the customer is not new. */
+function mkt_paid_before(mysqli $conn, int $customerId, string $date): bool
+{
+    $s = mysqli_prepare($conn, "SELECT COUNT(*) FROM sales s JOIN transactions t ON t.id = s.transaction_id AND t.status = 'approved'
+        WHERE s.customer_id = ? AND s.status = 'Paid' AND DATE(COALESCE(s.fully_paid_at, s.sale_date)) < ?");
+    mysqli_stmt_bind_param($s, 'is', $customerId, $date); mysqli_stmt_execute($s);
+    return (int) mysqli_fetch_row(mysqli_stmt_get_result($s))[0] > 0;
+}
+
+/**
+ * Converts a lead into a customer: links an existing customer (same phone / email) or creates one, marks the lead Won,
+ * and records the acquisition (lead, campaign, owner preserved). One acquisition per customer. Returns a summary.
+ */
+function mkt_convert_lead(mysqli $conn, int $leadId, int $uid, ?int $chosenCustomerId = null): array
+{
+    mysqli_begin_transaction($conn);
+    try {
+        $l = mysqli_fetch_assoc(mysqli_query($conn, "SELECT * FROM mkt_leads WHERE id = $leadId FOR UPDATE"));
+        if (!$l || !mkt_lead_open($l)) { throw new RuntimeException('Only an open lead can be converted.'); }
+        if ($chosenCustomerId) {
+            $cust = mysqli_fetch_assoc(mysqli_query($conn, 'SELECT * FROM customers WHERE id = ' . (int) $chosenCustomerId));
+            if (!$cust) { throw new RuntimeException('That customer does not exist.'); }
+        } else { $cust = mkt_matching_customer($conn, $l['phone'], $l['email']); }
+        $created = false;
+        if (!$cust) {
+            if (mkt_phone_key($l['phone']) === '' && trim((string) $l['email']) === '') { throw new RuntimeException('Add the phone number or email first, so the customer can be matched and contacted.'); }
+            $name = $l['name']; $cols = ['name' => $name, 'phone' => $l['phone']];
+            if (mkt_col_exists($conn, 'customers', 'email') && $l['email']) { $cols['email'] = $l['email']; }
+            if (mkt_col_exists($conn, 'customers', 'address') && $l['location']) { $cols['address'] = $l['location']; }
+            if (mkt_col_exists($conn, 'customers', 'first_name')) { $parts = preg_split('/\s+/', trim((string) ($l['contact_person'] ?: $name)), 2); $cols['first_name'] = $parts[0]; if (mkt_col_exists($conn, 'customers', 'last_name')) { $cols['last_name'] = $parts[1] ?? ''; } }
+            $s = mysqli_prepare($conn, 'INSERT INTO customers (' . implode(', ', array_keys($cols)) . ') VALUES (' . implode(', ', array_fill(0, count($cols), '?')) . ')');
+            $vals = array_values($cols); mysqli_stmt_bind_param($s, str_repeat('s', count($vals)), ...$vals); mysqli_stmt_execute($s);
+            $cust = mysqli_fetch_assoc(mysqli_query($conn, 'SELECT * FROM customers WHERE id = ' . (int) mysqli_insert_id($conn))); $created = true;
+        }
+        $cid = (int) $cust['id'];
+        $existing = mysqli_fetch_assoc(mysqli_query($conn, "SELECT * FROM mkt_acquisitions WHERE customer_id = $cid"));
+        if ($existing) {
+            $prev = mysqli_fetch_assoc(mysqli_query($conn, 'SELECT id, created_at FROM mkt_leads WHERE id = ' . (int) $existing['lead_id']));
+            throw new RuntimeException('This customer was already acquired' . ($prev ? ' through ' . mkt_code('lead', $prev) : '') . '. One customer can only be attributed once.');
+        }
+        $isNew = $created || !mkt_paid_before($conn, $cid, substr($l['created_at'], 0, 10));
+        $status = $isNew ? 'Awaiting payment' : 'Existing customer';
+        $s = mysqli_prepare($conn, 'INSERT INTO mkt_acquisitions (customer_id, lead_id, campaign_id, owner_id, acquired_at, status) VALUES (?, ?, ?, ?, NOW(), ?)');
+        mysqli_stmt_bind_param($s, 'iiiis', $cid, $leadId, $l['campaign_id'], $l['owner_id'], $status); mysqli_stmt_execute($s);
+        mysqli_query($conn, "UPDATE mkt_leads SET status = 'Won', customer_id = $cid, converted_at = NOW(), next_followup = NULL, updated_at = NOW() WHERE id = $leadId");
+        $ref = mkt_code('lead', $l);
+        mkt_audit($conn, 'Lead converted: ' . ($created ? 'new customer created' : 'linked to existing customer #' . $cid) . ($isNew ? '' : ' (already a paying customer before: not a new acquisition)'), $ref, $l['status'], 'Won', null, $uid);
+        mysqli_commit($conn);
+        mkt_refresh_acquisitions($conn, $cid);
+        return ['customer_id' => $cid, 'created' => $created, 'new' => $isNew, 'name' => $cust['name']];
+    } catch (Throwable $e) { mysqli_rollback($conn); throw $e; }
+}
+
+/**
+ * First verified payment of acquired customers: the earliest fully paid sale with an APPROVED income transaction,
+ * paid on or after the acquisition. An invoice alone never makes a paying customer.
+ */
+function mkt_refresh_acquisitions(mysqli $conn, ?int $customerId = null): int
+{
+    $n = 0;
+    $w = $customerId ? ' AND customer_id = ' . (int) $customerId : '';
+    foreach (mysqli_fetch_all(mysqli_query($conn, "SELECT * FROM mkt_acquisitions WHERE status = 'Awaiting payment'$w"), MYSQLI_ASSOC) as $a) {
+        $s = mysqli_prepare($conn, "SELECT s.id, COALESCE(s.fully_paid_at, s.sale_date) paid_at FROM sales s JOIN transactions t ON t.id = s.transaction_id AND t.status = 'approved'
+            WHERE s.customer_id = ? AND s.status = 'Paid' AND COALESCE(s.fully_paid_at, s.sale_date) >= DATE(?) ORDER BY paid_at, s.id LIMIT 1");
+        $cid = (int) $a['customer_id']; mysqli_stmt_bind_param($s, 'is', $cid, $a['acquired_at']); mysqli_stmt_execute($s);
+        $sale = mysqli_fetch_assoc(mysqli_stmt_get_result($s));
+        if (!$sale) { continue; }
+        $u = mysqli_prepare($conn, "UPDATE mkt_acquisitions SET first_paid_sale_id = ?, first_paid_at = ?, status = 'Paying' WHERE id = ? AND status = 'Awaiting payment'");
+        $sid = (int) $sale['id']; $aid = (int) $a['id']; mysqli_stmt_bind_param($u, 'isi', $sid, $sale['paid_at'], $aid); mysqli_stmt_execute($u);
+        if (mysqli_stmt_affected_rows($u) === 1) {
+            $n++;
+            $lead = mysqli_fetch_assoc(mysqli_query($conn, 'SELECT * FROM mkt_leads WHERE id = ' . (int) $a['lead_id']));
+            $ref = $lead ? mkt_code('lead', $lead) : 'ACQ-' . $aid;
+            mkt_audit($conn, 'First verified payment: sale #' . $sid . ' (paid, approved in Transactions)', $ref, 'Awaiting payment', 'Paying', null, 0);
+            mkt_notify($conn, [(int) $a['owner_id']], 'New paying customer: ' . ($lead['name'] ?? 'customer'), 'First verified payment received (sale #' . $sid . ').');
+        }
+    }
+    return $n;
+}
+
+/** Follow-up reminders to lead owners: due today, and overdue. At most once per day per lead. */
+function mkt_followup_reminders(mysqli $conn): int
+{
+    $n = 0; $today = date('Y-m-d');
+    foreach (mysqli_fetch_all(mysqli_query($conn, "SELECT * FROM mkt_leads WHERE status NOT IN ('Won', 'Lost') AND next_followup IS NOT NULL AND next_followup <= CURDATE() AND owner_id IS NOT NULL"), MYSQLI_ASSOC) as $l) {
+        $ref = mkt_code('lead', $l); $kind = 'fu:' . $today;
+        $s = mysqli_prepare($conn, 'INSERT IGNORE INTO mkt_alerts (ref, kind, sent_at) VALUES (?, ?, NOW())');
+        mysqli_stmt_bind_param($s, 'ss', $ref, $kind); mysqli_stmt_execute($s);
+        if (mysqli_stmt_affected_rows($s) !== 1) { continue; }
+        $overdue = $l['next_followup'] < $today;
+        mkt_notify($conn, [(int) $l['owner_id']], ($overdue ? 'Overdue follow-up: ' : 'Follow-up due today: ') . $l['name'], $ref . ($overdue ? ' was due on ' . date('d M Y', strtotime($l['next_followup'])) . '.' : ''));
+        $n++;
+    }
+    mysqli_query($conn, "DELETE FROM mkt_alerts WHERE kind LIKE 'fu:%' AND kind < 'fu:" . date('Y-m-d', strtotime('-14 days')) . "'");
+    return $n;
+}
+
+/** Leads a user may see: managers / approvers all; others their own, those they support, or in their campaigns. */
+function mkt_lead_scope_sql(mysqli $conn, int $uid, string $a = 'l'): string
+{
+    if (mkt_sees_all($conn) || (function_exists('access_can') && access_can('marketing.view', $conn))) { return '1 = 1'; }
+    return "($a.owner_id = $uid OR $a.created_by = $uid OR EXISTS (SELECT 1 FROM mkt_lead_contributors k WHERE k.lead_id = $a.id AND k.user_id = $uid)
+            OR EXISTS (SELECT 1 FROM mkt_campaign_members m WHERE m.campaign_id = $a.campaign_id AND m.user_id = $uid))";
+}
+
+/** Approved contribution total for a lead (percent), excluding one row if given. */
+function mkt_contrib_total(mysqli $conn, int $leadId, int $exceptId = 0): float
+{
+    return (float) mysqli_fetch_row(mysqli_query($conn, "SELECT COALESCE(SUM(share_pct), 0) FROM mkt_lead_contributors WHERE lead_id = $leadId AND status <> 'Rejected' AND id <> $exceptId"))[0];
 }

@@ -1,7 +1,7 @@
 <?php
 // NEW FILE: modules/marketing/index.php — Marketing overview (the full dashboard with charts comes in stage 4).
 require __DIR__ . '/mkt_common.php';
-try { mkt_check_behind($conn); } catch (Throwable $x) { error_log('marketing alerts: ' . $x->getMessage()); }
+try { mkt_check_behind($conn); mkt_refresh_acquisitions($conn); mkt_followup_reminders($conn); } catch (Throwable $x) { error_log('marketing alerts: ' . $x->getMessage()); }
 $scope = mkt_campaign_scope_sql($conn, $me);
 $cnt = mysqli_fetch_assoc(mysqli_query($conn, "SELECT COUNT(*) total, SUM(status = 'Active') active, SUM(status IN ('Completed', 'Evaluated', 'Archived')) completed, SUM(status = 'Pending Approval') pending FROM mkt_campaigns c WHERE $scope"));
 $active = mysqli_fetch_all(mysqli_query($conn, "SELECT c.*, u.names AS manager FROM mkt_campaigns c LEFT JOIN users u ON u.id = c.manager_id WHERE c.status = 'Active' AND $scope ORDER BY c.end_date"), MYSQLI_ASSOC);

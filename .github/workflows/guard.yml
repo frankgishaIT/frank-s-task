@@ -1,0 +1,20 @@
+name: Guard - our changes must still be there
+
+# Runs on every push to main and on every pull request. If a change removes something we added (for example the
+# Digital Payments menu link), this turns red and GitHub emails you, BEFORE anyone finds out in production.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2   # the same PHP version as the server (8.1), so a typo is judged the way the server will judge it
+        with:
+          php-version: '8.1'
+      - name: Check that nothing we added was lost
+        run: bash tools/check_required.sh

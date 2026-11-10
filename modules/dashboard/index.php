@@ -250,6 +250,9 @@ $activityFeed = array_slice($activityFeed, 0, 6);
     </div>
 </div>
 
+<?php // NEW: Marketing & Growth summary (only for users with Marketing access).
+if (is_file(__DIR__ . '/../../includes/mkt_dashboard_widget.php')) { include __DIR__ . '/../../includes/mkt_dashboard_widget.php'; } ?>
+
 <div class="row g-3 mb-4">
     <div class="col-lg-8">
         <div class="rm-card h-100">

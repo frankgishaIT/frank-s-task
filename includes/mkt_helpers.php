@@ -729,3 +729,64 @@ function mkt_pool_split(mysqli $conn, array $pool, array $members, array $pcts =
     $out[$first] = round($out[$first] + round($amount - $given, 2), 2); // rounding cents: the totals match exactly
     return $out;
 }
+
+/* ================================================================== STAGE 4: MATERIALS, SPENDING, DASHBOARD, REPORTS */
+
+const MKT_MATERIAL_TYPES = ['Brochure', 'Flyer', 'Poster / banner', 'Social media post', 'Video', 'Presentation', 'Proposal template', 'Email / SMS text', 'Photo', 'Other'];
+
+function mkt_ensure_studio(mysqli $conn): void
+{
+    static $done = false;
+    if ($done) { return; }
+    $done = true;
+    mkt_ensure_team($conn);
+    mysqli_query($conn, "CREATE TABLE IF NOT EXISTS mkt_materials (id INT(11) NOT NULL AUTO_INCREMENT, campaign_id INT(11) NULL, title VARCHAR(160) NOT NULL, type VARCHAR(40) NOT NULL,
+        description TEXT NULL, lib_document_id INT(11) NULL, link VARCHAR(500) NULL, status VARCHAR(16) NOT NULL DEFAULT 'Draft', ai_generated TINYINT(1) NOT NULL DEFAULT 0,
+        created_by INT(11) NULL, decided_by INT(11) NULL, decided_at DATETIME NULL, decision_note VARCHAR(500) NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NULL, PRIMARY KEY (id), KEY campaign_id (campaign_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    mysqli_query($conn, "CREATE TABLE IF NOT EXISTS mkt_expense_links (transaction_id INT(11) NOT NULL, campaign_id INT(11) NOT NULL, linked_by INT(11) NULL, note VARCHAR(255) NULL,
+        linked_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (transaction_id), KEY campaign_id (campaign_id)) ENGINE=InnoDB");
+}
+
+/** Approved expense transactions that may be linked to a campaign (not linked to any campaign yet). */
+function mkt_linkable_expenses(mysqli $conn, string $q = '', int $limit = 50): array
+{
+    $w = "t.transaction_type = 'Expense' AND t.status = 'approved' AND NOT EXISTS (SELECT 1 FROM mkt_expense_links l WHERE l.transaction_id = t.id)";
+    if ($q !== '') { $qq = mysqli_real_escape_string($conn, $q); $w .= " AND (t.description LIKE '%$qq%' OR t.expense_category LIKE '%$qq%' OR t.id = " . (int) preg_replace('/\D/', '', $q) . ')'; }
+    return mysqli_fetch_all(mysqli_query($conn, "SELECT t.id, t.amount, t.transaction_date, t.description, t.expense_category FROM transactions t WHERE $w ORDER BY t.transaction_date DESC, t.id DESC LIMIT $limit"), MYSQLI_ASSOC);
+}
+
+/** Links an approved expense to a campaign (one campaign per expense) and alerts at 100% of the budget. */
+function mkt_link_expense(mysqli $conn, int $campaignId, int $txId, int $uid, string $note = ''): void
+{
+    $t = mysqli_fetch_assoc(mysqli_query($conn, "SELECT * FROM transactions WHERE id = $txId"));
+    if (!$t || $t['transaction_type'] !== 'Expense' || $t['status'] !== 'approved') { throw new RuntimeException('Only an approved expense transaction can be linked.'); }
+    $s = mysqli_prepare($conn, 'INSERT IGNORE INTO mkt_expense_links (transaction_id, campaign_id, linked_by, note) VALUES (?, ?, ?, ?)');
+    mysqli_stmt_bind_param($s, 'iiis', $txId, $campaignId, $uid, $note); mysqli_stmt_execute($s);
+    if (mysqli_stmt_affected_rows($s) !== 1) { throw new RuntimeException('This expense is already linked to a campaign (an expense counts for one campaign only).'); }
+    $c = mysqli_fetch_assoc(mysqli_query($conn, "SELECT * FROM mkt_campaigns WHERE id = $campaignId"));
+    mkt_audit($conn, 'Expense TX-' . str_pad((string) $txId, 6, '0', STR_PAD_LEFT) . ' linked: RWF ' . number_format((float) $t['amount'], 2), mkt_code('campaign', $c), null, $txId, $note ?: null, $uid);
+    $spent = mkt_actuals($conn, [$campaignId])['expenses'];
+    if ((float) $c['budget'] > 0 && $spent > (float) $c['budget']) {
+        $s = mysqli_prepare($conn, "INSERT IGNORE INTO mkt_alerts (ref, kind, sent_at) VALUES (?, 'over_budget', NOW())"); $ref = mkt_code('campaign', $c);
+        mysqli_stmt_bind_param($s, 's', $ref); mysqli_stmt_execute($s);
+        if (mysqli_stmt_affected_rows($s) === 1) {
+            mkt_notify($conn, array_merge([(int) $c['manager_id']], mkt_admin_ids($conn)), 'Campaign over budget: ' . $c['name'], 'Spent RWF ' . number_format($spent) . ' of RWF ' . number_format((float) $c['budget']) . '.');
+        }
+    }
+}
+
+/** Monthly series for a date range: leads, new customers, paying customers. */
+function mkt_monthly(mysqli $conn, string $from, string $to, ?int $campaignId = null): array
+{
+    $out = []; $m = strtotime(date('Y-m-01', strtotime($from)));
+    while ($m <= strtotime($to)) { $out[date('Y-m', $m)] = ['leads' => 0, 'converted' => 0, 'paying' => 0]; $m = strtotime('+1 month', $m); }
+    $cw = $campaignId ? " AND campaign_id = $campaignId" : '';
+    foreach ([['leads', "SELECT DATE_FORMAT(created_at, '%Y-%m') m, COUNT(*) n FROM mkt_leads WHERE DATE(created_at) BETWEEN ? AND ?$cw GROUP BY m"],
+              ['converted', "SELECT DATE_FORMAT(acquired_at, '%Y-%m') m, COUNT(*) n FROM mkt_acquisitions WHERE status <> 'Existing customer' AND DATE(acquired_at) BETWEEN ? AND ?$cw GROUP BY m"],
+              ['paying', "SELECT DATE_FORMAT(first_paid_at, '%Y-%m') m, COUNT(*) n FROM mkt_acquisitions WHERE status = 'Paying' AND DATE(first_paid_at) BETWEEN ? AND ?$cw GROUP BY m"]] as [$k, $sql]) {
+        $s = mysqli_prepare($conn, $sql); mysqli_stmt_bind_param($s, 'ss', $from, $to); mysqli_stmt_execute($s);
+        foreach (mysqli_fetch_all(mysqli_stmt_get_result($s), MYSQLI_ASSOC) as $r) { if (isset($out[$r['m']])) { $out[$r['m']][$k] = (int) $r['n']; } }
+    }
+    return $out;
+}

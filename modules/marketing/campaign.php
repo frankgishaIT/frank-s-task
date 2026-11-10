@@ -15,6 +15,20 @@ if (!$c) { header('Location: campaigns.php?error=' . urlencode('Campaign not fou
 $isManager = (int) $c['manager_id'] === $me || mkt_is_manager();
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
+        if (in_array($_POST['action'] ?? '', ['link_expense', 'unlink_expense'], true)) {
+            // NEW (stage 4): campaign spending = references to APPROVED expense transactions (never copies).
+            mkt_ensure_studio($conn);
+            if (!$isManager) { throw new RuntimeException('Only the campaign manager or a Manager links spending.'); }
+            $tx = (int) ($_POST['transaction_id'] ?? 0); $note = trim((string) ($_POST['note'] ?? ''));
+            if ($_POST['action'] === 'link_expense') { mkt_link_expense($conn, $id, $tx, $me, $note); $msg = 'Expense linked to the campaign.'; }
+            else {
+                if (mb_strlen($note) < 5) { throw new RuntimeException('Write why the expense is unlinked.'); }
+                mysqli_query($conn, "DELETE FROM mkt_expense_links WHERE transaction_id = $tx AND campaign_id = $id");
+                if (mysqli_affected_rows($conn) !== 1) { throw new RuntimeException('That expense is not linked to this campaign.'); }
+                mkt_audit($conn, 'Expense TX-' . str_pad((string) $tx, 6, '0', STR_PAD_LEFT) . ' unlinked', mkt_code('campaign', $c), $tx, null, $note, $me); $msg = 'Expense unlinked.';
+            }
+            header('Location: campaign.php?id=' . $id . '&success=' . urlencode($msg)); exit;
+        }
         if (($_POST['action'] ?? '') === 'reach') {
             if (!$isManager || !in_array($c['status'], ['Active', 'Paused', 'Completed'], true)) { throw new RuntimeException('Only the campaign manager records reach and inquiries, for a running or completed campaign.'); }
             $reached = ($_POST['reached'] ?? '') === '' ? null : max(0, (int) $_POST['reached']); $inq = ($_POST['inquiries'] ?? '') === '' ? null : max(0, (int) $_POST['inquiries']);
@@ -25,7 +39,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: campaign.php?id=' . $id . '&success=' . urlencode($msg)); exit;
     } catch (RuntimeException $ex) { $error = $ex->getMessage(); }
 }
+mkt_ensure_studio($conn);
 $a = mkt_actuals($conn, [$id]); $pf = mkt_performance($c, $a);
+$spend = mysqli_fetch_all(mysqli_query($conn, "SELECT t.id, t.amount, t.transaction_date, t.description, t.expense_category, t.status, l.note, u.names FROM mkt_expense_links l JOIN transactions t ON t.id = l.transaction_id LEFT JOIN users u ON u.id = l.linked_by WHERE l.campaign_id = $id ORDER BY t.transaction_date DESC"), MYSQLI_ASSOC);
+$mats = mysqli_fetch_all(mysqli_query($conn, "SELECT id, title, type, status, lib_document_id, link FROM mkt_materials WHERE campaign_id = $id AND status <> 'Archived' ORDER BY id DESC"), MYSQLI_ASSOC);
+$linkable = $isManager ? mkt_linkable_expenses($conn, trim((string) ($_GET['xq'] ?? ''))) : [];
 $behind = $c['status'] === 'Active' && mkt_is_behind($conn, $pf);
 $members = mysqli_fetch_all(mysqli_query($conn, "SELECT u.names FROM mkt_campaign_members m JOIN users u ON u.id = m.user_id WHERE m.campaign_id = $id ORDER BY u.names"), MYSQLI_ASSOC);
 $log = mysqli_fetch_all(mysqli_query($conn, "SELECT a.*, u.names FROM mkt_audit a LEFT JOIN users u ON u.id = a.user_id WHERE a.reference = '" . mkt_code('campaign', $c) . "' ORDER BY a.id DESC"), MYSQLI_ASSOC);
@@ -65,6 +83,23 @@ mkt_tabs('campaigns.php');
         <div class="col-md-4"><label class="text-muted">Source of the figures</label><input name="source" class="form-control form-control-sm" placeholder="e.g. Facebook page insights"></div>
         <div class="col-md-2"><button class="btn btn-sm btn-primary w-100">Save</button></div></div></form>
     <?php } ?>
+    <div class="card border-0 shadow-sm mb-3"><div class="card-body small"><h6>Spending <span class="fw-normal text-muted">(approved expenses from Transactions)</span></h6>
+        <div class="mb-2">Spent <strong class="<?= $c['budget'] > 0 && $a['expenses'] > (float) $c['budget'] ? 'text-danger' : ''; ?>"><?= $rwf($a['expenses']); ?></strong> of <?= $rwf($c['budget']); ?> budget (<?= mkt_pct_text($pf['budget_used']); ?>).</div>
+        <?php foreach ($spend as $x) { ?><div class="d-flex justify-content-between align-items-center border-top py-1 gap-2"><span>TX-<?= str_pad((string) $x['id'], 6, '0', STR_PAD_LEFT); ?> · <?= date('d M Y', strtotime($x['transaction_date'])); ?> · <?= $e($x['description']); ?><?= $x['status'] !== 'approved' ? ' <span class="badge bg-danger">' . $e($x['status']) . ' — not counted</span>' : ''; ?></span>
+            <span class="text-nowrap"><strong><?= $rwf($x['amount']); ?></strong><?php if ($isManager) { ?> <details class="d-inline"><summary class="text-muted d-inline">unlink</summary><form method="POST" class="d-flex gap-1"><input type="hidden" name="id" value="<?= $id; ?>"><input type="hidden" name="action" value="unlink_expense"><input type="hidden" name="transaction_id" value="<?= (int) $x['id']; ?>"><input name="note" class="form-control form-control-sm" placeholder="Reason"><button class="btn btn-sm btn-outline-danger">Unlink</button></form></details><?php } ?></span></div><?php } ?>
+        <?php if (!$spend) { ?><div class="text-muted">No spending linked yet.</div><?php } ?>
+        <?php if ($isManager) { ?><details class="mt-2"><summary class="text-primary">Link an approved expense</summary>
+            <form class="d-flex gap-1 my-1"><input type="hidden" name="id" value="<?= $id; ?>"><input name="xq" value="<?= $e($_GET['xq'] ?? ''); ?>" class="form-control form-control-sm" placeholder="Search description, category or TX number"><button class="btn btn-sm btn-outline-primary">Search</button></form>
+            <form method="POST" class="d-flex gap-1"><input type="hidden" name="id" value="<?= $id; ?>"><input type="hidden" name="action" value="link_expense">
+                <select name="transaction_id" class="form-select form-select-sm" required><option value="">Choose (not yet linked to any campaign)</option><?php foreach ($linkable as $x) { ?><option value="<?= (int) $x['id']; ?>">TX-<?= str_pad((string) $x['id'], 6, '0', STR_PAD_LEFT); ?> · <?= date('d M Y', strtotime($x['transaction_date'])); ?> · <?= $e(mb_strimwidth((string) $x['description'], 0, 50, '…')); ?> · RWF <?= number_format((float) $x['amount']); ?></option><?php } ?></select>
+                <input name="note" class="form-control form-control-sm" placeholder="Note" style="max-width:160px;"><button class="btn btn-sm btn-primary">Link</button></form>
+            <div class="text-muted mt-1">Record the expense in Transactions first (with its fund); once approved, link it here. An expense counts for one campaign only.</div></details><?php } ?>
+    </div></div>
+    <div class="card border-0 shadow-sm mb-3"><div class="card-body small"><h6>Materials</h6>
+        <?php foreach ($mats as $m) { ?><div class="d-flex justify-content-between border-top py-1"><span>MAT-<?= (int) $m['id']; ?> · <?= $e($m['title']); ?> <span class="text-muted">(<?= $e($m['type']); ?>)</span>
+            <?php if ($m['lib_document_id']) { ?><a href="../library/document.php?id=<?= (int) $m['lib_document_id']; ?>" target="_blank">file</a><?php } ?><?php if ($m['link']) { ?> <a href="<?= $e($m['link']); ?>" target="_blank" rel="noopener">link</a><?php } ?></span><?= mkt_badge($m['status']); ?></div><?php } ?>
+        <?php if (!$mats) { ?><div class="text-muted">None yet. <a href="materials.php">Add materials in the Creative Studio.</a></div><?php } ?>
+    </div></div>
     <div class="card border-0 shadow-sm"><div class="card-body small"><h6>Campaign details</h6><div class="row">
         <?php foreach (['Objective' => $c['objective'], 'Description' => $c['description'], 'Products / services' => mkt_offering_names($L['offerings'], $c['product_ids']), 'Target audience' => $c['target_audience'],
                         'Target organizations' => $c['target_orgs'], 'Marketing message' => $c['message'], 'Channels' => $c['channels'], 'Plan' => $c['plan_title'] ? mkt_code('plan', ['id' => $c['plan_id'], 'created_at' => $c['plan_created']]) . ' ' . $c['plan_title'] : '',

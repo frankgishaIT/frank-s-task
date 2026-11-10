@@ -6,6 +6,7 @@ require_once __DIR__ . '/../../includes/access_control.php';
 mkt_ensure($conn);
 mkt_ensure_leads($conn);
 mkt_ensure_team($conn);
+mkt_ensure_studio($conn);
 if (!access_can('marketing.view', $conn)) { http_response_code(403); include __DIR__ . '/../../includes/access_denied.php'; exit; }
 $me = (int) current_user_id();
 $isAdmin = current_user_role() === 'Admin';
@@ -14,7 +15,8 @@ $rwf = function ($v) { return 'RWF ' . number_format((float) $v, 0); };
 function mkt_tabs(string $active): void {
     // The submodules that exist so far (the others are added stage by stage).
     $t = ['index.php' => 'Overview', 'plans.php' => 'Plans & Strategy', 'campaigns.php' => 'Campaigns', 'leads.php' => 'Leads & Customers',
-          'activities.php' => 'Activities', 'team.php' => 'Team performance', 'commissions.php' => 'Commissions & wallet', 'pools.php' => 'Reward pools'];
+          'activities.php' => 'Activities', 'materials.php' => 'Creative Studio', 'team.php' => 'Team performance', 'commissions.php' => 'Commissions & wallet', 'pools.php' => 'Reward pools'];
+    if (access_can('marketing.reports')) { $t['reports.php'] = 'Reports'; }
     if (access_can('marketing.manage')) { $t['rules.php'] = 'Commission rules'; $t['settings.php'] = 'Settings'; }
     if (access_can('marketing.reports') || access_can('marketing.approve') || access_can('marketing.manage')) { $t['audit.php'] = 'Audit trail'; }
     echo '<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2"><h2 class="mb-0">Marketing &amp; Growth</h2></div><ul class="nav nav-tabs mb-3 flex-nowrap overflow-auto">';

@@ -42,6 +42,11 @@ try {
     $statement = mysqli_prepare($conn, 'DELETE FROM payroll WHERE id = ?');
     mysqli_stmt_bind_param($statement, 'i', $id);
     mysqli_stmt_execute($statement);
+    // NEW (Marketing): its marketing pay goes back to "Approved", for the next payroll.
+    if (is_file(__DIR__ . '/../../includes/mkt_helpers.php')) {
+        require_once __DIR__ . '/../../includes/mkt_helpers.php';
+        if ((int) mysqli_fetch_row(mysqli_query($conn, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'mkt_commissions'"))[0]) { mkt_payroll_unlink($conn, (int) $id); }
+    }
 
     mysqli_commit($conn);
 

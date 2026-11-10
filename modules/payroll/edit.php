@@ -4,6 +4,7 @@ require_once '../../includes/notification_helper.php';
 require_once '../../includes/payroll_fund_helpers.php'; // NEW: keeps the Operating Fund in step with the payroll
 require_once '../../includes/sms_messages.php';         // NEW: payroll SMS when it becomes Paid (MY MOTIVE SMS, message 10)
 require_role(['Admin']);
+if (is_file(__DIR__ . '/../../includes/mkt_helpers.php')) { require_once __DIR__ . '/../../includes/mkt_helpers.php'; } // NEW (Marketing)
 
 // CHANGED: problems are sent as "error" (they were sent as "success"), and messages are urlencoded.
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
@@ -54,6 +55,11 @@ if (isset($_POST['update'])) {
             //   Paid, new amount   the old expense is reversed and the new amount paid
             //   Paid -> Draft      the money goes back to the fund
             payroll_sync_fund($conn, (int) $id, $previousStatus, $userId);
+            // NEW (Marketing): the marketing pay in this payroll line is paid with it.
+            if ($status === 'Paid' && $previousStatus !== 'Paid' && function_exists('mkt_payroll_paid')
+                && (int) mysqli_fetch_row(mysqli_query($conn, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'mkt_commissions'"))[0]) {
+                mkt_payroll_paid($conn, (int) $id);
+            }
 
             mysqli_commit($conn);
 

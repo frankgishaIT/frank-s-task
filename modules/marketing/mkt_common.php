@@ -17,6 +17,7 @@ function mkt_tabs(string $active): void {
     $t = ['index.php' => 'Overview', 'plans.php' => 'Plans & Strategy', 'campaigns.php' => 'Campaigns', 'leads.php' => 'Leads & Customers',
           'activities.php' => 'Activities', 'materials.php' => 'Creative Studio', 'team.php' => 'Team performance', 'commissions.php' => 'Commissions & wallet', 'pools.php' => 'Reward pools'];
     if (access_can('marketing.reports')) { $t['reports.php'] = 'Reports'; }
+    $t['ai.php'] = 'MY MOTIVE AI';
     if (access_can('marketing.manage')) { $t['rules.php'] = 'Commission rules'; $t['settings.php'] = 'Settings'; }
     if (access_can('marketing.reports') || access_can('marketing.approve') || access_can('marketing.manage')) { $t['audit.php'] = 'Audit trail'; }
     echo '<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2"><h2 class="mb-0">Marketing &amp; Growth</h2></div><ul class="nav nav-tabs mb-3 flex-nowrap overflow-auto">';

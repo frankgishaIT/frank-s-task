@@ -29,6 +29,7 @@ const MKT_DEFAULTS = [
     'channels'              => "Direct visit\nPhone call\nWhatsApp\nFacebook\nLinkedIn\nInstagram\nWebsite\nEmail\nSMS\nEvents\nPartnerships\nReferral",
     'lead_sources'          => "Direct Visit\nReferral\nFacebook\nLinkedIn\nWhatsApp\nWebsite\nPhone Call\nEmail\nPartnership\nExisting Customer Referral\nOther",
     'customer_types'        => "Individual\nSmall business\nCompany\nNGO\nGovernment institution\nSchool\nCooperative\nOther",
+    'ai_enabled'            => '1', // MY MOTIVE AI on / off (Administrators)
     'score_weights'         => "lead=1\nfollowup=0.5\nqualified=2\nconversion=5\npaying=10\nactivity_on_time=2\nactivity_late=1", // performance points
 ];
 

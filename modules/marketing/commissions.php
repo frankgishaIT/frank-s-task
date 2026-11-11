@@ -27,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $msg = 'Adjusted: commission is now RWF ' . number_format($amount, 2) . '.';
         } else {
             $n = mkt_commission_decide($conn, (array) ($_POST['ids'] ?? []), $act, $me, $isAdmin, $note);
-            $msg = $n . ' line(s) ' . ['verify' => 'verified', 'approve' => 'approved', 'reject' => 'rejected'][$act] . '.' . ($n === 0 ? ' (Nothing matched: check their status; your own lines need another approver.)' : '');
+            $msg = $n . ' line(s) ' . ['verify' => 'verified', 'approve' => 'approved', 'reject' => 'rejected'][$act] . '.' . ($n === 0 ? ' (Nothing matched: check their status. Your own lines: Administrators approve them with a note; other users need an Administrator.)' : '');
         }
         header('Location: commissions.php?' . http_build_query(['success' => $msg] + array_intersect_key($_GET, ['status' => 1, 'user' => 1, 'period' => 1]))); exit;
     } catch (RuntimeException $ex) { $error = $ex->getMessage(); }

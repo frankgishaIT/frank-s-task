@@ -103,7 +103,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $msg = 'Results saved. They must be approved before any payout.'; break;
             case 'approve_results':
                 if (!$canApprove || $p['results_status'] !== 'Submitted') { throw new RuntimeException('Only managers with approval rights can approve submitted results.'); }
-                if ((int) $p['results_by'] === $me) { throw new RuntimeException('Results must be approved by someone other than the person who entered them.'); }
+                // CHANGED: Administrators may approve results they entered themselves (with the approval note); others may not.
+                $selfApproved = (int) $p['results_by'] === $me;
+                if ($selfApproved && current_user_role() !== 'Admin') { throw new RuntimeException('Results must be approved by someone other than the person who entered them (or by an Administrator).'); }
                 if (mb_strlen($reason) < 5) { throw new RuntimeException('Write a short approval note (e.g. figures checked against the project accounts).'); }
                 $calc = inv_calculate($conn, $p);
                 if (!$calc['ok']) { throw new RuntimeException($calc['reason']); }
@@ -112,7 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $s = mysqli_prepare($conn, "INSERT IGNORE INTO inv_distributions (project_id, application_id, customer_id, contribution, share_pct, profit_share, capital_returned, total_payout, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Approved')");
                 foreach ($calc['rows'] as $x) { mysqli_stmt_bind_param($s, 'iiiddddd', $id, $x['application_id'], $x['customer_id'], $x['contribution'], $x['share_pct'], $x['profit'], $x['capital'], $x['total']); mysqli_stmt_execute($s); }
                 mysqli_query($conn, "UPDATE inv_projects SET results_status = 'Approved', results_approved_by = $me, results_approved_at = NOW() WHERE id = $id");
-                inv_audit($conn, $id, null, 'Results approved: realized ' . cl_money($calc['profit']) . ', management fee ' . cl_money($calc['fee']) . ', distributable ' . cl_money($calc['distributable']), $reason, $me);
+                inv_audit($conn, $id, null, 'Results approved' . ($selfApproved ? ' (self-approved by Administrator)' : '') . ': realized ' . cl_money($calc['profit']) . ', management fee ' . cl_money($calc['fee']) . ', distributable ' . cl_money($calc['distributable']), $reason, $me);
                 mysqli_commit($conn);
                 foreach ($calc['rows'] as $x) { portal_notify_customer($conn, $x['customer_id'], 'Profit / loss report published: ' . $p['name'], 'Your payout: ' . cl_money($x['total']) . ' (capital ' . cl_money($x['capital']) . ' + profit ' . cl_money($x['profit']) . ').', 'my_investments.php?project=' . $id); }
                 $msg = 'Results approved and the distribution calculated.'; break;

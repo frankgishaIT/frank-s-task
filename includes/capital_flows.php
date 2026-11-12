@@ -28,6 +28,17 @@ function cf_ensure(mysqli $conn): void
         inv_type VARCHAR(8) NULL, amount DECIMAL(16,2) NOT NULL, settled DECIMAL(16,2) NULL, principal DECIMAL(16,2) NULL, interest DECIMAL(16,2) NULL,
         transaction_id INT(11) NULL, transaction2_id INT(11) NULL, posted_for DATE NOT NULL, backfilled TINYINT(1) NOT NULL DEFAULT 0, created_by INT(11) NULL,
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (id), UNIQUE KEY once (kind, ref_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    // FIX: transactions.category / expense_category must hold the new category names (e.g. "Investor Capital Contribution",
+    // 29 characters): widened to 100 when shorter, keeping the values, NULL / NOT NULL and the default.
+    foreach (['category', 'expense_category'] as $col) {
+        $ci = mysqli_fetch_assoc(mysqli_query($conn, "SELECT DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, IS_NULLABLE, COLUMN_DEFAULT FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'transactions' AND column_name = '$col'"));
+        if ($ci && in_array(strtolower($ci['DATA_TYPE']), ['varchar', 'char'], true) && (int) $ci['CHARACTER_MAXIMUM_LENGTH'] < 100) {
+            $d = $ci['COLUMN_DEFAULT'];
+            $def = ($d !== null && strtoupper($d) !== 'NULL') ? " DEFAULT '" . mysqli_real_escape_string($conn, trim($d, "'")) . "'" : '';
+            mysqli_query($conn, "ALTER TABLE transactions MODIFY `$col` VARCHAR(100) " . ($ci['IS_NULLABLE'] === 'YES' ? 'NULL' : 'NOT NULL') . $def);
+        }
+    }
     // Investor money can be a LOAN (liability) or a CAPITAL contribution: set per project.
     $c = mysqli_query($conn, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'inv_projects'");
     if ((int) mysqli_fetch_row($c)[0]) {
@@ -228,6 +239,34 @@ function cf_pending(mysqli $conn): array
             $out[] = ['kind' => 'INV_REFUND', 'row' => $k, 'date' => substr($k['verified_at'] ?: $k['created_at'], 0, 10), 'amount' => (float) $k['amount'], 'label' => 'Investor refund ' . $k['contribution_ref']]; }
     }
     usort($out, function ($a, $b) { $o = ['INV_CONTRIB' => 0, 'CL_DISBURSE' => 1, 'CL_PAYMENT' => 2, 'INV_PAYOUT' => 3, 'INV_REFUND' => 4]; return [$a['date'], $o[$a['kind']]] <=> [$b['date'], $o[$b['kind']]]; });
+    return $out;
+}
+
+/** What recording the past movements would do to each fund: [code => [name, now, change, after]]. */
+function cf_pending_effect(mysqli $conn, array $items): array
+{
+    $chg = [];
+    $add = function ($code, $v) use (&$chg) { $chg[$code] = ($chg[$code] ?? 0) + $v; };
+    foreach ($items as $it) {
+        $r = $it['row'];
+        switch ($it['kind']) {
+            case 'INV_CONTRIB': $add('CAPITAL', (float) $r['amount']); break;
+            case 'CL_DISBURSE': $add('CAPITAL', -(float) $r['approved_amount']); break;
+            case 'CL_PAYMENT':
+                $sp = cf_cl_splits($conn, (int) $r['application_id'])[(int) $r['id']] ?? ['principal' => 0, 'interest' => 0];
+                $add('CAPITAL', $sp['principal']);
+                foreach (build_allocation(funds_all($conn), $sp['interest']) as $row) { $add($row['fund']['code'], $row['amount']); }
+                break;
+            case 'INV_PAYOUT': $add('CAPITAL', -(float) $r['capital_returned']); $add('OPERATING', -(float) $r['profit_share']); break;
+            default: $add('CAPITAL', -(float) $r['amount']);
+        }
+    }
+    $out = [];
+    foreach (funds_all($conn) as $f) {
+        if (!isset($chg[$f['code']])) { continue; }
+        $now = round(fund_cash_balance($conn, (int) $f['id']), 2);
+        $out[$f['code']] = ['name' => $f['name'], 'now' => $now, 'change' => round($chg[$f['code']], 2), 'after' => round($now + $chg[$f['code']], 2)];
+    }
     return $out;
 }
 

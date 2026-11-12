@@ -10,6 +10,9 @@ $cfMsg = null; $cfErr = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cf_record_pending'])) {
     try {
         if (current_user_role() !== 'Admin') { throw new RuntimeException('Only Administrators record past movements in the funds.'); }
+        // A fund that would go below zero needs an explicit confirmation that this money really moved.
+        $neg = array_filter(cf_pending_effect($conn, cf_pending($conn)), function ($x) { return $x['after'] < -0.001; });
+        if ($neg && empty($_POST['cf_confirm_negative'])) { throw new RuntimeException('Some funds would go below zero: check the list, then tick the confirmation if this money really moved.'); }
         $n = cf_record_pending($conn, (int) current_user_id());
         $cfMsg = $n . ' past movement(s) recorded in RM Capital Fund, the other funds and Transactions, at their original dates.';
     } catch (Throwable $x) { $cfErr = 'Nothing was recorded: ' . $x->getMessage(); }
@@ -30,7 +33,13 @@ $cf = cf_overview($conn); $cfMoney = function ($v) { return 'RWF ' . number_form
     <?php if ($cf['pending'] > 0 && current_user_role() === 'Admin') { $cfList = cf_pending($conn); ?>
     <div class="alert alert-warning mt-3 mb-0"><strong><?= (int) $cf['pending']; ?> past movement(s) are not in the funds yet</strong> (they happened before this integration):
         <ul class="mb-2"><?php foreach (array_slice($cfList, 0, 8) as $it) { ?><li><?= htmlspecialchars($it['label'], ENT_QUOTES, 'UTF-8'); ?> · <?= $cfMoney($it['amount']); ?> · <?= date('d M Y', strtotime($it['date'])); ?></li><?php } ?><?= count($cfList) > 8 ? '<li>…</li>' : ''; ?></ul>
-        <form method="POST" onsubmit="return confirm('Record these past movements in the funds and Transactions, at their original dates? Each is recorded once.');"><button name="cf_record_pending" value="1" class="btn btn-sm btn-primary">Record them now</button>
+        <?php $cfEff = cf_pending_effect($conn, $cfList); $cfNeg = array_filter($cfEff, function ($x) { return $x['after'] < -0.001; }); ?>
+        <div class="mb-2"><strong>Effect on the funds:</strong>
+            <?php foreach ($cfEff as $x) { ?><div><?= htmlspecialchars($x['name'], ENT_QUOTES, 'UTF-8'); ?>: <?= $cfMoney($x['now']); ?> <?= $x['change'] >= 0 ? '+' : '−'; ?> <?= $cfMoney(abs($x['change'])); ?> = <strong class="<?= $x['after'] < 0 ? 'text-danger' : ''; ?>"><?= $cfMoney($x['after']); ?></strong></div><?php } ?></div>
+        <?php if ($cfNeg) { ?><div class="text-danger mb-2"><i class="bi bi-exclamation-triangle-fill"></i> <strong>Some funds would go below zero.</strong> This usually means some of these movements were <strong>tests</strong>, not real money. Record them only if this money really moved; test entries should be corrected first (ask your system administrator).</div><?php } ?>
+        <form method="POST" onsubmit="return confirm('Record these past movements in the funds and Transactions, at their original dates? Each is recorded once.');">
+            <?php if ($cfNeg) { ?><label class="d-block mb-2"><input type="checkbox" name="cf_confirm_negative" value="1" class="form-check-input me-1" required>I confirm this money really moved (these are not tests).</label><?php } ?>
+            <button name="cf_record_pending" value="1" class="btn btn-sm btn-primary">Record them now</button>
             <span class="text-muted ms-2">Recorded at their original dates, in date order, each once. If any step fails, nothing is recorded.</span></form></div>
     <?php } ?>
 </div></div>

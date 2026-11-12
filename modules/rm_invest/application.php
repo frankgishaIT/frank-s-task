@@ -4,6 +4,8 @@
  * (creates the contribution reference and payment instructions), rejection, contribution verification, refund.
  */
 require __DIR__ . '/invest_common.php';
+require_once __DIR__ . '/../../includes/capital_flows.php'; // NEW: investor money through RM Capital Fund and Transactions
+cf_ensure($conn);
 $id = (int) ($_POST['id'] ?? ($_GET['id'] ?? 0));
 $a = mysqli_fetch_assoc(mysqli_query($conn, "SELECT * FROM inv_applications WHERE id = $id AND status <> 'Draft'"));
 if (!$a) { header('Location: applications.php?error=' . urlencode('Application not found.')); exit; }
@@ -47,6 +49,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $s = mysqli_prepare($conn, "UPDATE inv_contributions SET status = 'Verified', verified_by = ?, verified_at = NOW(), note = ? WHERE application_id = ? AND status = 'Pending verification'");
                     mysqli_stmt_bind_param($s, 'isi', $me, $reason, $id); mysqli_stmt_execute($s);
                     if (mysqli_stmt_affected_rows($s) !== 1) { throw new RuntimeException('This payment was already handled.'); }
+                    // NEW: the money enters RM Capital Fund, as an investor LOAN (liability) or CAPITAL contribution (project setting).
+                    cf_inv_contribution($conn, $k, $me, $k['paid_on'] ?: date('Y-m-d'));
                     inv_set_app_status($conn, $id, $p['status'] === 'Active' ? 'Active Investor' : 'Confirmed', $me, 'Contribution ' . $k['contribution_ref'] . ' verified', 'Contribution verified');
                     $f = inv_funding($conn, (int) $p['id']);
                     if ($f['raised'] >= $f['required'] - 0.5 && $p['status'] === 'Published') {
@@ -67,9 +71,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 mysqli_query($conn, "DELETE FROM inv_contributions WHERE application_id = $id AND status = 'Awaiting payment'");
                 inv_set_app_status($conn, $id, 'Cancelled', $me, $reason, 'Cancelled by RISE MOTIVE'); $msg = 'Cancelled.'; break;
             case 'refund':
+                // NEW: a verified contribution goes back to the investor from RM Capital Fund (checked; all or nothing).
+                $kRow = mysqli_fetch_assoc(mysqli_query($conn, "SELECT * FROM inv_contributions WHERE application_id = $id"));
+                mysqli_begin_transaction($conn);
+                if ($kRow && in_array($st, ['Confirmed', 'Active Investor', 'Payment Pending Verification'], true) && trim((string) ($_POST['refund_ref'] ?? '')) !== '' && mb_strlen($reason) >= 5) {
+                    $kRow['status'] = 'Refunded'; cf_inv_refund($conn, $kRow, $me, date('Y-m-d'));
+                }
                 if (!in_array($st, ['Confirmed', 'Active Investor', 'Payment Pending Verification'], true) || mb_strlen($reason) < 5 || trim((string) $_POST['refund_ref']) === '') { throw new RuntimeException('Write the reason and the refund payment reference.'); }
                 mysqli_query($conn, "UPDATE inv_contributions SET status = 'Refunded', note = '" . mysqli_real_escape_string($conn, 'Refund ref ' . trim((string) $_POST['refund_ref'])) . "' WHERE application_id = $id");
-                inv_set_app_status($conn, $id, 'Refunded', $me, $reason . ' (refund ref ' . trim((string) $_POST['refund_ref']) . ')', 'Refunded'); $msg = 'Refund recorded.'; break;
+                inv_set_app_status($conn, $id, 'Refunded', $me, $reason . ' (refund ref ' . trim((string) $_POST['refund_ref']) . ')', 'Refunded');
+                mysqli_commit($conn); $msg = 'Refund recorded.'; break;
         }
         header('Location: application.php?id=' . $id . '&success=' . urlencode($msg)); exit;
     } catch (RuntimeException $ex) { @mysqli_rollback($conn); $error = $ex->getMessage(); }

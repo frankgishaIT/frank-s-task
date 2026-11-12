@@ -418,16 +418,26 @@ function fin_position(mysqli $conn, string $asOf): array
     $loanCurrent = min($loanCurrent, $loanPrincipal);
     $salariesPayable = fin_value($conn, "SELECT COALESCE(SUM(net_salary), 0) FROM payroll WHERE status = 'Draft' AND pay_period <= ?", 's', [$asOf]);
 
+    // NEW (RM Credit Hub / RM Investors Hub): customer loans receivable, investor loans (liability), investor capital (equity),
+    // from the recorded postings (each counted once). Recovered principal and investor capital are NOT owners' capital.
+    $customerLoans = 0.0; $investorLoans = 0.0; $investorCapital = 0.0; $cfExcluded = 0.0;
+    if ((int) fin_value($conn, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'cf_postings'", '', [])) {
+        $customerLoans = max(0, fin_value($conn, "SELECT COALESCE(SUM(CASE WHEN kind = 'CL_DISBURSE' THEN amount WHEN kind = 'CL_PAYMENT' THEN -principal ELSE 0 END), 0) FROM cf_postings WHERE posted_for <= ?", 's', [$asOf]));
+        $investorLoans = max(0, fin_value($conn, "SELECT COALESCE(SUM(CASE WHEN kind = 'INV_CONTRIB' THEN amount ELSE -settled END), 0) FROM cf_postings WHERE inv_type = 'loan' AND kind IN ('INV_CONTRIB', 'INV_PAYOUT', 'INV_REFUND') AND posted_for <= ?", 's', [$asOf]));
+        $investorCapital = max(0, fin_value($conn, "SELECT COALESCE(SUM(CASE WHEN kind = 'INV_CONTRIB' THEN amount ELSE -settled END), 0) FROM cf_postings WHERE inv_type = 'capital' AND kind IN ('INV_CONTRIB', 'INV_PAYOUT', 'INV_REFUND') AND posted_for <= ?", 's', [$asOf]));
+        $cfExcluded = fin_value($conn, "SELECT COALESCE(SUM($signed), 0) $capitalBase AND $cat = 'contrib' AND m.ref_type IN ('CL_PRINCIPAL', 'INV_CAPITAL')", 's', [$asOf]);
+    }
+
     // --- Equity ---
-    $contributed = round($capitalIn - $loanIn - $assetSaleIn - $refundIn, 2);
+    $contributed = round($capitalIn - $loanIn - $assetSaleIn - $refundIn - $cfExcluded, 2); // CHANGED: without recovered principal / investor capital
     $retained = fin_pnl($conn, null, $asOf)['net'];
     // NEW: Revaluation Reserve (equity): asset increases backed by evidence, never profit.
     $revaluationReserve = fin_value($conn, "SELECT COALESCE(SUM(to_reserve), 0) FROM asset_valuations WHERE valuation_date <= ?", 's', [$asOf]);
 
-    $currentAssets = round($cash + $receivables + $refundsDue + $inventory + $goodsOrdered, 2);
+    $currentAssets = round($cash + $receivables + $refundsDue + $inventory + $goodsOrdered + $customerLoans, 2); // CHANGED: + customer loans receivable
     $totalAssets = round($currentAssets + $fixedAssets, 2);
     $currentLiabilities = round($salariesPayable + $loanCurrent, 2);
-    $totalLiabilities = round($salariesPayable + $loanPrincipal, 2);
+    $totalLiabilities = round($salariesPayable + $loanPrincipal + $investorLoans, 2); // CHANGED: + investor loans
     $netAssets = round($totalAssets - $totalLiabilities, 2);
 
     $funds = fin_rows($conn, "SELECT f.name, f.code, COALESCE(SUM(CASE WHEN m.direction = 'IN' THEN m.amount ELSE -m.amount END), 0) AS balance
@@ -445,7 +455,8 @@ function fin_position(mysqli $conn, string $asOf): array
         'current_liabilities' => $currentLiabilities, 'total_liabilities' => $totalLiabilities,
         'net_assets' => $netAssets,
         'contributed' => $contributed, 'retained' => $retained, 'revaluation_reserve' => $revaluationReserve, 'refunds_due' => $refundsDue,
-        'opening' => round($netAssets - $contributed - $retained - $revaluationReserve, 2),
+        'opening' => round($netAssets - $contributed - $retained - $revaluationReserve - $investorCapital, 2),
+        'customer_loans' => round($customerLoans, 2), 'investor_loans' => round($investorLoans, 2), 'investor_capital' => round($investorCapital, 2),
         'funds' => $funds,
     ];
 }
@@ -584,6 +595,7 @@ function fin_report_balance(array $report, array $p): array
         $L('Assets', 'Inventory (stock at buying price)', $p['inventory']),
         $L('Assets', 'Goods ordered, not yet received (paid)', $p['goods_ordered']),
         $L('Assets', 'Refunds due from sellers (assets returned)', $p['refunds_due']),
+        $L('Assets', 'Customer loans receivable (RM Credit Hub principal outstanding)', $p['customer_loans'] ?? 0),
         $L('', 'TOTAL CURRENT ASSETS', $p['current_assets']),
         $L('Assets', 'Property & equipment (net book value)', $p['fixed_assets']),
         $L('', 'TOTAL NON-CURRENT ASSETS', $p['fixed_assets']),
@@ -592,9 +604,11 @@ function fin_report_balance(array $report, array $p): array
         $L('Liabilities', 'Loan principal due within 12 months', $p['loan_current']),
         $L('', 'TOTAL CURRENT LIABILITIES', $p['current_liabilities']),
         $L('Liabilities', 'Loans (principal due after 12 months)', $p['loan_long']),
-        $L('', 'TOTAL NON-CURRENT LIABILITIES', $p['loan_long']),
+        $L('Liabilities', 'Investor loans (RM Investors Hub, principal to repay)', $p['investor_loans'] ?? 0),
+        $L('', 'TOTAL NON-CURRENT LIABILITIES', round($p['loan_long'] + ($p['investor_loans'] ?? 0), 2)),
         $L('', 'TOTAL LIABILITIES', $p['total_liabilities']),
         $L('Equity', 'Capital put in by the owners', $p['contributed']),
+        $L('Equity', 'Investor capital (RM Investors Hub, to return)', $p['investor_capital'] ?? 0),
         $L('Equity', 'Retained earnings (accumulated profit / loss)', $p['retained']),
         $L('Equity', 'Revaluation reserve (asset revaluations)', $p['revaluation_reserve']),
         $L('Equity', 'Opening balances & reconciling items', $p['opening']),

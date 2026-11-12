@@ -22,9 +22,12 @@ $activeEmployees = scalarQuery($conn, 'SELECT COUNT(*) FROM users WHERE is_activ
 $activeDepartments = scalarQuery($conn, 'SELECT COUNT(*) FROM departments WHERE is_active = 1');
 $todayAttendance = scalarQuery($conn, "SELECT COUNT(*) FROM attendance WHERE attendance_date = CURDATE() AND status IN ('Present', 'Late')");
 $openTasks = scalarQuery($conn, "SELECT COUNT(*) FROM tasks WHERE status != 'Completed'");
-$monthlyIncome = (float) scalarQuery($conn, "SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE transaction_type = 'Income' AND $approvedThisMonth");
+// CHANGED: capital movements are not income or running costs: borrowed money, recovered loan principal,
+// investor capital (in); customer loans disbursed, investor principal paid back (out).
+$capitalCategories = "'Loan Received', 'Loan Principal Recovered', 'Investor Capital Contribution', 'Customer Loan Disbursed', 'Investor Loan Principal Repaid', 'Investor Capital Returned'";
+$monthlyIncome = (float) scalarQuery($conn, "SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE transaction_type = 'Income' AND category NOT IN ($capitalCategories) AND $approvedThisMonth");
 // CHANGED: expenses are split into running costs and stock purchases (same as the Transactions reports).
-$monthlyExpense = (float) scalarQuery($conn, "SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE transaction_type = 'Expense' AND category <> '$stockPurchaseCategory' AND $approvedThisMonth");
+$monthlyExpense = (float) scalarQuery($conn, "SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE transaction_type = 'Expense' AND category <> '$stockPurchaseCategory' AND category NOT IN ($capitalCategories) AND $approvedThisMonth");
 $monthlyStockPurchases = (float) scalarQuery($conn, "SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE transaction_type = 'Expense' AND category = '$stockPurchaseCategory' AND $approvedThisMonth");
 
 $totalProjects = scalarQuery($conn, "SELECT COUNT(*) FROM projects");

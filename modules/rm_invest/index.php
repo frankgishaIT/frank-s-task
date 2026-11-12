@@ -5,6 +5,7 @@ $rows = mysqli_fetch_all(mysqli_query($conn, 'SELECT * FROM inv_projects ORDER B
 $todo = (int) mysqli_fetch_row(mysqli_query($conn, "SELECT COUNT(*) FROM inv_applications WHERE status IN ('Submitted', 'Payment Pending Verification')"))[0];
 include '../../includes/header.php'; include '../../includes/sidebar.php';
 inv_tabs('index.php');
+include __DIR__ . '/../../includes/capital_overview_panel.php'; // NEW: RM Capital Fund overview
 ?>
 <div class="d-flex justify-content-between flex-wrap gap-2 mb-3">
     <div><?= $todo ? '<a href="applications.php" class="btn btn-sm btn-outline-primary">' . $todo . ' application(s) / payment(s) to handle</a>' : ''; ?></div>

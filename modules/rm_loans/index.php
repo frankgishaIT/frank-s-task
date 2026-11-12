@@ -18,6 +18,7 @@ $counts = []; foreach (mysqli_fetch_all(mysqli_query($conn, "SELECT status, COUN
 $pending = (int) mysqli_fetch_row(mysqli_query($conn, "SELECT COUNT(*) FROM cl_payments WHERE status = 'Pending verification'"))[0];
 include '../../includes/header.php'; include '../../includes/sidebar.php';
 cl_tabs('index.php');
+include __DIR__ . '/../../includes/capital_overview_panel.php'; // NEW: RM Capital Fund overview
 ?>
 <?php if ($pending) { ?><div class="alert alert-info small"><?= $pending; ?> repayment(s) reported by customers are waiting for verification (marked in the list).</div><?php } ?>
 <div class="d-flex flex-wrap gap-1 mb-3 small">

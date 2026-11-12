@@ -99,7 +99,7 @@ $paidOther = round($paidSalesCash - $profitAllocated - $cogsPaid, 2);
 $unpaidCash = $q("SELECT COALESCE(SUM(amount_paid), 0) FROM sales WHERE status IN ('Credit', 'Partially Paid')");
 // d) Income received but not allocated to any fund (e.g. recorded before the funds existed).
 $incomeCash = $pos['cash_parts']['income'];
-$incomeAllocated = $q("SELECT COALESCE(SUM($signed), 0) FROM fund_movements m WHERE m.ref_type = 'TX_INCOME'");
+$incomeAllocated = $q("SELECT COALESCE(SUM($signed), 0) FROM fund_movements m WHERE m.ref_type IN ('TX_INCOME', 'CL_INTEREST')"); // CHANGED: + customer loan interest (RM Credit Hub)
 $incomeUnallocated = round($incomeCash - $incomeAllocated, 2);
 // e) Loans received through the Loans module that never went into the Capital Fund.
 $loansIn = $pos['cash_parts']['loans_in'] ?? 0.0;
@@ -133,13 +133,15 @@ $incomeByGroup = mysqli_fetch_all(mysqli_query($conn, "SELECT t.category, DATE_F
     FROM transactions t LEFT JOIN sales s ON s.transaction_id = t.id
     WHERE t.transaction_type = 'Income' AND t.status = 'approved' AND s.id IS NULL
       AND (t.is_automatic = 0 OR t.category = 'Overdue Charges')
-      AND NOT EXISTS (SELECT 1 FROM fund_movements m WHERE m.ref_type = 'TX_INCOME' AND m.ref_id = t.id)
+      AND NOT EXISTS (SELECT 1 FROM fund_movements m WHERE (m.ref_type = 'TX_INCOME' AND m.ref_id = t.id) OR (m.ref_type = 'CL_INTEREST' AND m.transaction_id = t.id))
+      AND t.category <> 'Loan Received'
     GROUP BY t.category, month ORDER BY amount DESC LIMIT 30"), MYSQLI_ASSOC);
 $incomeTop = mysqli_fetch_all(mysqli_query($conn, "SELECT t.id, t.transaction_date, t.category, t.amount, t.description, u.names AS by_name
     FROM transactions t LEFT JOIN sales s ON s.transaction_id = t.id LEFT JOIN users u ON u.id = t.recorded_by
     WHERE t.transaction_type = 'Income' AND t.status = 'approved' AND s.id IS NULL
       AND (t.is_automatic = 0 OR t.category = 'Overdue Charges')
-      AND NOT EXISTS (SELECT 1 FROM fund_movements m WHERE m.ref_type = 'TX_INCOME' AND m.ref_id = t.id)
+      AND NOT EXISTS (SELECT 1 FROM fund_movements m WHERE (m.ref_type = 'TX_INCOME' AND m.ref_id = t.id) OR (m.ref_type = 'CL_INTEREST' AND m.transaction_id = t.id))
+      AND t.category <> 'Loan Received'
     ORDER BY t.amount DESC LIMIT 20"), MYSQLI_ASSOC);
 // b) Money put straight into a fund without passing through Transactions or a sale (e.g. opening balances):
 //    the funds count it, the Balance Sheet cash does not. Usually explains a round "not explained" amount.

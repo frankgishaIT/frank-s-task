@@ -27,7 +27,9 @@ $currentPage = min($currentPage, $totalPages);
 $offset = ($currentPage - 1) * PER_PAGE;
 
 // Totals only ever count approved transactions.
-$summary = mysqli_query($conn, "SELECT COALESCE(SUM(CASE WHEN transaction_type = 'Income' THEN amount ELSE 0 END), 0) AS income, COALESCE(SUM(CASE WHEN transaction_type = 'Expense' THEN amount ELSE 0 END), 0) AS expense FROM transactions WHERE status = 'approved'");
+// CHANGED: capital movements (borrowed money, loan principal, investor capital) are not income or expenses.
+$summary = mysqli_query($conn, "SELECT COALESCE(SUM(CASE WHEN transaction_type = 'Income' THEN amount ELSE 0 END), 0) AS income, COALESCE(SUM(CASE WHEN transaction_type = 'Expense' THEN amount ELSE 0 END), 0) AS expense FROM transactions WHERE status = 'approved'
+    AND category NOT IN ('Loan Received', 'Loan Principal Recovered', 'Investor Capital Contribution', 'Customer Loan Disbursed', 'Investor Loan Principal Repaid', 'Investor Capital Returned')");
 $totals = mysqli_fetch_assoc($summary);
 
 // Profit Overview — uses the shared rules in includes/profit_rules.php so it

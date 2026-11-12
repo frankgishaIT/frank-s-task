@@ -181,14 +181,6 @@ if ($rmCompactUi) { ?>
     <a href="../sales/index.php" class="<?= navActive('sales', $currentPath) ?>">
         <i class="bi bi-cart-check-fill"></i> Sales
     </a>
-
-    <?php if (in_array(current_user_role(), ['Admin', 'Manager'], true)) { ?>
-    <!-- NEW: every Digital Payment (MTN MoMo), and the ones that need attention -->
-    <a href="../sales/digital_payments.php" class="<?= navActive('digital_payments', $currentPath) ?>">
-        <i class="bi bi-phone-fill"></i> Digital Payments
-    </a>
-    <?php } ?>
-    
     <a href="../loans/index.php" class="<?= navActive('loans', $currentPath) ?>">
     <i class="bi bi-bank"></i> Loans
      </a>
@@ -357,6 +349,7 @@ if ($rmCompactUi) { ?>
 
 <!-- NEW: every long dropdown (8+ choices) becomes a type-to-search box, on every page -->
 <script src="<?= BASE_URL ?>/includes/searchable_select.js?v=1"></script>
+<script src="<?= BASE_URL ?>/includes/rm_session.js?v=1" data-base="<?= htmlspecialchars(rtrim((string) BASE_URL, '/'), ENT_QUOTES, 'UTF-8'); ?>"></script><!-- NEW: 30-minute inactivity timeout -->
 <?php if (!empty($rmCompactUi)) { ?><script src="<?= BASE_URL ?>/includes/rm_ui.js?v=1"></script><?php } // Task 5: three-dot menus on small screens ?>
 <script>
 document.addEventListener('DOMContentLoaded', function () {

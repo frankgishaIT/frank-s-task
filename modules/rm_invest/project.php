@@ -4,6 +4,8 @@
  * D distribution, E risks, F publication), files, investor updates, results, profit distribution and payouts.
  */
 require __DIR__ . '/invest_common.php';
+require_once __DIR__ . '/../../includes/capital_flows.php'; // NEW: payouts through the funds and Transactions
+cf_ensure($conn);
 require_once __DIR__ . '/../../includes/evidence_store.php';
 $id = (int) ($_POST['id'] ?? ($_GET['id'] ?? 0));
 $p = $id ? mysqli_fetch_assoc(mysqli_query($conn, "SELECT * FROM inv_projects WHERE id = $id")) : null;
@@ -26,6 +28,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 foreach (['max_investors', 'min_investors'] as $k) { $v[$k] = (int) ($_POST[$k] ?? 0) ?: null; }
                 foreach (['funding_deadline', 'start_date', 'end_date'] as $k) { $v[$k] = DateTime::createFromFormat('Y-m-d', (string) ($_POST[$k] ?? '')) ? $_POST[$k] : null; }
                 $v['mgmt_fee_pct'] = min(100, max(0, (float) ($_POST['mgmt_fee_pct'] ?? inv_setting($conn, 'mgmt_fee_pct'))));
+                // NEW: how the investors' money is treated (locked once money was received).
+                $v['contribution_type'] = ($_POST['contribution_type'] ?? 'capital') === 'loan' ? 'loan' : 'capital';
+                if ($p && ($p['contribution_type'] ?? 'capital') !== $v['contribution_type']
+                    && (int) mysqli_fetch_row(mysqli_query($conn, "SELECT COUNT(*) FROM cf_postings c JOIN inv_contributions k ON k.id = c.ref_id WHERE c.kind = 'INV_CONTRIB' AND k.project_id = $id"))[0]) {
+                    throw new RuntimeException('Investor money was already received for this project: the type of contribution can no longer be changed.');
+                }
                 if ($v['name'] === '' || $v['capital_required'] <= 0) { throw new RuntimeException('Give the project a name and the total capital required.'); }
                 if ($v['min_invest'] <= 0 || ($v['max_invest'] > 0 && $v['max_invest'] < $v['min_invest']) || $v['min_invest'] > $v['capital_required']) { throw new RuntimeException('Check the minimum and maximum investment per investor.'); }
                 if ($v['start_date'] && $v['end_date'] && $v['end_date'] < $v['start_date']) { throw new RuntimeException('The end date is before the start date.'); }
@@ -123,10 +131,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (inv_testing($conn)) { throw new RuntimeException('Testing mode is ON: payouts are blocked.'); }
                 $did = (int) $_POST['distribution_id']; $pref = mb_substr(trim((string) $_POST['paid_ref']), 0, 80);
                 if ($pref === '') { throw new RuntimeException('Enter the payment reference.'); }
+                mysqli_begin_transaction($conn);
                 $s = mysqli_prepare($conn, "UPDATE inv_distributions SET status = 'Paid', paid_at = NOW(), paid_ref = ?, paid_by = ? WHERE id = ? AND project_id = ? AND status = 'Approved'");
                 mysqli_stmt_bind_param($s, 'siii', $pref, $me, $did, $id); mysqli_stmt_execute($s);
                 if (mysqli_stmt_affected_rows($s) !== 1) { throw new RuntimeException('That payout was already processed.'); }
                 $d = mysqli_fetch_assoc(mysqli_query($conn, "SELECT * FROM inv_distributions WHERE id = $did"));
+                // NEW: principal from RM Capital Fund, return from RM Business Operating Fund (two linked transactions, all or nothing).
+                cf_inv_payout($conn, $d, $me, date('Y-m-d'));
+                mysqli_commit($conn);
                 inv_audit($conn, $id, (int) $d['application_id'], 'Payout processed: ' . cl_money($d['total_payout']) . ' ref ' . $pref, null, $me);
                 portal_notify_customer($conn, (int) $d['customer_id'], 'Payout processed: ' . cl_money($d['total_payout']), $p['name'], 'my_investments.php?project=' . $id);
                 $msg = 'Payout recorded.'; break;
@@ -180,7 +192,11 @@ inv_tabs('index.php');
     <?php $in('location', 'Business location', 'text', 'col-md-3'); $ta('description', 'Project description *', 3); $ta('objectives', 'Project objectives'); $ta('why_capital', 'Why the capital is required'); $ta('use_of_funds', 'How the funds will be used'); ?>
     <div class="col-12 fw-semibold small mt-2">B. Capital requirements</div>
     <?php $in('capital_required', 'Total capital required (RWF) *', 'number', 'col-md-3'); $in('min_invest', 'Minimum per investor *', 'number', 'col-md-3'); $in('max_invest', 'Maximum per investor', 'number', 'col-md-3'); $in('max_investors', 'Maximum number of investors', 'number', 'col-md-3');
-          $in('min_investors', 'Minimum number of investors', 'number', 'col-md-3'); $in('funding_deadline', 'Funding deadline *', 'date', 'col-md-3'); $in('start_date', 'Investment start', 'date', 'col-md-3'); $in('end_date', 'Investment end', 'date', 'col-md-3'); ?>
+          $in('min_investors', 'Minimum number of investors', 'number', 'col-md-3');
+          echo '<div class="col-md-6"><label class="form-label small text-muted mb-1">Investors\' money is received as *</label><select name="contribution_type" class="form-select form-select-sm"' . ($editable ? '' : ' disabled') . '>'
+             . '<option value="capital"' . ($val('contribution_type', 'capital') === 'capital' ? ' selected' : '') . '>Capital contribution (profit sharing)</option>'
+             . '<option value="loan"' . ($val('contribution_type', 'capital') === 'loan' ? ' selected' : '') . '>Loan to RISE MOTIVE (borrowed capital, a liability)</option></select>'
+             . '<div class="form-text">Both go to RM Capital Fund. Principal is paid back from RM Capital Fund; returns from RM Business Operating Fund.</div></div>'; $in('funding_deadline', 'Funding deadline *', 'date', 'col-md-3'); $in('start_date', 'Investment start', 'date', 'col-md-3'); $in('end_date', 'Investment end', 'date', 'col-md-3'); ?>
     <div class="col-12 fw-semibold small mt-2">C. Financial projections (estimates)</div>
     <?php $in('expected_revenue', 'Expected sales / revenue', 'number', 'col-md-4'); $in('expected_direct', 'Expected direct operating costs (incl. stock bought with the capital)', 'number', 'col-md-4'); $in('expected_other', 'Other projected expenses', 'number', 'col-md-4'); ?>
     <?php if ($proj) { ?><div class="col-12 small text-muted">Gross profit <?= cl_money($proj['gross']); ?> · net project profit <?= cl_money($proj['net']); ?> · management cost <?= cl_money($proj['fee']); ?> · distributable <?= cl_money($proj['distributable']); ?> · projected investor return <?= $proj['return_pct'] !== null ? $proj['return_pct'] . '%' : '—'; ?> (estimate)</div><?php } ?>

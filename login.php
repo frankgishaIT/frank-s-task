@@ -130,9 +130,9 @@ $h = function ($v) { return htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8'); 
             <div class="brand-copy">
                 <div class="staff-badge"><i class="bi bi-shield-lock-fill"></i> RISE MOTIVE staff only</div>
                 <h1>Welcome to Your RISE MOTIVE Workspace.</h1>
-                <p>Your dedicated workspace as a member of the RISE MOTIVE staff.<span class="motto">Together, We Rise Beyond Limits.</span></p>
+                <p>Your dedicated workspace as a member of the RISE MOTIVE staff.</p>
             </div>
-            <div class="brand-foot">&copy; <?= date('Y'); ?> RISE MOTIVE Ltd · RM Staff Portal · internal workspace for RISE MOTIVE staff</div>
+            <div class="brand-foot">&copy; <?= date('Y'); ?> RISE MOTIVE Ltd</div>
         </section>
 
         <section class="form-panel">
@@ -172,7 +172,7 @@ $h = function ($v) { return htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8'); 
                 <button type="submit" name="login" class="btn-signin">Sign in to RM Staff Portal</button>
             </form>
 
-            <div class="help">For RISE MOTIVE staff only. Forgot your password? Ask an Administrator.<br>
+            <div class="help">Forgot your password? Ask an Administrator.<br>
                 Are you a customer? <a href="portal/">Go to the RM Customer Portal</a></div>
         </section>
     </main>

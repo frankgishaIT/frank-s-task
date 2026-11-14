@@ -6,6 +6,7 @@
  * Employees see their own days; supervisors their team's, and can give more time (break / post) for today.
  */
 require '../../config/db.php';
+if (current_user_role() === 'Admin') { require_once '../../includes/admin_error_guard.php'; }
 require_once '../../includes/timetable_helpers.php';
 tt_ensure($conn);
 

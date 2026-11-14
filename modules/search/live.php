@@ -3,6 +3,7 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 require '../../config/db.php';
+require_once '../../includes/leave_type_helpers.php'; // NEW (Work Timetable): timed leave types
 // NEW: only logged-in users can search (the endpoint had no check of its own).
 require_role(['Admin', 'Manager', 'Employee']);
 
@@ -588,7 +589,7 @@ function renderLeaveRows(mysqli $conn, string $like, int $limit, $userId): strin
         $html .= '<tr>';
         $html .= '<td>' . esc($r['leave_type']) . '</td>';
         // CHANGED: Short Leave shows its date and times; other types their date range.
-        if ($r['leave_type'] === 'Short Leave' && !empty($r['start_time']) && !empty($r['end_time'])) {
+        if (leave_is_timed($r['leave_type']) && !empty($r['start_time']) && !empty($r['end_time'])) {
             $html .= '<td class="text-nowrap">' . esc(date('d M Y', strtotime($r['start_date'])) . ', ' . substr($r['start_time'], 0, 5) . ' – ' . substr($r['end_time'], 0, 5)) . '</td>';
         } else {
             $html .= '<td class="text-nowrap">' . esc(date('d M Y', strtotime($r['start_date']))) . ' &rarr; ' . esc(date('d M Y', strtotime($r['end_date']))) . '</td>';
@@ -829,4 +830,4 @@ try {
     exit;
 }
 
-echo json_encode(['empty' => $rowsHtml === '', 'html' => $html]);
+echo json_encode(['empty' => $rowsHtml === '', 'html' => $html]);

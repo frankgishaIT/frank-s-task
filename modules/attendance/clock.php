@@ -3,6 +3,15 @@ require '../../config/db.php';
 
 $userId = current_user_id();
 $today = date('Y-m-d');
+
+// NEW (Work Timetable): an employee with a timetable today clocks in and out on the Work Timetable page, where the
+// timetable rules apply (lateness from their own reporting time, breaks, no early sign-out without approval).
+// The same attendance record is used, so the approval below and Payroll keep working unchanged.
+try {
+    require_once '../../includes/timetable_helpers.php';
+    $ttCtx = tt_context($conn, (int) $userId, tt_work_date($conn, (int) $userId, time()));
+    if ($ttCtx['plan']) { header('Location: ../timetable/my.php'); exit; }
+} catch (Throwable $e) { error_log('clock.php timetable check: ' . $e->getMessage()); }
 define('WORK_START', '08:00:00');
 define('WORK_END', '17:00:00');
 

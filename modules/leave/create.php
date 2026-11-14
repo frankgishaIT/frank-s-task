@@ -5,6 +5,9 @@ require '../../includes/notification_helper.php';
 
 $userId = current_user_id();
 require_once '../../includes/category_helpers.php'; // NEW (Task 3): Admin-managed categories
+require_once '../../includes/leave_type_helpers.php'; // NEW (Work Timetable): timed exception types
+category_ensure($conn);
+leave_timed_ensure($conn);
 // CHANGED (Task 3): leave types are managed by Admins under Categories. "Short Leave" keeps its
 // special form (one date with a start and end time) as long as that category exists.
 $leaveTypes = categories_active($conn, 'leave_type');
@@ -17,7 +20,7 @@ if (isset($_POST['save'])) {
     $startTime = substr(trim($_POST['start_time'] ?? ''), 0, 5);
     $endTime = substr(trim($_POST['end_time'] ?? ''), 0, 5);
     $reason = trim($_POST['reason'] ?? '');
-    $isShortLeave = $leaveType === 'Short Leave';
+    $isShortLeave = leave_is_timed($leaveType); // CHANGED: every timed type (Short Leave, Late Arrival, Early Departure ...)
 
     // Short Leave is a single day with a start/end time instead of a date range.
     if ($isShortLeave) {
@@ -89,6 +92,7 @@ $modal_subtitle = 'Submit a leave request for your supervisor and HR to review.'
                             <option value="<?= htmlspecialchars($option, ENT_QUOTES, 'UTF-8'); ?>" <?= ($leaveType ?? '') === $option ? 'selected' : ''; ?>><?= htmlspecialchars($option, ENT_QUOTES, 'UTF-8'); ?></option>
                         <?php } ?>
                     </select>
+                    <div class="form-text" id="timedLeaveHint"></div><!-- NEW (Work Timetable): what the hours mean for this type -->
                 </div>
 
                 <div class="row g-3 mb-3" id="dateRangeFields">
@@ -142,7 +146,10 @@ $modal_subtitle = 'Submit a leave request for your supervisor and HR to review.'
     var endTimeInput = document.getElementById('endTimeInput');
 
     function toggleShortLeave() {
-        var isShort = typeSelect.value === 'Short Leave';
+        var TIMED = <?= json_encode(LEAVE_TIMED_TYPES); ?>; // CHANGED: every timed type has a date and hours
+        var isShort = Object.prototype.hasOwnProperty.call(TIMED, typeSelect.value);
+        var hint = document.getElementById('timedLeaveHint');
+        if (hint) { hint.textContent = isShort ? TIMED[typeSelect.value] : ''; }
 
         startDateLabel.textContent = isShort ? 'Date' : 'Start Date';
         endDateField.classList.toggle('d-none', isShort);
@@ -158,4 +165,4 @@ $modal_subtitle = 'Submit a leave request for your supervisor and HR to review.'
 })();
 </script>
 
-<?php include '../../includes/footer.php'; ?>
+<?php include '../../includes/footer.php'; ?>

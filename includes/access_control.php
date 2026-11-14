@@ -25,6 +25,7 @@ function access_catalog(): array
         'departments'       => ['Departments', ['view', 'create', 'edit', 'delete']],
         'users'             => ['Employees', ['view', 'create', 'edit', 'delete']],
         'attendance'        => ['Attendance', ['view', 'create', 'edit', 'approve', 'delete', 'reports']],
+        'timetable'         => ['Work Timetable', ['view', 'approve', 'reports', 'manage']], // NEW: WORK TIMETABLE module
         'leave'             => ['Leave Requests', ['view', 'create', 'approve']],
         'projects'          => ['RM Targets', ['view', 'create', 'edit', 'delete']],
         'tasks'             => ['Tasks', $std],
@@ -90,6 +91,9 @@ const ACCESS_NEW_DEFAULTS = [
     // CHANGED: everyone uses Marketing & Growth; only Administrators approve, decide on money and change settings.
     'marketing.view' => ['admin', 'manager', 'employee'], 'marketing.create' => ['admin', 'manager', 'employee'], 'marketing.leads' => ['admin', 'manager', 'employee'],
     'marketing.reports' => ['admin', 'manager', 'employee'], 'marketing.approve' => ['admin'], 'marketing.finance' => ['admin'], 'marketing.manage' => ['admin'],
+    // NEW: Work Timetable. Everyone sees their own; supervisors approve and see reports; Administrators set timetables.
+    'timetable.view' => ['admin', 'manager', 'employee'], 'timetable.approve' => ['admin', 'manager'],
+    'timetable.reports' => ['admin', 'manager'], 'timetable.manage' => ['admin'],
     'rm_invest.view' => ['admin', 'manager'], 'rm_invest.create' => ['admin', 'manager'], 'rm_invest.edit' => ['admin', 'manager'],
     'rm_invest.reports' => ['admin', 'manager'], 'rm_invest.approve' => ['admin'], 'rm_invest.manage' => ['admin'],
 ];
@@ -281,6 +285,11 @@ function access_page_permission(string $script): ?string
     if ($module === 'budget') { return ['reports' => 'budget.reports', 'settings' => 'budget.manage'][$f] ?? 'budget.view'; }
     if ($module === 'rm_invest') { return ['settings' => 'rm_invest.manage', 'reports' => 'rm_invest.reports'][$f] ?? 'rm_invest.view'; }
     if ($module === 'rm_loans') { return ['settings' => 'rm_loans.manage', 'reports' => 'rm_loans.reports'][$f] ?? 'rm_loans.view'; }
+    // NEW: Work Timetable. Own-data pages are open to everyone signed in (each page checks whose data it shows).
+    if ($module === 'timetable') {
+        return ['index' => '*', 'my' => '*', 'action' => '*', 'api' => '*', 'timetable_pdf' => '*', 'day' => '*', 'corrections' => '*', 'cron' => '*',
+                'board' => 'timetable.approve', 'approvals' => 'timetable.approve', 'reports' => 'timetable.reports'][$f] ?? 'timetable.manage';
+    }
     if ($module === 'kpi') { return ['my' => '*', 'kpi' => '*', 'reviews' => '*', 'settings' => 'kpi.manage', 'teams' => 'kpi.create'][$f] ?? 'kpi.view'; }
     if ($module === 'forecasting') { return 'forecasting.view'; } // finer checks inside (export, scenario settings)
     if ($module === 'portal') { return in_array($f, ['accounts', 'settings'], true) ? 'portal.manage' : (in_array($f, ['documents', 'records'], true) ? 'portal.edit' : 'portal.view'); }
@@ -340,4 +349,4 @@ function access_label(string $perm): string
 {
     [$m, $a] = explode('.', $perm) + [1 => ''];
     return (access_catalog()[$m][0] ?? $m) . ': ' . (ACCESS_ACTION_LABELS[$a] ?? $a);
-}
+}

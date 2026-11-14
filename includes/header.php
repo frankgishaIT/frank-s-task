@@ -147,6 +147,15 @@
             justify-content:center;
         }
 
+        /* NEW (Work Timetable): official server clock in the top bar */
+        .rm-official-clock{
+            display:flex; align-items:center; gap:7px; text-decoration:none; color:var(--ink);
+            background:var(--accent-blue-bg); border-radius:10px; padding:6px 12px; white-space:nowrap;
+        }
+        .rm-official-clock i{ color:var(--accent-blue); font-size:15px; }
+        .rm-official-clock-time{ font-weight:700; font-size:15px; font-variant-numeric:tabular-nums; letter-spacing:.02em; color:var(--accent-blue); }
+        .rm-official-clock-date{ font-size:12px; color:var(--muted); }
+        @media (max-width: 767px){ .rm-official-clock-date{ display:none; } .rm-official-clock{ padding:5px 9px; } }
         .topbar-org{
             display:flex;
             align-items:center;
@@ -317,4 +326,4 @@ href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.m
     document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('sidebarOverlay').addEventListener('click', toggleSidebar);
     });
-</script>
+</script>

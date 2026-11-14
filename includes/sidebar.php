@@ -128,6 +128,11 @@ if ($rmCompactUi) { ?>
         <i class="bi bi-calendar-plus"></i> Leave Requests
     </a>
 
+    <!-- NEW: WORK TIMETABLE (schedules, breaks, lost time, reminders) -->
+    <a href="../timetable/my.php" class="<?= navActive('/timetable/', $currentPath) ?>">
+        <i class="bi bi-clock-history"></i> Work Timetable
+    </a>
+
     <a href="../projects/index.php" class="<?= navActive('projects', $currentPath) ?>">
         <i class="bi bi-folder-fill"></i> RM Targets
     </a>
@@ -295,6 +300,12 @@ if ($rmCompactUi) { ?>
             mysqli_stmt_execute($recentStatement);
             $recentNotifications = mysqli_stmt_get_result($recentStatement);
             ?>
+            <!-- NEW (Work Timetable): the OFFICIAL MY MOTIVE time, from the server (Africa/Kigali), on every page -->
+            <a href="../timetable/my.php" class="rm-official-clock" title="Official MY MOTIVE time (server, Africa/Kigali, UTC+2). Your device clock is not used.">
+                <i class="bi bi-clock"></i>
+                <span class="rm-official-clock-time" data-rm-clock><?= date('H:i:s'); ?></span>
+                <span class="rm-official-clock-date" data-rm-clock="date"><?= date('D, d M Y'); ?></span>
+            </a>
             <div class="dropdown">
                 <a href="#" class="topbar-icon-btn" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                     <i class="bi bi-bell"></i>
@@ -353,6 +364,7 @@ if ($rmCompactUi) { ?>
 
 <!-- NEW: every long dropdown (8+ choices) becomes a type-to-search box, on every page -->
 <script src="<?= BASE_URL ?>/includes/searchable_select.js?v=1"></script>
+<script src="<?= BASE_URL ?>/includes/rm_clock.js?v=1" data-base="<?= htmlspecialchars(rtrim((string) BASE_URL, '/'), ENT_QUOTES, 'UTF-8'); ?>" data-server-ms="<?= (int) round(microtime(true) * 1000); ?>"></script><!-- NEW: official server clock (Work Timetable) -->
 <script src="<?= BASE_URL ?>/includes/rm_session.js?v=1" data-base="<?= htmlspecialchars(rtrim((string) BASE_URL, '/'), ENT_QUOTES, 'UTF-8'); ?>"></script><!-- NEW: 30-minute inactivity timeout -->
 <?php if (!empty($rmCompactUi)) { ?><script src="<?= BASE_URL ?>/includes/rm_ui.js?v=1"></script><?php } // Task 5: three-dot menus on small screens ?>
 <script>
@@ -457,4 +469,4 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 });
-</script>
+</script>

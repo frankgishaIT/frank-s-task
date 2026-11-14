@@ -34,9 +34,19 @@ if ($stage && isset($_POST['decision'])) {
             mysqli_stmt_bind_param($statement, 'isi', $managerId, $note, $id);
         } else {
             $lateMinutes = max(0, (strtotime($record['check_in']) - strtotime(WORK_START)) / 60);
+            // NEW (Work Timetable): an employee with a timetable is late against THEIR reporting time (grace and
+            // approved late arrival included), not the fixed 08:00.
+            try {
+                require_once '../../includes/timetable_helpers.php';
+                $ttLate = tt_attendance_late_minutes($conn, (int) $record['user_id'], $record['attendance_date'], (string) $record['check_in']);
+                if ($ttLate !== null) { $lateMinutes = $ttLate; }
+            } catch (Throwable $e) { error_log('attendance approve timetable: ' . $e->getMessage()); }
+            $lateMinutes = (int) round($lateMinutes);
             $status = $lateMinutes > 0 ? 'Late' : 'Present';
-            $statement = mysqli_prepare($conn, "UPDATE attendance SET workflow_status = 'Working', status = ?, late_minutes = ?, manager_id = ?, manager_note = ? WHERE id = ?");
-            mysqli_stmt_bind_param($statement, 'siisi', $status, $lateMinutes, $managerId, $note, $id);
+            // NEW (Work Timetable): already signed out on the timetable before this approval -> straight to clock-out confirmation.
+            $nextStage = !empty($record['check_out']) ? 'Pending Clock-Out Confirmation' : 'Working';
+            $statement = mysqli_prepare($conn, "UPDATE attendance SET workflow_status = ?, status = ?, late_minutes = ?, manager_id = ?, manager_note = ? WHERE id = ?");
+            mysqli_stmt_bind_param($statement, 'ssiisi', $nextStage, $status, $lateMinutes, $managerId, $note, $id);
         }
         mysqli_stmt_execute($statement);
         header('Location: index.php?success=Attendance updated successfully.');

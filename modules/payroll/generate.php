@@ -299,6 +299,23 @@ $modal_subtitle = 'Basic salary, attendance, and task performance are calculated
                     <div class="col-6"><span class="text-muted">Overtime Pay:</span> <strong class="text-success">+ RWF <?= number_format($preview['overtime_pay'], 2); ?></strong></div>
                     <div class="col-6"><span class="text-muted">Performance Bonus:</span> <strong class="text-success">+ RWF <?= number_format($preview['performance_bonus'], 2); ?></strong></div>
                 </div>
+                <?php
+                // NEW (Work Timetable): unworked time recorded by the timetable, for evaluation. It is NOT deducted
+                // automatically: any deduction follows the approved payroll policy (enter it as an adjustment).
+                // Overtime above only counts overtime a supervisor approved on the timetable.
+                $ttPay = null;
+                try { require_once '../../includes/timetable_helpers.php'; $ttPay = tt_payroll_summary($conn, (int) $selectedUserId, $selectedPeriod); }
+                catch (Throwable $e) { error_log('payroll timetable summary: ' . $e->getMessage()); }
+                if ($ttPay) { ?>
+                <div class="small mt-2 pt-2 border-top">
+                    <strong>Work Timetable (<?= htmlspecialchars($selectedPeriod, ENT_QUOTES, 'UTF-8'); ?>):</strong>
+                    unworked time recorded <strong class="<?= $ttPay['lost_minutes'] ? 'text-danger' : ''; ?>"><?= tt_dur($ttPay['lost_minutes']); ?></strong><?php
+                    $parts = []; foreach ($ttPay['by_reason'] as $r => $m) { $parts[] = (TT_LOST_REASONS[$r] ?? $r) . ' ' . tt_dur($m); }
+                    echo $parts ? ' (' . htmlspecialchars(implode(', ', $parts), ENT_QUOTES, 'UTF-8') . ')' : ''; ?>;
+                    overtime approved <strong><?= tt_dur($ttPay['overtime_approved']); ?></strong><?= $ttPay['overtime_pending'] ? ', waiting for approval ' . tt_dur($ttPay['overtime_pending']) : ''; ?>.
+                    <div class="text-muted">For evaluation only: not deducted automatically. Apply any deduction according to the approved payroll policy. <a href="../timetable/reports.php?view=daily&period=custom&from=<?= urlencode($selectedPeriod . '-01'); ?>&to=<?= urlencode(date('Y-m-t', strtotime($selectedPeriod . '-01'))); ?>&employee=<?= (int) $selectedUserId; ?>">Daily details</a></div>
+                </div>
+                <?php } ?>
             </div>
 
             <form method="POST">
@@ -359,4 +376,4 @@ $modal_subtitle = 'Basic salary, attendance, and task performance are calculated
     </div> <!-- rm-modal -->
 </div> <!-- rm-modal-backdrop -->
 
-<?php include '../../includes/footer.php'; ?>
+<?php include '../../includes/footer.php'; ?>

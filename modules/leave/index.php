@@ -1,5 +1,6 @@
 <?php
 require '../../config/db.php';
+require_once '../../includes/leave_type_helpers.php'; // NEW (Work Timetable): timed leave types
 $pageSearchScope = 'leave'; // tells the topbar search what module we're in
 require '../../includes/pagination.php';
 include '../../includes/header.php';
@@ -61,7 +62,7 @@ function leave_dates_html(array $row): string {
     $end = strtotime($row['end_date']);
     $st = $row['start_time'] ?? null;
     $et = $row['end_time'] ?? null;
-    if ($row['leave_type'] === 'Short Leave' && $st && $et) {
+    if (leave_is_timed($row['leave_type']) && $st && $et) {
         $minutes = (int) round((strtotime('2000-01-01 ' . $et) - strtotime('2000-01-01 ' . $st)) / 60);
         $length = $minutes >= 60 ? intdiv($minutes, 60) . 'h' . ($minutes % 60 ? ' ' . ($minutes % 60) . 'min' : '') : $minutes . 'min';
         return htmlspecialchars(date('d M Y', $start) . ', ' . substr($st, 0, 5) . ' – ' . substr($et, 0, 5), ENT_QUOTES, 'UTF-8')

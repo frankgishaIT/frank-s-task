@@ -1,5 +1,6 @@
 <?php
 require '../../config/db.php';
+require_once '../../includes/leave_type_helpers.php'; // NEW (Work Timetable): timed leave types
 
 $userId = current_user_id();
 $role = current_user_role();
@@ -89,7 +90,7 @@ $startTs = strtotime($leave['start_date']);
 $endTs = strtotime($leave['end_date']);
 $st = $leave['start_time'] ?? null;
 $et = $leave['end_time'] ?? null;
-if ($leave['leave_type'] === 'Short Leave' && $st && $et) {
+if (leave_is_timed($leave['leave_type']) && $st && $et) {
     $minutes = (int) round((strtotime('2000-01-01 ' . $et) - strtotime('2000-01-01 ' . $st)) / 60);
     $length = $minutes >= 60 ? intdiv($minutes, 60) . 'h' . ($minutes % 60 ? ' ' . ($minutes % 60) . 'min' : '') : $minutes . 'min';
     $datesText = date('d M Y', $startTs) . ', ' . substr($st, 0, 5) . ' – ' . substr($et, 0, 5) . ' (' . $length . ')';
@@ -127,7 +128,7 @@ $modal_subtitle = htmlspecialchars($leave['employee_name'], ENT_QUOTES, 'UTF-8')
                     <input class="form-control rm-input" value="<?= htmlspecialchars($leave['leave_type'], ENT_QUOTES, 'UTF-8'); ?>" disabled>
                 </div>
                 <div class="col-md-7">
-                    <label class="form-label small fw-semibold text-muted"><?= $leave['leave_type'] === 'Short Leave' ? 'Date and Time' : 'Dates'; ?></label>
+                    <label class="form-label small fw-semibold text-muted"><?= leave_is_timed($leave['leave_type']) ? 'Date and Time' : 'Dates'; ?></label>
                     <input class="form-control rm-input" value="<?= htmlspecialchars($datesText, ENT_QUOTES, 'UTF-8'); ?>" disabled>
                 </div>
             </div>
@@ -174,4 +175,4 @@ $modal_subtitle = htmlspecialchars($leave['employee_name'], ENT_QUOTES, 'UTF-8')
     </div> <!-- rm-modal -->
 </div> <!-- rm-modal-backdrop -->
 
-<?php include '../../includes/footer.php'; ?>
+<?php include '../../includes/footer.php'; ?>

@@ -24,7 +24,8 @@
 const TT_DEFAULTS = [
     'grace_arrival'      => 5,    // minutes after reporting time before an arrival counts as late
     'grace_return'       => 5,    // minutes after a break / post return time before it counts as late
-    'checkin_opens'      => 120,  // check-in opens this many minutes before reporting time
+    'checkin_opens'      => 0,    // 0 = an employee may check in any time on their working day (arriving early is fine);
+                                  // a number = check-in opens only that many minutes before the reporting time
     'break_early_allow'  => 5,    // a break may be started this many minutes before its start time
     'lead_report'        => 30,   // reminder before reporting time
     'lead_break'         => 10,   // reminder before a break starts
@@ -433,7 +434,7 @@ function tt_engine_can(?array $plan, array $ev, array $ex, int $now, string $act
     switch ($action) {
         case 'check_in':
             if ($ci) { return [false, 'Your check-in was already recorded today at ' . tt_hm12($ci) . '.']; }
-            $opens = (int) $plan['report'] - 60 * (int) $set['checkin_opens'];
+            $opens = (int) $set['checkin_opens'] > 0 ? (int) $plan['report'] - 60 * (int) $set['checkin_opens'] : strtotime($plan['date'] . ' 00:00:00');
             if ($now < $opens) { return [false, 'Check-in opens at ' . tt_hm12($opens) . ' (your reporting time is ' . tt_hm12($plan['report']) . ').']; }
             if ($now >= $plan['departure']) { return [false, 'Your scheduled working hours for today have ended (' . tt_hm12($plan['departure']) . '). A missing check-in needs a correction request.']; }
             return [true, ''];

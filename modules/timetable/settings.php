@@ -14,7 +14,7 @@ $me = (int) current_user_id();
 const TT_SETTING_LABELS = [
     'grace_arrival' => ['Grace period for arrival (min)', 'An arrival up to this many minutes after the reporting time is not late. Each timetable can override it.'],
     'grace_return' => ['Grace period for returns (min)', 'For returns from breaks and assigned posts.'],
-    'checkin_opens' => ['Check-in opens before reporting time (min)', ''],
+    'checkin_opens' => ['Check-in opens before starting time (min)', '0 = any time on the working day (employees may arrive early). Arriving early is never late.'],
     'break_early_allow' => ['A break may start early by (min)', 'Outside this, starting a break is refused with a warning.'],
     'lead_report' => ['Reminder before reporting time (min)', ''],
     'lead_break' => ['Reminder before a break starts (min)', 'Specification: 10.'],

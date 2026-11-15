@@ -186,5 +186,10 @@ function tt_run_scenarios(): array
         'Tuesday leaves 18:00' => [tt_hm($tue['departure']), '18:00'], 'Wednesday uses the usual 7:00' => [tt_hm($wed['report']), '07:00'],
         'Monday lunch 12:00' => [tt_hm($mon['breaks'][1]['start'] ?? null), '12:00'], 'Tuesday lunch 13:00' => [tt_hm($tue['breaks'][1]['start'] ?? null), '13:00'],
         'tea every day' => [count($wed['breaks']), 1], '9:03 on Tuesday is on time' => [tt_engine_compute($tue, ['check_in' => $t('09:03', '2026-11-17')], [], $t('10:00', '2026-11-17'))['punctuality'], 'On Time']]);
+
+    // Extra: arriving early is allowed and is not late
+    $ok = tt_engine_can($plan, [], [], $t('05:40'), 'check_in');
+    $c = tt_engine_compute($plan, ['check_in' => $t('05:40')], [], $t('09:00'));
+    $check('Employee arrives before the starting time', ['may check in at 5:40 for 7:00' => [$ok[0], true], 'on time' => [$c['punctuality'], 'On Time'], 'no lost time' => [$c['lost_minutes'], 0]]);
     return $results;
 }

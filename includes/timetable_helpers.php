@@ -857,6 +857,9 @@ function tt_save_schedule(mysqli $conn, array $data, int $actor): array
             $prev = $b;
         }
         if (tt_engine_scheduled_minutes($probe) <= 0) { return [false, $dn . ': the breaks take the whole working day.', 0]; }
+        if ($probe['departure'] - $probe['report'] > 16 * 3600) {
+            return [false, $dn . ': ' . tt_hm12($probe['report']) . ' to ' . tt_hm12($probe['departure']) . ' is more than 16 hours. Please check AM / PM (for example 10:30 AM, not 10:30 PM).', 0];
+        }
     }
     $note = mb_substr(trim((string) ($data['note'] ?? '')), 0, 500);
     $title = mb_substr(trim((string) ($data['title'] ?? '')), 0, 120) ?: null;

@@ -159,48 +159,48 @@ function be_banner(mysqli $conn): void
     $base = rtrim((string) BASE_URL, '/');
     ?>
 <style>
-.be-banner{ position:relative; overflow:hidden; border-radius:22px; padding:22px 26px 18px; margin-bottom:22px; color:#fff;
+.be-banner{ position:relative; overflow:hidden; border-radius:16px; padding:14px 18px 12px; margin-bottom:16px; color:#fff;
     background:linear-gradient(115deg,#0D2A9E 0%,#1A44D6 45%,#2F6FEF 80%,#3B82F6 100%); box-shadow:0 12px 30px rgba(30,64,200,.25); }
-.be-banner .be-deco1{ position:absolute; right:-80px; top:-110px; width:330px; height:330px; border-radius:50%; background:rgba(255,255,255,.07); }
-.be-banner .be-deco2{ position:absolute; left:30%; bottom:-170px; width:330px; height:330px; border-radius:50%; background:rgba(94,234,212,.10); }
+.be-banner .be-deco1{ position:absolute; right:-60px; top:-90px; width:220px; height:220px; border-radius:50%; background:rgba(255,255,255,.07); }
+.be-banner .be-deco2{ position:absolute; left:30%; bottom:-140px; width:220px; height:220px; border-radius:50%; background:rgba(94,234,212,.10); }
 .be-banner > *:not(.be-deco1):not(.be-deco2):not(.be-confetti){ position:relative; }
-.be-trophy{ width:54px; height:54px; border-radius:14px; background:#fff; color:#0E9F6E; display:inline-flex; align-items:center; justify-content:center; font-size:26px;
-    box-shadow:0 6px 16px rgba(0,0,0,.15); animation:beBounce 2.6s ease-in-out infinite; flex-shrink:0; }
+.be-trophy{ width:32px; height:32px; border-radius:9px; background:#fff; color:#0E9F6E; display:inline-flex; align-items:center; justify-content:center; font-size:16px;
+    box-shadow:0 4px 10px rgba(0,0,0,.15); animation:beBounce 2.6s ease-in-out infinite; flex-shrink:0; }
 @keyframes beBounce{ 0%,100%{transform:translateY(0) rotate(-3deg);} 50%{transform:translateY(-5px) rotate(3deg);} }
-.be-kicker{ letter-spacing:.14em; font-size:14px; font-weight:900; color:#6EE7B7; text-transform:uppercase; }
-.be-ring{ width:150px; height:150px; border-radius:50%; padding:7px; background:conic-gradient(#5EEAD4,#3B82F6,#A5B4FC,#5EEAD4); flex-shrink:0;
-    box-shadow:0 0 0 8px rgba(255,255,255,.10); }
-.be-ring > *{ width:100%; height:100%; border-radius:50%; background:#fff; border:4px solid #fff; object-fit:cover; display:flex; align-items:center; justify-content:center;
-    color:#1E3FD0; font-size:44px; font-weight:900; }
-.be-name{ font-size:2.1rem; font-weight:900; line-height:1.1; }
-.be-dept{ font-size:1.05rem; opacity:.9; }
-.be-score{ font-size:3.4rem; font-weight:900; color:#6EE7B7; line-height:1; }
-.be-scorelbl{ font-size:1rem; line-height:1.25; opacity:.92; }
-.be-bar{ height:10px; border-radius:10px; background:rgba(255,255,255,.18); max-width:480px; overflow:hidden; }
+.be-kicker{ letter-spacing:.12em; font-size:11.5px; font-weight:900; color:#6EE7B7; text-transform:uppercase; }
+.be-ring{ width:72px; height:72px; border-radius:50%; padding:4px; background:conic-gradient(#5EEAD4,#3B82F6,#A5B4FC,#5EEAD4); flex-shrink:0;
+    box-shadow:0 0 0 4px rgba(255,255,255,.10); }
+.be-ring > *{ width:100%; height:100%; border-radius:50%; background:#fff; border:2px solid #fff; object-fit:cover; display:flex; align-items:center; justify-content:center;
+    color:#1E3FD0; font-size:22px; font-weight:900; }
+.be-name{ font-size:1.25rem; font-weight:900; line-height:1.1; }
+.be-dept{ font-size:.85rem; opacity:.9; }
+.be-score{ font-size:1.75rem; font-weight:900; color:#6EE7B7; line-height:1; }
+.be-scorelbl{ font-size:.75rem; line-height:1.2; opacity:.92; }
+.be-bar{ height:6px; border-radius:6px; background:rgba(255,255,255,.18); max-width:340px; overflow:hidden; }
 .be-bar > div{ height:100%; border-radius:10px; background:linear-gradient(90deg,#34D399,#A7F3D0); }
-.be-chip{ display:inline-flex; align-items:center; gap:7px; border:1px solid rgba(255,255,255,.35); background:rgba(255,255,255,.10); border-radius:30px; padding:6px 16px;
-    font-size:14.5px; font-weight:600; margin:0 8px 6px 0; }
-.be-top{ background:#fff; color:#1E2333; border-radius:18px; padding:16px 22px 8px; min-width:300px; box-shadow:0 8px 20px rgba(0,0,0,.10); }
-.be-top-title{ color:#1E4FE0; font-weight:800; letter-spacing:.12em; font-size:13px; margin-bottom:4px; }
-.be-top-row{ display:flex; align-items:center; gap:14px; padding:11px 0; border-top:1px solid #E6EAF2; }
+.be-chip{ display:inline-flex; align-items:center; gap:7px; border:1px solid rgba(255,255,255,.35); background:rgba(255,255,255,.10); border-radius:20px; padding:2px 10px;
+    font-size:12px; font-weight:600; margin:0 5px 4px 0; }
+.be-top{ background:#fff; color:#1E2333; border-radius:12px; padding:9px 14px 4px; min-width:240px; box-shadow:0 8px 20px rgba(0,0,0,.10); }
+.be-top-title{ color:#1E4FE0; font-weight:800; letter-spacing:.1em; font-size:10.5px; margin-bottom:1px; }
+.be-top-row{ display:flex; align-items:center; gap:9px; padding:5px 0; font-size:13px; border-top:1px solid #E6EAF2; }
 .be-top-title + .be-top-row{ border-top:0; }
-.be-num{ width:32px; height:32px; border-radius:50%; background:#3B6EF0; color:#fff; font-weight:800; font-size:13px; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
+.be-num{ width:20px; height:20px; border-radius:50%; background:#3B6EF0; color:#fff; font-weight:800; font-size:10.5px; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
 .be-num.r2{ background:#0E9F6E; }
 .be-top-row .be-pct{ margin-left:auto; color:#0E9F6E; font-weight:800; }
-.be-foot{ font-size:14px; opacity:.88; }
+.be-foot{ font-size:11.5px; opacity:.85; }
 .be-foot a{ color:#fff; font-weight:700; }
 .be-confetti span{ position:absolute; top:-12px; width:9px; height:12px; opacity:.85; animation:beFall linear infinite; border-radius:2px; background:#fff; }
 @keyframes beFall{ 0%{transform:translateY(0) rotate(0);} 100%{transform:translateY(300px) rotate(540deg);} }
 @media (prefers-reduced-motion: reduce){ .be-trophy,.be-confetti span{ animation:none; } .be-confetti{ display:none; } }
 @media (max-width: 992px){ .be-top{ min-width:0; width:100%; } }
-@media (max-width: 576px){ .be-banner{ padding:16px; } .be-ring{ width:96px; height:96px; padding:5px; } .be-ring > *{ font-size:28px; }
-    .be-name{ font-size:1.4rem; } .be-score{ font-size:2.4rem; } .be-kicker{ font-size:12px; } .be-trophy{ width:42px; height:42px; font-size:20px; } }
+@media (max-width: 576px){ .be-banner{ padding:12px; } .be-ring{ width:58px; height:58px; padding:3px; } .be-ring > *{ font-size:18px; }
+    .be-name{ font-size:1.1rem; } .be-score{ font-size:1.5rem; } .be-kicker{ font-size:10.5px; } }
 </style>
 <div class="be-banner" role="region" aria-label="Best Employee of the Month">
     <div class="be-deco1"></div><div class="be-deco2"></div>
     <div class="be-confetti" aria-hidden="true"><?php foreach ([['22%', 0, 6], ['37%', 1.4, 7], ['55%', 2.2, 5.5], ['62%', .5, 6.5], ['78%', 1.8, 7.5], ['88%', 3, 6]] as [$l, $d, $t]) { ?><span style="left:<?= $l; ?>;animation-delay:<?= $d; ?>s;animation-duration:<?= $t; ?>s;"></span><?php } ?></div>
 
-    <div class="d-flex align-items-center gap-3 mb-3">
+    <div class="d-flex align-items-center gap-2 mb-2">
         <span class="be-trophy"><i class="bi bi-trophy-fill"></i></span>
         <div>
             <div class="be-kicker"><?= $multi ? 'Best Employees of the Month' : 'Best Employee of the Month'; ?> · <?= $e($label); ?><?= $cur['final'] ? '' : ' (so far)'; ?></div>
@@ -208,17 +208,17 @@ function be_banner(mysqli $conn): void
         </div>
     </div>
 
-    <div class="d-flex flex-wrap align-items-center gap-4">
-        <div class="d-flex flex-column gap-4 flex-grow-1">
+    <div class="d-flex flex-wrap align-items-center gap-3">
+        <div class="d-flex flex-column gap-2 flex-grow-1">
         <?php foreach ($cur['winners'] as $w) { $url = be_photo_url($w['photo']); $sc = min(100, max(0, (float) $w['score'])); ?>
-            <div class="d-flex flex-wrap align-items-center gap-4">
+            <div class="d-flex flex-wrap align-items-center gap-3">
                 <div class="be-ring"><?php if ($url) { ?><img src="<?= $e($url); ?>" alt="<?= $e($w['name']); ?>"><?php } else { $p = preg_split('/\s+/', trim($w['name'])); ?><span><?= $e(strtoupper(mb_substr($p[0] ?? '', 0, 1) . mb_substr($p[1] ?? '', 0, 1))); ?></span><?php } ?></div>
                 <div style="min-width:0; flex:1;">
                     <div class="be-name"><?= $e($w['name']); ?></div>
-                    <div class="be-dept mt-1"><i class="bi bi-building"></i> <?= $e($w['department'] ?: 'No department'); ?></div>
-                    <div class="d-flex align-items-center gap-3 mt-2"><div class="be-score"><?= $e($pct($w['score'])); ?></div><div class="be-scorelbl">performance<br>achievement</div></div>
-                    <div class="be-bar mt-2" title="<?= $e($pct($w['score'])); ?> of target"><div style="width:<?= $sc; ?>%;"></div></div>
-                    <div class="mt-3"><span class="be-chip"><i class="bi bi-bullseye"></i> <?= (int) $w['met']; ?> of <?= (int) $w['measured']; ?> KPIs on target</span><span class="be-chip"><i class="bi bi-calendar3"></i> <?= $e($label); ?></span></div>
+                    <div class="be-dept"><i class="bi bi-building"></i> <?= $e($w['department'] ?: 'No department'); ?></div>
+                    <div class="d-flex align-items-center gap-2 mt-1"><div class="be-score"><?= $e($pct($w['score'])); ?></div><div class="be-scorelbl">performance<br>achievement</div></div>
+                    <div class="be-bar mt-1" title="<?= $e($pct($w['score'])); ?> of target"><div style="width:<?= $sc; ?>%;"></div></div>
+                    <div class="mt-2"><span class="be-chip"><i class="bi bi-bullseye"></i> <?= (int) $w['met']; ?> of <?= (int) $w['measured']; ?> KPIs on target</span><span class="be-chip"><i class="bi bi-calendar3"></i> <?= $e($label); ?></span></div>
                 </div>
             </div>
         <?php } ?>
@@ -233,7 +233,7 @@ function be_banner(mysqli $conn): void
         <?php } ?>
     </div>
 
-    <div class="be-foot mt-3">Chosen automatically from approved KPI results (weighted achievement vs targets)<?= $cur['final'] ? '' : '; final when the month ends'; ?>.
+    <div class="be-foot mt-2">Chosen automatically from approved KPI results (weighted achievement vs targets)<?= $cur['final'] ? '' : '; final when the month ends'; ?>.
         <?php if (in_array($_SESSION['user_role'] ?? '', ['Admin', 'Manager'], true)) { ?><a href="<?= $e($base); ?>/modules/users/analytics.php#ranking">See the ranking</a><?php } else { ?><a href="<?= $e($base); ?>/modules/kpi/my.php">See my performance</a><?php } ?></div>
 </div>
     <?php

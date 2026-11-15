@@ -26,10 +26,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $users = array_values(array_unique(array_map('intval', (array) ($_POST['user_ids'] ?? []))));
         if (!$users) { $errors[] = 'Choose at least one employee.'; }
         $breaks = [];
+        // Lunch of each working day (its own times per day), from the day table.
+        foreach ((array) ($_POST['working_days'] ?? []) as $w) {
+            $x = $_POST['day_times'][$w] ?? [];
+            $hasS = trim((string) ($x['lunch_start'] ?? '')) !== ''; $hasE = trim((string) ($x['lunch_end'] ?? '')) !== '';
+            if ($hasS !== $hasE) { $errors[] = (TT_WEEKDAYS[(int) $w] ?? 'A day') . ': enter both the lunch start and the lunch end (or leave both empty for no lunch that day).'; }
+            if ($hasS || $hasE) {
+                $breaks[] = ['label' => 'Lunch break', 'type' => 'lunch', 'start' => $x['lunch_start'] ?? '', 'end' => $x['lunch_end'] ?? '', 'weekday' => (int) $w];
+            }
+        }
+        // Other breaks (tea ...), every day or one day.
         foreach ((array) ($_POST['b_label'] ?? []) as $i => $l) {
             $breaks[] = ['label' => $l, 'type' => $_POST['b_type'][$i] ?? 'break', 'start' => $_POST['b_start'][$i] ?? '', 'end' => $_POST['b_end'][$i] ?? '', 'weekday' => (int) ($_POST['b_day'][$i] ?? 0)];
         }
         $saved = 0;
+        if ($errors) { $users = []; }
         foreach ($users as $u) {
             [$ok, $msg] = tt_save_schedule($conn, array_merge($_POST, ['user_id' => $u, 'breaks' => $breaks]), $me);
             if ($ok) { $saved++; } else { $emp = tt_user($conn, $u); $errors[] = ($emp['names'] ?? 'Employee') . ': ' . $msg; break; }
@@ -55,12 +66,23 @@ $f = $_SERVER['REQUEST_METHOD'] === 'POST' ? $_POST : [
     'post_leave' => substr((string) ($cur['post_leave'] ?? ''), 0, 5), 'post_return_main' => substr((string) ($cur['post_return_main'] ?? ''), 0, 5),
     'note' => '', 'title' => '', 'user_ids' => $uid ? [$uid] : [],
 ];
-$fBreaks = [];
+// Lunch: one per day, shown in the day table. Other breaks: the list under it.
+$fBreaks = []; $fLunch = [];
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     foreach ((array) ($_POST['b_label'] ?? []) as $i => $l) { $fBreaks[] = [$l, $_POST['b_type'][$i] ?? 'break', $_POST['b_start'][$i] ?? '', $_POST['b_end'][$i] ?? '', (int) ($_POST['b_day'][$i] ?? 0)]; }
+    foreach (TT_WEEKDAYS as $w => $n) { $fLunch[$w] = [$_POST['day_times'][$w]['lunch_start'] ?? '', $_POST['day_times'][$w]['lunch_end'] ?? '']; }
 } elseif ($cur) {
-    foreach ($cur['breaks'] as $b) { $fBreaks[] = [$b['label'], $b['break_type'], substr($b['start_time'], 0, 5), substr($b['end_time'], 0, 5), (int) ($b['weekday'] ?? 0)]; }
-} else { $fBreaks[] = ['Lunch break', 'lunch', '12:00', '13:00', 0]; }
+    $everyDayLunch = null;
+    foreach ($cur['breaks'] as $b) {
+        $bw = (int) ($b['weekday'] ?? 0); $bs = substr($b['start_time'], 0, 5); $be = substr($b['end_time'], 0, 5);
+        if ($b['break_type'] === 'lunch' && $bw && !isset($fLunch[$bw])) { $fLunch[$bw] = [$bs, $be]; continue; }
+        if ($b['break_type'] === 'lunch' && !$bw && !$everyDayLunch) { $everyDayLunch = [$bs, $be]; continue; }
+        $fBreaks[] = [$b['label'], $b['break_type'], $bs, $be, $bw];
+    }
+    // An older timetable with one lunch for every day: shown on each working day, ready to change per day.
+    foreach (TT_WEEKDAYS as $w => $n) { if (!isset($fLunch[$w])) { $fLunch[$w] = $everyDayLunch ?: ['', '']; } }
+}
+foreach (TT_WEEKDAYS as $w => $n) { $fLunch[$w] = $fLunch[$w] ?? ['', '']; }
 // Hours of each weekday: posted values, else the current timetable's hours for that day, else empty (the Admin sets them).
 $fDays = [];
 foreach (TT_WEEKDAYS as $w => $n) {
@@ -88,7 +110,7 @@ tt_flash();
 foreach ($errors as $e) { echo '<div class="alert alert-danger">' . tt_e($e) . '</div>'; }
 ?>
 <div class="row g-3">
-<div class="col-xl-7">
+<div class="col-12">
 <div class="card border-0 shadow-sm"><div class="card-body">
 <h5 class="mb-3"><?= $uid ? 'Timetable · ' . tt_e($emps[$uid]['names'] ?? '') : 'Set a timetable'; ?></h5>
 <form method="POST"><?= tt_csrf_field(); ?>
@@ -104,17 +126,19 @@ foreach ($errors as $e) { echo '<div class="alert alert-danger">' . tt_e($e) . '
         <div class="col-md-4"><label class="form-label small fw-semibold">Valid from</label><input type="date" name="valid_from" class="form-control" min="<?= date('Y-m-d'); ?>" value="<?= $v('valid_from'); ?>" required></div>
         <div class="col-md-4" id="ttTo"><label class="form-label small fw-semibold">Valid until</label><input type="date" name="valid_to" class="form-control" min="<?= date('Y-m-d'); ?>" value="<?= $v('valid_to'); ?>"></div>
     </div>
-    <label class="form-label small fw-semibold mt-1">Working days and hours <span class="text-muted fw-normal">(tick each working day and set its starting and ending time)</span></label>
+    <label class="form-label small fw-semibold mt-1">Working days and hours <span class="text-muted fw-normal">(tick each working day and set its starting time, its lunch and its ending time; lunch can be left empty on a day without lunch)</span></label>
     <div class="table-responsive"><table class="table table-sm align-middle mb-2" id="ttDays">
-        <tr><th>Works</th><th>Day</th><th>Starting time</th><th>Arrival <span class="fw-normal text-muted">(optional)</span></th><th>Ending time</th><th class="text-end">Working time</th></tr>
+        <tr><th>Works</th><th>Day</th><th>Starting time</th><th>Lunch starts</th><th>Lunch ends</th><th>Ending time</th><th class="text-end">Working time</th></tr>
         <?php foreach (TT_WEEKDAYS as $w => $n) { [$dr, $da, $dd] = $fDays[$w]; $on = in_array((string) $w, array_map('strval', (array) ($f['working_days'] ?? [])), true); ?>
         <tr data-day="<?= $w; ?>">
             <td><input type="checkbox" class="form-check-input" name="working_days[]" value="<?= $w; ?>" <?= $on ? 'checked' : ''; ?>></td>
             <td class="fw-semibold"><?= $n; ?></td>
             <td><input type="time" name="day_times[<?= $w; ?>][report]" class="form-control form-control-sm" value="<?= tt_e($dr); ?>"></td>
-            <td><input type="time" name="day_times[<?= $w; ?>][arrival]" class="form-control form-control-sm" value="<?= tt_e($da); ?>"></td>
+<input type="hidden" name="day_times[<?= $w; ?>][arrival]" value="<?= tt_e($da); ?>">
+            <td><input type="time" name="day_times[<?= $w; ?>][lunch_start]" class="form-control form-control-sm" value="<?= tt_e($fLunch[$w][0]); ?>"></td>
+            <td><input type="time" name="day_times[<?= $w; ?>][lunch_end]" class="form-control form-control-sm" value="<?= tt_e($fLunch[$w][1]); ?>"></td>
             <td><input type="time" name="day_times[<?= $w; ?>][departure]" class="form-control form-control-sm" value="<?= tt_e($dd); ?>"></td>
-            <td class="text-end small tt-day-total"></td>
+            <td class="text-end small tt-day-total text-nowrap"></td>
         </tr>
         <?php } ?>
     </table></div>
@@ -123,7 +147,7 @@ foreach ($errors as $e) { echo '<div class="alert alert-danger">' . tt_e($e) . '
             <div class="d-flex gap-1"><input type="number" name="grace_arrival" class="form-control" min="0" max="120" placeholder="<?= (int) $set['grace_arrival']; ?>" value="<?= $v('grace_arrival'); ?>"><input type="number" name="grace_return" class="form-control" min="0" max="120" placeholder="<?= (int) $set['grace_return']; ?>" value="<?= $v('grace_return'); ?>"></div>
             <div class="form-text">Minutes; empty = default</div></div>
     </div>
-    <label class="form-label small fw-semibold">Lunch and breaks <span class="text-muted fw-normal">(each employee may have different times; several per day)</span></label>
+    <label class="form-label small fw-semibold">Other breaks <span class="text-muted fw-normal">(optional, e.g. a tea break; for every day or one day only. Lunch is set per day above.)</span></label>
     <div class="table-responsive"><table class="table table-sm mb-1" id="ttBreaks"><tr><th>Name</th><th>Type</th><th>Day</th><th>Starts</th><th>Ends</th><th></th></tr>
         <?php foreach ($fBreaks as [$l, $t, $s, $e, $bd]) { ?>
         <tr><td><input name="b_label[]" class="form-control form-control-sm" style="min-width:110px;" value="<?= tt_e($l); ?>" maxlength="60"></td>
@@ -150,7 +174,7 @@ foreach ($errors as $e) { echo '<div class="alert alert-danger">' . tt_e($e) . '
 </form>
 </div></div>
 </div>
-<div class="col-xl-5">
+<div class="col-12">
     <?php if ($uid) { ?>
     <div class="card border-0 shadow-sm mb-3"><div class="card-body">
         <h6>All versions (history is kept)</h6>
@@ -200,17 +224,19 @@ function ttTotals() {
     document.querySelectorAll('#ttDays tr[data-day]').forEach(function (row) {
         var day = row.getAttribute('data-day'), cell = row.querySelector('.tt-day-total');
         var on = row.querySelector('[name="working_days[]"]').checked;
-        row.querySelectorAll('input[type=time]').forEach(function (i) { i.disabled = !on; if (!/\[arrival\]/.test(i.name)) { i.required = on; } });
+        row.querySelectorAll('input[type=time]').forEach(function (i) { i.disabled = !on; if (!/\[(arrival|lunch_start|lunch_end)\]/.test(i.name)) { i.required = on; } });
         if (!on) { cell.textContent = 'Day off'; return; }
         var r = ttMin(row.querySelector('[name$="[report]"]').value), d = ttMin(row.querySelector('[name$="[departure]"]').value);
         if (r === null || d === null) { cell.textContent = 'Enter both times'; return; }
         if (d <= r) { d += 1440; }
         var br = 0;
+        var ls = ttMin(row.querySelector('[name$="[lunch_start]"]').value), le = ttMin(row.querySelector('[name$="[lunch_end]"]').value);
+        if (ls !== null && le !== null) { if (le <= ls) { le += 1440; } br += le - ls; }
         document.querySelectorAll('#ttBreaks tr').forEach(function (tr) {
             var s = tr.querySelector('[name="b_start[]"]'), e = tr.querySelector('[name="b_end[]"]'), w = tr.querySelector('[name="b_day[]"]');
             if (s && e && s.value && e.value && (!w || w.value === '0' || w.value === day)) { var a = ttMin(s.value), b = ttMin(e.value); if (b <= a) { b += 1440; } br += b - a; }
         });
-        cell.innerHTML = '<strong>' + ttFmt(d - r - br) + '</strong>' + (br ? ' <span class="text-muted">(breaks ' + ttFmt(br) + ')</span>' : '');
+        cell.innerHTML = '<strong>' + ttFmt(d - r - br) + '</strong>' + (br ? '<div class="text-muted">breaks ' + ttFmt(br) + '</div>' : '');
         totalWeek += d - r - br;
     });
     document.getElementById('ttTotals').innerHTML = 'Total expected working time per week: <strong>' + ttFmt(totalWeek) + '</strong>';

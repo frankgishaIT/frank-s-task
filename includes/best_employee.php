@@ -153,57 +153,88 @@ function be_banner(mysqli $conn): void
     $label = date('F Y', strtotime($cur['month'] . '-01'));
     $multi = count($cur['winners']) > 1;
     $e = function ($v) { return htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8'); };
+    $pct = function ($v) { return rtrim(rtrim(number_format((float) $v, 1), '0'), '.') . '%'; };
     $isMe = in_array((int) ($_SESSION['user_id'] ?? 0), array_column($cur['winners'], 'user_id'), true);
+    $next = array_slice(array_values(array_filter($cur['ranking'], function ($r) { return $r['rank'] !== null && $r['rank'] > 1; })), 0, 3);
+    $base = rtrim((string) BASE_URL, '/');
     ?>
 <style>
-.be-banner{ position:relative; overflow:hidden; border-radius:20px; padding:22px 24px; margin-bottom:22px; color:#fff;
-    background:linear-gradient(120deg,#0B1A8C 0%,#1E2FE0 45%,#7C5CE0 100%); box-shadow:0 10px 30px rgba(30,47,224,.25); }
-.be-banner:before{ content:''; position:absolute; inset:0; background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.18) 50%,transparent 65%); transform:translateX(-100%); animation:beShine 4.5s ease-in-out infinite; }
-@keyframes beShine{ 0%,55%{transform:translateX(-100%);} 100%{transform:translateX(100%);} }
-.be-trophy{ font-size:44px; color:#F7C948; filter:drop-shadow(0 4px 10px rgba(247,201,72,.5)); animation:beBounce 2.4s ease-in-out infinite; display:inline-block; }
-@keyframes beBounce{ 0%,100%{transform:translateY(0) rotate(-4deg);} 50%{transform:translateY(-8px) rotate(4deg);} }
-.be-kicker{ letter-spacing:.14em; font-size:12px; font-weight:800; color:#F7C948; text-transform:uppercase; }
-.be-name{ font-size:1.6rem; font-weight:800; line-height:1.15; }
-.be-photo{ width:96px; height:96px; border-radius:50%; object-fit:cover; border:4px solid #F7C948; box-shadow:0 0 0 6px rgba(247,201,72,.25); background:#fff; }
-.be-initials{ width:96px; height:96px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:34px; font-weight:800; background:rgba(255,255,255,.15); border:4px solid #F7C948; box-shadow:0 0 0 6px rgba(247,201,72,.25); }
-.be-score{ font-size:2.4rem; font-weight:900; color:#F7C948; line-height:1; }
-.be-chip{ display:inline-block; background:rgba(255,255,255,.16); border-radius:20px; padding:3px 11px; font-size:12.5px; margin:4px 6px 0 0; }
-.be-confetti span{ position:absolute; top:-12px; width:8px; height:14px; opacity:.85; animation:beFall linear infinite; border-radius:2px; }
-@keyframes beFall{ 0%{transform:translateY(0) rotate(0);} 100%{transform:translateY(260px) rotate(540deg);} }
-@media (prefers-reduced-motion: reduce){ .be-banner:before,.be-trophy,.be-confetti span{ animation:none; display:none; } }
-@media (max-width: 576px){ .be-name{font-size:1.25rem;} .be-score{font-size:1.9rem;} .be-photo,.be-initials{width:72px;height:72px;font-size:26px;} .be-trophy{font-size:34px;} }
+.be-banner{ position:relative; overflow:hidden; border-radius:22px; padding:22px 26px 18px; margin-bottom:22px; color:#fff;
+    background:linear-gradient(115deg,#0D2A9E 0%,#1A44D6 45%,#2F6FEF 80%,#3B82F6 100%); box-shadow:0 12px 30px rgba(30,64,200,.25); }
+.be-banner .be-deco1{ position:absolute; right:-80px; top:-110px; width:330px; height:330px; border-radius:50%; background:rgba(255,255,255,.07); }
+.be-banner .be-deco2{ position:absolute; left:30%; bottom:-170px; width:330px; height:330px; border-radius:50%; background:rgba(94,234,212,.10); }
+.be-banner > *:not(.be-deco1):not(.be-deco2):not(.be-confetti){ position:relative; }
+.be-trophy{ width:54px; height:54px; border-radius:14px; background:#fff; color:#0E9F6E; display:inline-flex; align-items:center; justify-content:center; font-size:26px;
+    box-shadow:0 6px 16px rgba(0,0,0,.15); animation:beBounce 2.6s ease-in-out infinite; flex-shrink:0; }
+@keyframes beBounce{ 0%,100%{transform:translateY(0) rotate(-3deg);} 50%{transform:translateY(-5px) rotate(3deg);} }
+.be-kicker{ letter-spacing:.14em; font-size:14px; font-weight:900; color:#6EE7B7; text-transform:uppercase; }
+.be-ring{ width:150px; height:150px; border-radius:50%; padding:7px; background:conic-gradient(#5EEAD4,#3B82F6,#A5B4FC,#5EEAD4); flex-shrink:0;
+    box-shadow:0 0 0 8px rgba(255,255,255,.10); }
+.be-ring > *{ width:100%; height:100%; border-radius:50%; background:#fff; border:4px solid #fff; object-fit:cover; display:flex; align-items:center; justify-content:center;
+    color:#1E3FD0; font-size:44px; font-weight:900; }
+.be-name{ font-size:2.1rem; font-weight:900; line-height:1.1; }
+.be-dept{ font-size:1.05rem; opacity:.9; }
+.be-score{ font-size:3.4rem; font-weight:900; color:#6EE7B7; line-height:1; }
+.be-scorelbl{ font-size:1rem; line-height:1.25; opacity:.92; }
+.be-bar{ height:10px; border-radius:10px; background:rgba(255,255,255,.18); max-width:480px; overflow:hidden; }
+.be-bar > div{ height:100%; border-radius:10px; background:linear-gradient(90deg,#34D399,#A7F3D0); }
+.be-chip{ display:inline-flex; align-items:center; gap:7px; border:1px solid rgba(255,255,255,.35); background:rgba(255,255,255,.10); border-radius:30px; padding:6px 16px;
+    font-size:14.5px; font-weight:600; margin:0 8px 6px 0; }
+.be-top{ background:#fff; color:#1E2333; border-radius:18px; padding:16px 22px 8px; min-width:300px; box-shadow:0 8px 20px rgba(0,0,0,.10); }
+.be-top-title{ color:#1E4FE0; font-weight:800; letter-spacing:.12em; font-size:13px; margin-bottom:4px; }
+.be-top-row{ display:flex; align-items:center; gap:14px; padding:11px 0; border-top:1px solid #E6EAF2; }
+.be-top-title + .be-top-row{ border-top:0; }
+.be-num{ width:32px; height:32px; border-radius:50%; background:#3B6EF0; color:#fff; font-weight:800; font-size:13px; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
+.be-num.r2{ background:#0E9F6E; }
+.be-top-row .be-pct{ margin-left:auto; color:#0E9F6E; font-weight:800; }
+.be-foot{ font-size:14px; opacity:.88; }
+.be-foot a{ color:#fff; font-weight:700; }
+.be-confetti span{ position:absolute; top:-12px; width:9px; height:12px; opacity:.85; animation:beFall linear infinite; border-radius:2px; background:#fff; }
+@keyframes beFall{ 0%{transform:translateY(0) rotate(0);} 100%{transform:translateY(300px) rotate(540deg);} }
+@media (prefers-reduced-motion: reduce){ .be-trophy,.be-confetti span{ animation:none; } .be-confetti{ display:none; } }
+@media (max-width: 992px){ .be-top{ min-width:0; width:100%; } }
+@media (max-width: 576px){ .be-banner{ padding:16px; } .be-ring{ width:96px; height:96px; padding:5px; } .be-ring > *{ font-size:28px; }
+    .be-name{ font-size:1.4rem; } .be-score{ font-size:2.4rem; } .be-kicker{ font-size:12px; } .be-trophy{ width:42px; height:42px; font-size:20px; } }
 </style>
 <div class="be-banner" role="region" aria-label="Best Employee of the Month">
-    <div class="be-confetti" aria-hidden="true"><?php foreach ([['5%', '#F7C948', 0, 5], ['18%', '#0FA968', 1.2, 6], ['33%', '#fff', 2.1, 5.5], ['52%', '#F7C948', .6, 7], ['68%', '#E24B4A', 1.8, 6.5], ['82%', '#fff', 3, 5], ['93%', '#0FA968', .3, 6]] as [$l, $c, $d, $t]) { ?><span style="left:<?= $l; ?>;background:<?= $c; ?>;animation-delay:<?= $d; ?>s;animation-duration:<?= $t; ?>s;"></span><?php } ?></div>
-    <div class="d-flex flex-wrap align-items-center gap-3 position-relative">
-        <div class="be-trophy"><i class="bi bi-trophy-fill"></i></div>
-        <div class="flex-grow-1" style="min-width:200px;">
+    <div class="be-deco1"></div><div class="be-deco2"></div>
+    <div class="be-confetti" aria-hidden="true"><?php foreach ([['22%', 0, 6], ['37%', 1.4, 7], ['55%', 2.2, 5.5], ['62%', .5, 6.5], ['78%', 1.8, 7.5], ['88%', 3, 6]] as [$l, $d, $t]) { ?><span style="left:<?= $l; ?>;animation-delay:<?= $d; ?>s;animation-duration:<?= $t; ?>s;"></span><?php } ?></div>
+
+    <div class="d-flex align-items-center gap-3 mb-3">
+        <span class="be-trophy"><i class="bi bi-trophy-fill"></i></span>
+        <div>
             <div class="be-kicker"><?= $multi ? 'Best Employees of the Month' : 'Best Employee of the Month'; ?> · <?= $e($label); ?><?= $cur['final'] ? '' : ' (so far)'; ?></div>
-            <?php if ($isMe) { ?><div class="small" style="color:#FFE9A8;">Congratulations — this is you! 🎉</div><?php } ?>
+            <?php if ($isMe) { ?><div class="small" style="color:#FDE68A;">Congratulations, this is you! 🎉</div><?php } ?>
         </div>
     </div>
-    <div class="d-flex flex-wrap gap-4 mt-3 position-relative">
-        <?php foreach ($cur['winners'] as $w) { $url = be_photo_url($w['photo']); ?>
-        <div class="d-flex align-items-center gap-3" style="min-width:260px;">
-            <?php if ($url) { ?><img class="be-photo" src="<?= $e($url); ?>" alt="<?= $e($w['name']); ?>"><?php } else { $p = preg_split('/\s+/', trim($w['name'])); ?><span class="be-initials"><?= $e(strtoupper(mb_substr($p[0] ?? '', 0, 1) . mb_substr($p[1] ?? '', 0, 1))); ?></span><?php } ?>
-            <div>
-                <div class="be-name"><?= $e($w['name']); ?></div>
-                <div style="opacity:.9;"><i class="bi bi-building"></i> <?= $e($w['department'] ?: 'No department'); ?></div>
-                <div class="d-flex align-items-end gap-2 mt-1"><div class="be-score"><?= $e(rtrim(rtrim(number_format((float) $w['score'], 1), '0'), '.')); ?>%</div><div class="small pb-1" style="opacity:.9;">performance<br>achievement</div></div>
-                <div><span class="be-chip"><i class="bi bi-bullseye"></i> <?= (int) $w['met']; ?> of <?= (int) $w['measured']; ?> KPIs on target</span><span class="be-chip"><i class="bi bi-calendar-check"></i> <?= $e($label); ?></span></div>
+
+    <div class="d-flex flex-wrap align-items-center gap-4">
+        <div class="d-flex flex-column gap-4 flex-grow-1">
+        <?php foreach ($cur['winners'] as $w) { $url = be_photo_url($w['photo']); $sc = min(100, max(0, (float) $w['score'])); ?>
+            <div class="d-flex flex-wrap align-items-center gap-4">
+                <div class="be-ring"><?php if ($url) { ?><img src="<?= $e($url); ?>" alt="<?= $e($w['name']); ?>"><?php } else { $p = preg_split('/\s+/', trim($w['name'])); ?><span><?= $e(strtoupper(mb_substr($p[0] ?? '', 0, 1) . mb_substr($p[1] ?? '', 0, 1))); ?></span><?php } ?></div>
+                <div style="min-width:0; flex:1;">
+                    <div class="be-name"><?= $e($w['name']); ?></div>
+                    <div class="be-dept mt-1"><i class="bi bi-building"></i> <?= $e($w['department'] ?: 'No department'); ?></div>
+                    <div class="d-flex align-items-center gap-3 mt-2"><div class="be-score"><?= $e($pct($w['score'])); ?></div><div class="be-scorelbl">performance<br>achievement</div></div>
+                    <div class="be-bar mt-2" title="<?= $e($pct($w['score'])); ?> of target"><div style="width:<?= $sc; ?>%;"></div></div>
+                    <div class="mt-3"><span class="be-chip"><i class="bi bi-bullseye"></i> <?= (int) $w['met']; ?> of <?= (int) $w['measured']; ?> KPIs on target</span><span class="be-chip"><i class="bi bi-calendar3"></i> <?= $e($label); ?></span></div>
+                </div>
             </div>
-        </div>
         <?php } ?>
-        <?php $next = array_slice(array_values(array_filter($cur['ranking'], function ($r) { return $r['rank'] !== null && $r['rank'] > 1; })), 0, 3);
-        if ($next) { ?>
-        <div class="ms-lg-auto" style="min-width:220px;">
-            <div class="be-kicker mb-1" style="color:#fff;opacity:.85;">Top performers</div>
-            <?php foreach ($next as $r) { ?><div class="d-flex justify-content-between gap-3 py-1" style="border-bottom:1px solid rgba(255,255,255,.15);"><span><strong>#<?= (int) $r['rank']; ?></strong> <?= $e($r['name']); ?></span><strong style="color:#F7C948;"><?= $e(rtrim(rtrim(number_format((float) $r['score'], 1), '0'), '.')); ?>%</strong></div><?php } ?>
+        </div>
+        <?php if ($next) { ?>
+        <div class="be-top ms-lg-auto">
+            <div class="be-top-title">TOP PERFORMERS</div>
+            <?php foreach ($next as $r) { ?>
+                <div class="be-top-row"><span class="be-num<?= (int) $r['rank'] === 2 ? ' r2' : ''; ?>"><?= (int) $r['rank']; ?></span><span><?= $e($r['name']); ?></span><span class="be-pct"><?= $e($pct($r['score'])); ?></span></div>
+            <?php } ?>
         </div>
         <?php } ?>
     </div>
-    <div class="small mt-3 position-relative" style="opacity:.8;">Chosen automatically from approved KPI results (weighted achievement vs targets)<?= $cur['final'] ? '' : '; final when the month ends'; ?>.
-        <?php if (in_array($_SESSION['user_role'] ?? '', ['Admin', 'Manager'], true)) { ?><a href="<?= $e(rtrim((string) BASE_URL, '/')); ?>/modules/users/analytics.php#ranking" class="text-white fw-semibold">See the ranking</a><?php } else { ?><a href="<?= $e(rtrim((string) BASE_URL, '/')); ?>/modules/kpi/my.php" class="text-white fw-semibold">See my performance</a><?php } ?></div>
+
+    <div class="be-foot mt-3">Chosen automatically from approved KPI results (weighted achievement vs targets)<?= $cur['final'] ? '' : '; final when the month ends'; ?>.
+        <?php if (in_array($_SESSION['user_role'] ?? '', ['Admin', 'Manager'], true)) { ?><a href="<?= $e($base); ?>/modules/users/analytics.php#ranking">See the ranking</a><?php } else { ?><a href="<?= $e($base); ?>/modules/kpi/my.php">See my performance</a><?php } ?></div>
 </div>
     <?php
 }

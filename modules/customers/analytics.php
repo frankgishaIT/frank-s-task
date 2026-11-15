@@ -74,12 +74,36 @@ include '../../includes/header.php';
 include '../../includes/sidebar.php';
 ?>
 <style>
-    .ca-best{ position:relative; overflow:hidden; border-radius:16px; color:#fff; padding:18px 20px; min-height:150px; }
-    .ca-best.month{ background:linear-gradient(135deg,#1E2FE0,#5B6CFF); } .ca-best.year{ background:linear-gradient(135deg,#B7791F,#F0B429); }
-    .ca-best .ca-crown{ position:absolute; right:-10px; top:-14px; font-size:110px; opacity:.13; }
-    .ca-best .ca-val{ font-size:1.5rem; font-weight:800; }
-    .ca-pill{ background:rgba(255,255,255,.18); border-radius:20px; padding:2px 10px; font-size:12px; display:inline-block; margin:2px 4px 0 0; }
-    .ca-best select, .ca-best input{ background:rgba(255,255,255,.95); }
+    /* Best Customer cards (blue = month, green = year) */
+    .ca-best{ position:relative; overflow:hidden; border-radius:22px; color:#fff; padding:24px 26px 26px; box-shadow:0 14px 34px rgba(17,24,39,.16); }
+    .ca-best.month{ background:linear-gradient(135deg,#1631A8 0%,#1E4FE0 55%,#3B82F6 100%); }
+    .ca-best.year{ background:linear-gradient(135deg,#0B6B4C 0%,#0E8F62 55%,#2FD08D 100%); }
+    .ca-best .ca-deco1{ position:absolute; right:-70px; top:-90px; width:270px; height:270px; border-radius:50%; background:rgba(255,255,255,.08); }
+    .ca-best .ca-deco2{ position:absolute; left:-60px; bottom:-90px; width:220px; height:220px; border-radius:50%; background:rgba(255,255,255,.05); }
+    .ca-best > *:not([class^="ca-deco"]){ position:relative; }
+    .ca-best .ca-head{ display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+    .ca-best .ca-ico{ width:42px; height:42px; border-radius:12px; background:rgba(255,255,255,.16); display:inline-flex; align-items:center; justify-content:center; font-size:18px; }
+    .ca-best .ca-title{ font-weight:900; letter-spacing:.12em; text-transform:uppercase; font-size:15px; }
+    .ca-best .ca-pick{ border:0; border-radius:12px; padding:9px 14px; background:#fff; color:#1E2333; font-size:15px; min-width:150px; box-shadow:0 4px 12px rgba(0,0,0,.08); }
+    .ca-best.year .ca-pick{ min-width:110px; }
+    .ca-best .ca-avatar{ width:112px; height:112px; border-radius:50%; background:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:34px; font-weight:900;
+        box-shadow:0 0 0 7px rgba(255,255,255,.22); flex-shrink:0; object-fit:cover; }
+    .ca-best.month .ca-avatar{ color:#1E3FD0; } .ca-best.year .ca-avatar{ color:#0B7A55; }
+    .ca-best .ca-name{ font-size:1.85rem; font-weight:900; line-height:1.15; }
+    .ca-best .ca-id{ opacity:.9; } .ca-best .ca-id span{ background:rgba(255,255,255,.18); border-radius:8px; padding:2px 10px; font-weight:700; margin-left:6px; opacity:1; }
+    .ca-best .ca-cur{ font-size:1rem; font-weight:700; opacity:.85; margin-right:8px; }
+    .ca-best .ca-val{ font-size:2.6rem; font-weight:900; line-height:1.1; }
+    .ca-best .ca-pill{ display:inline-block; border:1px solid rgba(255,255,255,.35); background:rgba(255,255,255,.12); border-radius:30px; padding:6px 16px; font-weight:600; font-size:14px; margin:0 8px 8px 0; }
+    .ca-best .ca-next{ background:#F7F9FC; color:#1E2333; border-radius:18px; padding:16px 20px 6px; margin-top:12px; }
+    .ca-best .ca-next-title{ font-weight:800; letter-spacing:.12em; font-size:13px; margin-bottom:6px; }
+    .ca-best.month .ca-next-title, .ca-best.month .ca-amt{ color:#1E4FE0; } .ca-best.year .ca-next-title, .ca-best.year .ca-amt{ color:#0E8F62; }
+    .ca-best .ca-row{ display:flex; align-items:center; gap:14px; padding:12px 0; border-top:1px solid #E6EAF2; }
+    .ca-best .ca-next-title + .ca-row{ border-top:0; }
+    .ca-best .ca-num{ width:30px; height:30px; border-radius:50%; color:#fff; font-weight:800; font-size:13px; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
+    .ca-best.month .ca-num{ background:#3B6EF0; } .ca-best.year .ca-num{ background:#14A06C; }
+    .ca-best .ca-row a{ color:#1E2333; text-decoration:none; font-weight:500; } .ca-best .ca-row a:hover{ text-decoration:underline; }
+    .ca-best .ca-amt{ margin-left:auto; font-weight:800; white-space:nowrap; }
+    @media (max-width: 576px){ .ca-best{ padding:18px; } .ca-best .ca-avatar{ width:80px; height:80px; font-size:26px; } .ca-best .ca-name{ font-size:1.35rem; } .ca-best .ca-val{ font-size:2rem; } }
 </style>
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
     <div><h2 class="mb-0">Customer Analytics</h2><div class="small text-muted">Click any bar or slice to see its customers. Purchases = confirmed invoices (Paid, Partially Paid, Credit).</div></div>
@@ -104,31 +128,44 @@ include '../../includes/sidebar.php';
 </div>
 
 <!-- B. Best customers -->
-<div class="row g-3 mb-3">
+<div class="row g-4 mb-4">
     <?php foreach ([['month', 'Best Customer of the Month', $bestMonth, date('F Y', strtotime($bm . '-01'))], ['year', 'Best Customer of the Year', $bestYear, $by]] as [$kind, $label, $list, $when]) { $b = $list[0] ?? null; ?>
-    <div class="col-lg-6">
-        <div class="ca-best <?= $kind; ?> shadow-sm h-100">
-            <i class="bi bi-trophy-fill ca-crown"></i>
-            <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
-                <div class="text-uppercase small fw-bold" style="letter-spacing:.08em;"><i class="bi bi-award-fill"></i> <?= an_e($label); ?> · <?= an_e($when); ?></div>
-                <form method="GET" class="d-flex gap-1">
+    <div class="col-xl-6">
+        <div class="ca-best <?= $kind; ?> h-100">
+            <div class="ca-deco1"></div><div class="ca-deco2"></div>
+            <div class="ca-head">
+                <div class="d-flex align-items-center gap-3"><span class="ca-ico"><i class="bi bi-trophy-fill"></i></span><span class="ca-title"><?= an_e($label); ?></span></div>
+                <form method="GET" class="m-0">
                     <?php foreach ($base as $k => $v) { if (in_array($k, ['bm', 'by'], true) || is_array($v)) { continue; } ?><input type="hidden" name="<?= an_e($k); ?>" value="<?= an_e($v); ?>"><?php } ?>
-                    <?php if ($kind === 'month') { ?><input type="month" name="bm" value="<?= an_e($bm); ?>" class="form-control form-control-sm" style="width:150px;" onchange="this.form.submit()"><input type="hidden" name="by" value="<?= an_e($by); ?>">
-                    <?php } else { ?><select name="by" class="form-select form-select-sm" style="width:100px;" onchange="this.form.submit()"><?php for ($y = (int) date('Y'); $y >= (int) date('Y') - 6; $y--) { ?><option <?= (string) $y === (string) $by ? 'selected' : ''; ?>><?= $y; ?></option><?php } ?></select><input type="hidden" name="bm" value="<?= an_e($bm); ?>"><?php } ?>
+                    <?php if ($kind === 'month') { ?><input type="month" name="bm" value="<?= an_e($bm); ?>" max="<?= date('Y-m'); ?>" class="ca-pick" onchange="this.form.submit()" aria-label="Month"><input type="hidden" name="by" value="<?= an_e($by); ?>">
+                    <?php } else { ?><select name="by" class="ca-pick" onchange="this.form.submit()" aria-label="Year"><?php for ($y = (int) date('Y'); $y >= (int) date('Y') - 6; $y--) { ?><option <?= (string) $y === (string) $by ? 'selected' : ''; ?>><?= $y; ?></option><?php } ?></select><input type="hidden" name="bm" value="<?= an_e($bm); ?>"><?php } ?>
                 </form>
             </div>
-            <?php if ($b) { ?>
-                <div class="d-flex align-items-center gap-3 mt-3">
-                    <?= an_avatar($b['photo'] ? '../../' . ltrim($b['photo'], '/') : null, $b['name'], 70, 'rgba(255,255,255,.25)'); ?>
-                    <div>
-                        <div class="fs-5 fw-bold"><?= an_e($b['name']); ?></div>
-                        <div class="small">Customer ID <strong><?= an_e($b['code']); ?></strong></div>
-                        <div class="ca-val"><?= an_e($money($b['total'])); ?></div>
-                        <div><span class="ca-pill"><?= (int) $b['purchases']; ?> purchase(s)</span><?php if ($b['loyalty_points'] !== null) { ?><span class="ca-pill"><?= number_format((int) $b['loyalty_points']); ?> loyalty points</span><?php } ?><?php if ($b['district']) { ?><span class="ca-pill"><?= an_e($b['district']); ?></span><?php } ?></div>
+            <?php if ($b) { $parts = preg_split('/\s+/', trim($b['name'])) ?: ['?']; ?>
+                <div class="d-flex align-items-center gap-4 mt-4 flex-wrap">
+                    <?php if ($b['photo']) { ?><img class="ca-avatar" src="<?= an_e('../../' . ltrim($b['photo'], '/')); ?>" alt=""><?php } else { ?><span class="ca-avatar"><?= an_e(strtoupper(mb_substr($parts[0], 0, 1) . (isset($parts[1]) ? mb_substr($parts[1], 0, 1) : ''))); ?></span><?php } ?>
+                    <div style="min-width:0;">
+                        <div class="ca-name"><?= an_e($b['name']); ?></div>
+                        <div class="ca-id mt-1">Customer ID<span><?= an_e($b['code']); ?></span></div>
+                        <div class="mt-2"><span class="ca-cur">RWF</span><span class="ca-val"><?= number_format((float) $b['total'], 0); ?></span></div>
                     </div>
                 </div>
-                <?php if (count($list) > 1) { ?><div class="small mt-2" style="opacity:.9;">Next: <?= implode(' · ', array_map(function ($r, $i) use ($money) { return ($i + 2) . '. ' . an_e($r['name']) . ' ' . an_e($money($r['total'])); }, array_slice($list, 1, 4), array_keys(array_slice($list, 1, 4)))); ?></div><?php } ?>
-            <?php } else { ?><div class="mt-4">No confirmed purchases by registered customers in <?= an_e($when); ?>.</div><?php } ?>
+                <div class="mt-3">
+                    <span class="ca-pill"><?= (int) $b['purchases']; ?> <?= (int) $b['purchases'] === 1 ? 'purchase' : 'purchases'; ?></span>
+                    <?php if ($b['loyalty_points'] !== null) { ?><span class="ca-pill"><?= number_format((int) $b['loyalty_points']); ?> loyalty points</span><?php } ?>
+                    <?php if ($b['district']) { ?><span class="ca-pill"><?= an_e($b['district']); ?></span><?php } ?>
+                </div>
+                <?php if (count($list) > 1) { ?>
+                <div class="ca-next">
+                    <div class="ca-next-title">NEXT IN LINE</div>
+                    <?php foreach (array_slice($list, 1, 4) as $i => $r) { ?>
+                        <div class="ca-row"><span class="ca-num"><?= $i + 2; ?></span><a href="edit.php?id=<?= (int) $r['id']; ?>"><?= an_e($r['name']); ?></a><span class="ca-amt">RWF <?= number_format((float) $r['total'], 0); ?></span></div>
+                    <?php } ?>
+                </div>
+                <?php } ?>
+            <?php } else { ?>
+                <div class="mt-4 fs-5">No confirmed purchases by registered customers in <?= an_e($when); ?>.</div>
+            <?php } ?>
         </div>
     </div>
     <?php } ?>

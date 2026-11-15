@@ -33,7 +33,13 @@ $result = mysqli_query($conn, $query);
 
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2>Employees Management</h2>
-    <a href="create.php" class="rm-btn rm-btn-primary">+ Add Employee</a>
+    <div class="d-flex gap-2">
+        <?php if (in_array(current_user_role(), ['Admin', 'Manager'], true)) { ?>
+            <!-- NEW (Task 2): Employees Dashboard (charts and Best Employee of the Month) -->
+            <a href="analytics.php" class="btn btn-outline-primary"><i class="bi bi-bar-chart-line"></i> Employees Dashboard</a>
+        <?php } ?>
+        <a href="create.php" class="rm-btn rm-btn-primary">+ Add Employee</a>
+    </div>
 </div>
 
 <div class="card border-0 shadow-sm">

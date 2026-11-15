@@ -299,6 +299,7 @@ function access_page_permission(string $script): ?string
     if ($module === 'sales' && in_array($f, ['ledger', 'invoice', 'receipt'], true)) { return 'sales.view'; }
     if ($module === 'sales' && in_array($f, ['pay_credit', 'record_payment'], true)) { return 'sales.create'; }
     if ($module === 'sales' && in_array($f, ['category_profit', 'category_profit_pdf'], true)) { return 'sales.reports'; }
+    if ($module === 'customers' && $f === 'analytics') { return 'customers.reports'; } // NEW (Task 2): Customer Analytics
     if ($module === 'customers' && preg_match('/^reward/', $f)) { return in_array($f, ['rewards', 'reward_evidence'], true) ? 'customers.view' : 'customers.edit'; }
 
     // Everything else: the module = folder, the action = file name.
@@ -349,4 +350,4 @@ function access_label(string $perm): string
 {
     [$m, $a] = explode('.', $perm) + [1 => ''];
     return (access_catalog()[$m][0] ?? $m) . ': ' . (ACCESS_ACTION_LABELS[$a] ?? $a);
-}
+}

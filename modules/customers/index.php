@@ -44,6 +44,8 @@ $customers = mysqli_query($conn, "SELECT customers.*,
         <?php if (in_array(current_user_role(), ['Admin', 'Manager'], true)) { ?>
             <!-- NEW: Customers & Credit reports -->
             <a href="reports.php" class="btn btn-outline-primary">Reports</a>
+            <!-- NEW (Task 2): Customer Analytics -->
+            <a href="analytics.php" class="btn btn-outline-primary"><i class="bi bi-bar-chart-line"></i> Analytics</a>
             <!-- NEW: Rewards Management -->
             <a href="rewards.php" class="btn btn-outline-primary">Rewards</a>
         <?php } ?>

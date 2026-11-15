@@ -151,6 +151,11 @@ $activityFeed = array_slice($activityFeed, 0, 6);
     </div>
 </div>
 
+<?php
+// NEW (Task 2): BEST EMPLOYEE OF THE MONTH, shown to everyone right after they sign in.
+try { require_once '../../includes/best_employee.php'; be_banner($conn); } catch (Throwable $e) { error_log('best employee banner: ' . $e->getMessage()); }
+?>
+
 <div class="row g-3 mb-4">
     <?php foreach ($fundCards as $fc) { ?>
     <!-- CHANGED: RM fund cards are the same size as Employees, Departments, etc. -->

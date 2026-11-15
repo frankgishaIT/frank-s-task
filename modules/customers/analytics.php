@@ -75,35 +75,35 @@ include '../../includes/sidebar.php';
 ?>
 <style>
     /* Best Customer cards (blue = month, green = year) */
-    .ca-best{ position:relative; overflow:hidden; border-radius:22px; color:#fff; padding:24px 26px 26px; box-shadow:0 14px 34px rgba(17,24,39,.16); }
+    .ca-best{ position:relative; overflow:hidden; border-radius:16px; color:#fff; padding:16px 18px; box-shadow:0 8px 22px rgba(17,24,39,.16); }
     .ca-best.month{ background:linear-gradient(135deg,#1631A8 0%,#1E4FE0 55%,#3B82F6 100%); }
     .ca-best.year{ background:linear-gradient(135deg,#0B6B4C 0%,#0E8F62 55%,#2FD08D 100%); }
-    .ca-best .ca-deco1{ position:absolute; right:-70px; top:-90px; width:270px; height:270px; border-radius:50%; background:rgba(255,255,255,.08); }
-    .ca-best .ca-deco2{ position:absolute; left:-60px; bottom:-90px; width:220px; height:220px; border-radius:50%; background:rgba(255,255,255,.05); }
+    .ca-best .ca-deco1{ position:absolute; right:-50px; top:-70px; width:180px; height:180px; border-radius:50%; background:rgba(255,255,255,.08); }
+    .ca-best .ca-deco2{ position:absolute; left:-50px; bottom:-70px; width:150px; height:150px; border-radius:50%; background:rgba(255,255,255,.05); }
     .ca-best > *:not([class^="ca-deco"]){ position:relative; }
     .ca-best .ca-head{ display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
-    .ca-best .ca-ico{ width:42px; height:42px; border-radius:12px; background:rgba(255,255,255,.16); display:inline-flex; align-items:center; justify-content:center; font-size:18px; }
-    .ca-best .ca-title{ font-weight:900; letter-spacing:.12em; text-transform:uppercase; font-size:15px; }
-    .ca-best .ca-pick{ border:0; border-radius:12px; padding:9px 14px; background:#fff; color:#1E2333; font-size:15px; min-width:150px; box-shadow:0 4px 12px rgba(0,0,0,.08); }
-    .ca-best.year .ca-pick{ min-width:110px; }
-    .ca-best .ca-avatar{ width:112px; height:112px; border-radius:50%; background:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:34px; font-weight:900;
-        box-shadow:0 0 0 7px rgba(255,255,255,.22); flex-shrink:0; object-fit:cover; }
+    .ca-best .ca-ico{ width:30px; height:30px; border-radius:9px; background:rgba(255,255,255,.16); display:inline-flex; align-items:center; justify-content:center; font-size:14px; }
+    .ca-best .ca-title{ font-weight:900; letter-spacing:.1em; text-transform:uppercase; font-size:12px; }
+    .ca-best .ca-pick{ border:0; border-radius:8px; padding:4px 8px; background:#fff; color:#1E2333; font-size:13px; min-width:130px; box-shadow:0 4px 12px rgba(0,0,0,.08); }
+    .ca-best.year .ca-pick{ min-width:85px; }
+    .ca-best .ca-avatar{ width:64px; height:64px; border-radius:50%; background:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:21px; font-weight:900;
+        box-shadow:0 0 0 4px rgba(255,255,255,.22); flex-shrink:0; object-fit:cover; }
     .ca-best.month .ca-avatar{ color:#1E3FD0; } .ca-best.year .ca-avatar{ color:#0B7A55; }
-    .ca-best .ca-name{ font-size:1.85rem; font-weight:900; line-height:1.15; }
-    .ca-best .ca-id{ opacity:.9; } .ca-best .ca-id span{ background:rgba(255,255,255,.18); border-radius:8px; padding:2px 10px; font-weight:700; margin-left:6px; opacity:1; }
-    .ca-best .ca-cur{ font-size:1rem; font-weight:700; opacity:.85; margin-right:8px; }
-    .ca-best .ca-val{ font-size:2.6rem; font-weight:900; line-height:1.1; }
-    .ca-best .ca-pill{ display:inline-block; border:1px solid rgba(255,255,255,.35); background:rgba(255,255,255,.12); border-radius:30px; padding:6px 16px; font-weight:600; font-size:14px; margin:0 8px 8px 0; }
-    .ca-best .ca-next{ background:#F7F9FC; color:#1E2333; border-radius:18px; padding:16px 20px 6px; margin-top:12px; }
-    .ca-best .ca-next-title{ font-weight:800; letter-spacing:.12em; font-size:13px; margin-bottom:6px; }
+    .ca-best .ca-name{ font-size:1.2rem; font-weight:900; line-height:1.15; }
+    .ca-best .ca-id{ opacity:.9; font-size:12.5px; } .ca-best .ca-id span{ background:rgba(255,255,255,.18); border-radius:8px; padding:1px 8px; font-weight:700; margin-left:6px; opacity:1; }
+    .ca-best .ca-cur{ font-size:.8rem; font-weight:700; opacity:.85; margin-right:5px; }
+    .ca-best .ca-val{ font-size:1.6rem; font-weight:900; line-height:1.1; }
+    .ca-best .ca-pill{ display:inline-block; border:1px solid rgba(255,255,255,.35); background:rgba(255,255,255,.12); border-radius:20px; padding:2px 10px; font-weight:600; font-size:12px; margin:0 5px 5px 0; }
+    .ca-best .ca-next{ background:#F7F9FC; color:#1E2333; border-radius:12px; padding:9px 12px 3px; margin-top:8px; }
+    .ca-best .ca-next-title{ font-weight:800; letter-spacing:.1em; font-size:11px; margin-bottom:2px; }
     .ca-best.month .ca-next-title, .ca-best.month .ca-amt{ color:#1E4FE0; } .ca-best.year .ca-next-title, .ca-best.year .ca-amt{ color:#0E8F62; }
-    .ca-best .ca-row{ display:flex; align-items:center; gap:14px; padding:12px 0; border-top:1px solid #E6EAF2; }
+    .ca-best .ca-row{ display:flex; align-items:center; gap:10px; padding:5px 0; font-size:13px; border-top:1px solid #E6EAF2; }
     .ca-best .ca-next-title + .ca-row{ border-top:0; }
-    .ca-best .ca-num{ width:30px; height:30px; border-radius:50%; color:#fff; font-weight:800; font-size:13px; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
+    .ca-best .ca-num{ width:20px; height:20px; border-radius:50%; color:#fff; font-weight:800; font-size:11px; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
     .ca-best.month .ca-num{ background:#3B6EF0; } .ca-best.year .ca-num{ background:#14A06C; }
     .ca-best .ca-row a{ color:#1E2333; text-decoration:none; font-weight:500; } .ca-best .ca-row a:hover{ text-decoration:underline; }
     .ca-best .ca-amt{ margin-left:auto; font-weight:800; white-space:nowrap; }
-    @media (max-width: 576px){ .ca-best{ padding:18px; } .ca-best .ca-avatar{ width:80px; height:80px; font-size:26px; } .ca-best .ca-name{ font-size:1.35rem; } .ca-best .ca-val{ font-size:2rem; } }
+    @media (max-width: 576px){ .ca-best{ padding:14px; } .ca-best .ca-avatar{ width:52px; height:52px; font-size:17px; } .ca-best .ca-name{ font-size:1.05rem; } .ca-best .ca-val{ font-size:1.35rem; } }
 </style>
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
     <div><h2 class="mb-0">Customer Analytics</h2><div class="small text-muted">Click any bar or slice to see its customers. Purchases = confirmed invoices (Paid, Partially Paid, Credit).</div></div>
@@ -128,13 +128,13 @@ include '../../includes/sidebar.php';
 </div>
 
 <!-- B. Best customers -->
-<div class="row g-4 mb-4">
+<div class="row g-3 mb-3">
     <?php foreach ([['month', 'Best Customer of the Month', $bestMonth, date('F Y', strtotime($bm . '-01'))], ['year', 'Best Customer of the Year', $bestYear, $by]] as [$kind, $label, $list, $when]) { $b = $list[0] ?? null; ?>
     <div class="col-xl-6">
         <div class="ca-best <?= $kind; ?> h-100">
             <div class="ca-deco1"></div><div class="ca-deco2"></div>
             <div class="ca-head">
-                <div class="d-flex align-items-center gap-3"><span class="ca-ico"><i class="bi bi-trophy-fill"></i></span><span class="ca-title"><?= an_e($label); ?></span></div>
+                <div class="d-flex align-items-center gap-2"><span class="ca-ico"><i class="bi bi-trophy-fill"></i></span><span class="ca-title"><?= an_e($label); ?></span></div>
                 <form method="GET" class="m-0">
                     <?php foreach ($base as $k => $v) { if (in_array($k, ['bm', 'by'], true) || is_array($v)) { continue; } ?><input type="hidden" name="<?= an_e($k); ?>" value="<?= an_e($v); ?>"><?php } ?>
                     <?php if ($kind === 'month') { ?><input type="month" name="bm" value="<?= an_e($bm); ?>" max="<?= date('Y-m'); ?>" class="ca-pick" onchange="this.form.submit()" aria-label="Month"><input type="hidden" name="by" value="<?= an_e($by); ?>">
@@ -142,15 +142,15 @@ include '../../includes/sidebar.php';
                 </form>
             </div>
             <?php if ($b) { $parts = preg_split('/\s+/', trim($b['name'])) ?: ['?']; ?>
-                <div class="d-flex align-items-center gap-4 mt-4 flex-wrap">
+                <div class="d-flex align-items-center gap-3 mt-3 flex-wrap">
                     <?php if ($b['photo']) { ?><img class="ca-avatar" src="<?= an_e('../../' . ltrim($b['photo'], '/')); ?>" alt=""><?php } else { ?><span class="ca-avatar"><?= an_e(strtoupper(mb_substr($parts[0], 0, 1) . (isset($parts[1]) ? mb_substr($parts[1], 0, 1) : ''))); ?></span><?php } ?>
                     <div style="min-width:0;">
                         <div class="ca-name"><?= an_e($b['name']); ?></div>
                         <div class="ca-id mt-1">Customer ID<span><?= an_e($b['code']); ?></span></div>
-                        <div class="mt-2"><span class="ca-cur">RWF</span><span class="ca-val"><?= number_format((float) $b['total'], 0); ?></span></div>
+                        <div class="mt-1"><span class="ca-cur">RWF</span><span class="ca-val"><?= number_format((float) $b['total'], 0); ?></span></div>
                     </div>
                 </div>
-                <div class="mt-3">
+                <div class="mt-2">
                     <span class="ca-pill"><?= (int) $b['purchases']; ?> <?= (int) $b['purchases'] === 1 ? 'purchase' : 'purchases'; ?></span>
                     <?php if ($b['loyalty_points'] !== null) { ?><span class="ca-pill"><?= number_format((int) $b['loyalty_points']); ?> loyalty points</span><?php } ?>
                     <?php if ($b['district']) { ?><span class="ca-pill"><?= an_e($b['district']); ?></span><?php } ?>

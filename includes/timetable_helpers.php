@@ -460,6 +460,10 @@ function tt_record_action(mysqli $conn, int $userId, string $action, int $ref = 
         $set = tt_settings($conn);
         if ($action === 'break_end' && !$ref) { $ob = $ctx['plan'] ? tt_open_break($ctx['plan'], tt_norm_events($ctx['events'])) : null; $ref = $ob ? $ob['id'] : 0; }
         [$ok, $why] = tt_engine_can($ctx['plan'], $ctx['events'], $ctx['ex'], $now, $action, $ref, $set);
+        if ($ok && $action === 'check_in') {   // NEW (Multi-branch): no new attendance in a CLOSED / SUSPENDED branch
+            require_once __DIR__ . '/branch_helpers.php';
+            if (($brWhy = br_operation_block($conn, br_employee_work_branch($conn, $userId), 'attendance')) !== null) { $ok = false; $why = $brWhy; }
+        }
         if (!$ok) {
             tt_audit($conn, $userId, $userId, 'event', null, 'refused', TT_EVENT_LABELS[$action] . ' refused at ' . date('H:i:s', $now) . ': ' . $why);
             return ['ok' => false, 'message' => $why];
@@ -578,6 +582,7 @@ function tt_attendance_check_in(mysqli $conn, int $userId, string $date, int $no
             mysqli_stmt_bind_param($s, 'isssi', $userId, $date, $time, $status, $late);
         }
         mysqli_stmt_execute($s);
+        if (!$row) { require_once __DIR__ . '/branch_helpers.php'; br_stamp($conn, 'attendance', (int) mysqli_insert_id($conn), br_employee_work_branch($conn, $userId)); } // NEW (Multi-branch)
     } catch (Throwable $e) { error_log('tt attendance check-in: ' . $e->getMessage()); }
 }
 

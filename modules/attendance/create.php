@@ -27,7 +27,12 @@ if (isset($_POST['save'])) {
         $userOk = (bool) mysqli_fetch_assoc(mysqli_stmt_get_result($u));
     }
 
-    if (!$userId || !$userOk || !$validDate || $validDate->format('Y-m-d') !== $attendanceDate || !in_array($status, ['Present', 'Absent', 'Late', 'Leave'], true)) {
+    // NEW (Multi-branch): attendance records are recorded in the branch you are working in. A CLOSED or TEMPORARILY SUSPENDED branch cannot record new ones.
+    require_once __DIR__ . '/../../includes/branch_helpers.php'; // NEW (Multi-branch)
+    $brBranch = $userId ? br_employee_work_branch($conn, (int) $userId) : null;
+    if (($brBlock = br_operation_block($conn, $brBranch, 'attendance')) !== null) {
+        $error = $brBlock;
+    } elseif (!$userId || !$userOk || !$validDate || $validDate->format('Y-m-d') !== $attendanceDate || !in_array($status, ['Present', 'Absent', 'Late', 'Leave'], true)) {
         $error = 'Please provide valid attendance details.';
     } elseif ($attendanceDate > date('Y-m-d')) {
         // NEW: attendance cannot be recorded for a day that has not happened yet.
@@ -56,6 +61,7 @@ if (isset($_POST['save'])) {
 
             try {
                 if (mysqli_stmt_execute($statement)) {
+                    br_stamp($conn, 'attendance', (int) mysqli_insert_id($conn), $brBranch); // NEW (Multi-branch): the branch where the employee worked
                     // CHANGED: message is urlencoded.
                     header('Location: index.php?success=' . urlencode('Attendance recorded successfully.'));
                     exit;

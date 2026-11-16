@@ -147,6 +147,12 @@
             justify-content:center;
         }
 
+        /* NEW (Multi-branch): branch selector in the top bar */
+        .rm-branch-btn{ display:flex; align-items:center; gap:6px; text-decoration:none; color:var(--ink); border:1px solid var(--border-soft); border-radius:10px; padding:6px 12px; white-space:nowrap; max-width:300px; }
+        .rm-branch-btn:hover{ background:#F4F6FB; color:var(--ink); }
+        .rm-branch-btn .rm-branch-name{ font-weight:600; font-size:13.5px; overflow:hidden; text-overflow:ellipsis; }
+        .rm-branch-btn i.bi-diagram-3{ color:var(--accent-blue); }
+        @media (max-width: 767px){ .rm-branch-btn .rm-branch-name{ max-width:110px; } }
         /* NEW (Work Timetable): official server clock in the top bar */
         .rm-official-clock{
             display:flex; align-items:center; gap:7px; text-decoration:none; color:var(--ink);
@@ -326,4 +332,4 @@ href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.m
     document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('sidebarOverlay').addEventListener('click', toggleSidebar);
     });
-</script>
+</script>

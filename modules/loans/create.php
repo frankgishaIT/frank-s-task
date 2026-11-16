@@ -64,6 +64,7 @@ if (isset($_POST['save'])) {
                 $fixedInstallment, $placeholderMaturity, $loanPurpose, $collateral, $status, $userId);
             mysqli_stmt_execute($insertLoan);
             $loanId = mysqli_insert_id($conn);
+            require_once __DIR__ . '/../../includes/branch_helpers.php'; br_stamp($conn, 'loans', (int) $loanId); // NEW (Multi-branch)
 
             $schedule = loan_generate_schedule($conn, $loanId, $loanAmount, $interestRate, $repaymentPeriod, $repaymentFrequency, $startDate, $fixedInstallment);
 

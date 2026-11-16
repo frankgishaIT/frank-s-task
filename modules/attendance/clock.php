@@ -21,11 +21,19 @@ mysqli_stmt_bind_param($statement, 'is', $userId, $today);
 mysqli_stmt_execute($statement);
 $today_record = mysqli_fetch_assoc(mysqli_stmt_get_result($statement));
 
+// NEW (Multi-branch): attendance belongs to the branch where the employee works today. No new attendance in a CLOSED / SUSPENDED branch.
+require_once __DIR__ . '/../../includes/branch_helpers.php';
+$brBranch = br_employee_work_branch($conn, (int) $userId);
+if (isset($_POST['clock_in']) && !$today_record && ($brBlock = br_operation_block($conn, $brBranch, 'attendance')) !== null) {
+    header('Location: clock.php?error=' . urlencode($brBlock));
+    exit;
+}
 if (isset($_POST['clock_in']) && !$today_record) {
     $now = date('H:i:s');
     $statement = mysqli_prepare($conn, "INSERT INTO attendance (user_id, attendance_date, check_in, status, workflow_status) VALUES (?, ?, ?, 'Present', 'Pending Clock-In Approval')");
     mysqli_stmt_bind_param($statement, 'iss', $userId, $today, $now);
     mysqli_stmt_execute($statement);
+    br_stamp($conn, 'attendance', (int) mysqli_insert_id($conn), $brBranch); // NEW (Multi-branch)
     header('Location: clock.php?success=Clocked in. Waiting for your manager to approve.');
     exit;
 }
@@ -46,6 +54,7 @@ include '../../includes/header.php';
 include '../../includes/sidebar.php';
 ?>
 
+<?php if (isset($_GET['error'])) { /* NEW (Multi-branch) */ ?><div class="alert alert-danger"><?= htmlspecialchars($_GET['error'], ENT_QUOTES, 'UTF-8'); ?></div><?php } ?>
 <?php if (isset($_GET['success'])) { ?>
     <div class="alert alert-success alert-dismissible fade show" role="alert">
         <?= htmlspecialchars($_GET['success'], ENT_QUOTES, 'UTF-8'); ?>

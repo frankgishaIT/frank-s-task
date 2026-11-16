@@ -41,6 +41,7 @@ if (isset($_POST['save'])) {
         mysqli_stmt_bind_param($statement, 'ississs', $projectId, $title, $description, $assignedTo, $priority, $status, $dueDate);
         if (mysqli_stmt_execute($statement)) {
             $taskId = (int) mysqli_insert_id($conn);
+            require_once __DIR__ . '/../../includes/branch_helpers.php'; br_stamp($conn, 'tasks', $taskId, br_enabled($conn) ? br_write_branch($conn) : null); // NEW (Multi-branch)
             if ($assignedTo) {
                 $dueDateText = $dueDate !== '' ? ' (due ' . date('d M Y', strtotime($dueDate)) . ')' : '';
                 notifyUser(

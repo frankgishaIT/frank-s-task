@@ -179,6 +179,8 @@ if (isset($_POST['save'])) {
                 );
                 mysqli_stmt_execute($statement);
                 $payrollId = (int) mysqli_insert_id($conn);
+                require_once __DIR__ . '/../../includes/branch_helpers.php'; // NEW (Multi-branch): payroll belongs to the employee's primary branch
+                if (br_enabled($conn)) { br_stamp($conn, 'payroll', $payrollId, br_primary_id($conn, (int) $userId)); }
 
                 // NEW (Marketing): link the approved marketing pay to this payroll line, in the same transaction, only
                 // if the Bonus / Deductions still include it (if the amounts were lowered, it waits for a later payroll).
@@ -376,4 +378,4 @@ $modal_subtitle = 'Basic salary, attendance, and task performance are calculated
     </div> <!-- rm-modal -->
 </div> <!-- rm-modal-backdrop -->
 
-<?php include '../../includes/footer.php'; ?>
+<?php include '../../includes/footer.php'; ?>

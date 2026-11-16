@@ -128,6 +128,11 @@ if ($rmCompactUi) { ?>
         <i class="bi bi-calendar-plus"></i> Leave Requests
     </a>
 
+    <!-- NEW: MULTI-BRANCH MANAGEMENT -->
+    <a href="../branches/index.php" class="<?= navActive('/branches/', $currentPath) ?>">
+        <i class="bi bi-diagram-3"></i> Branch Management
+    </a>
+
     <!-- NEW: WORK TIMETABLE (schedules, breaks, lost time, reminders) -->
     <a href="../timetable/my.php" class="<?= navActive('/timetable/', $currentPath) ?>">
         <i class="bi bi-clock-history"></i> Work Timetable
@@ -300,6 +305,8 @@ if ($rmCompactUi) { ?>
             mysqli_stmt_execute($recentStatement);
             $recentNotifications = mysqli_stmt_get_result($recentStatement);
             ?>
+            <!-- NEW (Multi-branch): the branch you are working in (Company View or one branch). Checked on the server. -->
+            <?php if (isset($conn) && $conn instanceof mysqli) { try { require_once __DIR__ . '/branch_helpers.php'; echo br_switcher_html($conn); } catch (Throwable $e) { error_log('branch switcher: ' . $e->getMessage()); } } ?>
             <!-- NEW (Work Timetable): the OFFICIAL MY MOTIVE time, from the server (Africa/Kigali), on every page -->
             <a href="../timetable/my.php" class="rm-official-clock" title="Official MY MOTIVE time (server, Africa/Kigali, UTC+2). Your device clock is not used.">
                 <i class="bi bi-clock"></i>
@@ -469,4 +476,4 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 });
-</script>
+</script>

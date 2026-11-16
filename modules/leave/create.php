@@ -53,6 +53,7 @@ if (isset($_POST['save'])) {
             $statement = mysqli_prepare($conn, "INSERT INTO leave_requests (user_id, leave_type, start_date, end_date, start_time, end_time, reason) VALUES (?, ?, ?, ?, ?, ?, ?)");
             mysqli_stmt_bind_param($statement, 'issssss', $userId, $leaveType, $startDate, $endDate, $startTimeToStore, $endTimeToStore, $reason);
             mysqli_stmt_execute($statement);
+            require_once __DIR__ . '/../../includes/branch_helpers.php'; br_stamp($conn, 'leave_requests', (int) mysqli_insert_id($conn), br_enabled($conn) ? br_primary_id($conn, (int) $userId) : null); // NEW (Multi-branch): employee's primary branch
             header('Location: index.php?success=' . urlencode('Leave request submitted successfully.'));
             exit;
         } catch (Throwable $e) {
@@ -165,4 +166,4 @@ $modal_subtitle = 'Submit a leave request for your supervisor and HR to review.'
 })();
 </script>
 
-<?php include '../../includes/footer.php'; ?>
+<?php include '../../includes/footer.php'; ?>

@@ -41,7 +41,12 @@ if (isset($_POST['save'])) {
     // NEW: the party must be a real RM Payee (Expense) or RM Partner (Income).
     $allowedParties = array_map(function ($p) { return (int) $p['id']; }, $type === 'Expense' ? $payeeList : $partnerList);
 
-    if (!in_array($category, ['Product', 'Service'], true) || !in_array($type, ['Income', 'Expense'], true) || $amount === false || $amount === null || $amount <= 0 || !$validDate || $validDate->format('Y-m-d') !== $transactionDate) {
+    // NEW (Multi-branch): income and expenses are recorded in the branch you are working in. A CLOSED or TEMPORARILY SUSPENDED branch cannot record new ones.
+    require_once __DIR__ . '/../../includes/branch_helpers.php'; // NEW (Multi-branch)
+    $brBranch = br_write_branch($conn);
+    if (($brBlock = br_operation_block($conn, $brBranch, $type === 'Expense' ? 'expenses' : 'sales')) !== null) {
+        $error = $brBlock;
+    } elseif (!in_array($category, ['Product', 'Service'], true) || !in_array($type, ['Income', 'Expense'], true) || $amount === false || $amount === null || $amount <= 0 || !$validDate || $validDate->format('Y-m-d') !== $transactionDate) {
         $error = 'Please provide a valid category, type, amount, and date.';
     } elseif ($transactionDate > date('Y-m-d')) {
         // NEW: a future date would take money out of a fund before it is spent.
@@ -84,6 +89,7 @@ if (isset($_POST['save'])) {
             mysqli_stmt_bind_param($statement, 'ssdssisiisii', $category, $type, $amount, $transactionDate, $description, $recordedBy, $status, $partyId, $fundId, $expenseCategory, $deptIdV, $projectIdV);
             mysqli_stmt_execute($statement);
             $newId = mysqli_insert_id($conn);
+            br_stamp($conn, 'transactions', (int) $newId, $brBranch); // NEW (Multi-branch)
 
             // Approved expense = money leaves the fund now.
             // Pending expense = only reserved; the ledger entry is written on approval.

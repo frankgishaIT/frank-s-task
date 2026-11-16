@@ -26,6 +26,7 @@ function access_catalog(): array
         'users'             => ['Employees', ['view', 'create', 'edit', 'delete']],
         'attendance'        => ['Attendance', ['view', 'create', 'edit', 'approve', 'delete', 'reports']],
         'timetable'         => ['Work Timetable', ['view', 'approve', 'reports', 'manage']], // NEW: WORK TIMETABLE module
+        'branches'          => ['Branch Management', ['view', 'assign', 'approve', 'manage']], // NEW: MULTI-BRANCH
         'leave'             => ['Leave Requests', ['view', 'create', 'approve']],
         'projects'          => ['RM Targets', ['view', 'create', 'edit', 'delete']],
         'tasks'             => ['Tasks', $std],
@@ -94,6 +95,8 @@ const ACCESS_NEW_DEFAULTS = [
     // NEW: Work Timetable. Everyone sees their own; supervisors approve and see reports; Administrators set timetables.
     'timetable.view' => ['admin', 'manager', 'employee'], 'timetable.approve' => ['admin', 'manager'],
     'timetable.reports' => ['admin', 'manager'], 'timetable.manage' => ['admin'],
+    // NEW: Branch Management. Head Office (company-wide users) registers and controls branches; managers/HR assign staff.
+    'branches.view' => ['admin', 'manager'], 'branches.assign' => ['admin', 'manager'], 'branches.approve' => ['admin'], 'branches.manage' => ['admin'],
     'rm_invest.view' => ['admin', 'manager'], 'rm_invest.create' => ['admin', 'manager'], 'rm_invest.edit' => ['admin', 'manager'],
     'rm_invest.reports' => ['admin', 'manager'], 'rm_invest.approve' => ['admin'], 'rm_invest.manage' => ['admin'],
 ];
@@ -286,6 +289,11 @@ function access_page_permission(string $script): ?string
     if ($module === 'rm_invest') { return ['settings' => 'rm_invest.manage', 'reports' => 'rm_invest.reports'][$f] ?? 'rm_invest.view'; }
     if ($module === 'rm_loans') { return ['settings' => 'rm_loans.manage', 'reports' => 'rm_loans.reports'][$f] ?? 'rm_loans.view'; }
     // NEW: Work Timetable. Own-data pages are open to everyone signed in (each page checks whose data it shows).
+    // NEW: Branch Management. switch = everyone (the page itself checks which branches the user may use).
+    if ($module === 'branches') {
+        return ['switch' => '*', 'index' => 'branches.view', 'branches' => 'branches.view', 'view' => 'branches.view', 'assignments' => 'branches.assign',
+                'transfers' => '*'][$f] ?? 'branches.manage';
+    }
     if ($module === 'timetable') {
         return ['index' => '*', 'my' => '*', 'action' => '*', 'api' => '*', 'timetable_pdf' => '*', 'day' => '*', 'corrections' => '*', 'cron' => '*',
                 'board' => 'timetable.approve', 'approvals' => 'timetable.approve', 'reports' => 'timetable.reports'][$f] ?? 'timetable.manage';

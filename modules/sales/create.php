@@ -99,7 +99,12 @@ if (isset($_POST['save'])) {
         ];
     }
 
-    if (!$validDate || $validDate->format('Y-m-d') !== $saleDate || !in_array($paymentMethod, ['Cash', 'Mobile Money', 'Bank Transfer', 'Credit', 'Digital Payment'], true)) {
+    // NEW (Multi-branch): sales are recorded in the branch you are working in. A CLOSED or TEMPORARILY SUSPENDED branch cannot record new ones.
+    require_once __DIR__ . '/../../includes/branch_helpers.php'; // NEW (Multi-branch)
+    $brBranch = br_write_branch($conn);
+    if (($brBlock = br_operation_block($conn, $brBranch, 'sales')) !== null) {
+        $error = $brBlock;
+    } elseif (!$validDate || $validDate->format('Y-m-d') !== $saleDate || !in_array($paymentMethod, ['Cash', 'Mobile Money', 'Bank Transfer', 'Credit', 'Digital Payment'], true)) {
         $error = 'Please provide a valid sale date and payment method.';
     } elseif (empty($lineItems)) {
         $error = 'Add at least one item or service with a valid quantity.';
@@ -160,6 +165,7 @@ if (isset($_POST['save'])) {
                     $discountRequestedBy, $discountApprovedBy, $discountApprovedAt, $userId, $needsCreditApprovalInt);
                 mysqli_stmt_execute($saleStatement);
                 $saleId = mysqli_insert_id($conn);
+                br_stamp($conn, 'sales', (int) $saleId, $brBranch); // NEW (Multi-branch)
 
                 foreach ($lineItems as $item) {
                     $itemStatement = mysqli_prepare($conn, 'INSERT INTO sale_items (sale_id, item_type, product_id, service_name, quantity, unit, unit_price, line_total, pack_label, pack_size) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');

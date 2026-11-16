@@ -172,6 +172,8 @@ if (isset($_POST['save'])) {
                 );
                 mysqli_stmt_execute($statement);
                 $payrollId = (int) mysqli_insert_id($conn);
+                require_once __DIR__ . '/../../includes/branch_helpers.php'; // NEW (Multi-branch): payroll belongs to the employee's primary branch
+                if (br_enabled($conn)) { br_stamp($conn, 'payroll', $payrollId, br_primary_id($conn, (int) $userId)); }
 
                 // Paid payroll is an automatic Expense paid from the RM Business
                 // Operating Fund. The helper checks the fund balance first and

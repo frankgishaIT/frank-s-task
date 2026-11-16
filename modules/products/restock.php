@@ -54,7 +54,12 @@ if (isset($_POST['save'])) {
     $selectedSupplier = null;
     foreach ($supplierList as $s) { if ((int) $s['id'] === $supplierPartyId) { $selectedSupplier = $s; break; } }
 
-    if (!$packQuantity || $packQuantity <= 0 || $costEntered === false || $costEntered === null || !$validDate || $validDate->format('Y-m-d') !== $purchaseDate) {
+    // NEW (Multi-branch): restocks are recorded in the branch you are working in. A CLOSED or TEMPORARILY SUSPENDED branch cannot record new ones.
+    require_once __DIR__ . '/../../includes/branch_helpers.php'; // NEW (Multi-branch)
+    $brBranch = br_write_branch($conn);
+    if (($brBlock = br_operation_block($conn, $brBranch, 'purchases')) !== null) {
+        $error = $brBlock;
+    } elseif (!$packQuantity || $packQuantity <= 0 || $costEntered === false || $costEntered === null || !$validDate || $validDate->format('Y-m-d') !== $purchaseDate) {
         $error = 'Please enter a valid quantity, cost, and date.';
     } elseif ($purchaseDate > date('Y-m-d')) {
         // NEW: the money leaves the Capital Fund now, so the purchase cannot be dated in the future.
@@ -106,6 +111,8 @@ if (isset($_POST['save'])) {
                 $supplier, $supplierPartyId, $purchaseDate, $totalCost, $poNotes, $recordedBy, $recordedBy, $orderedAt);
             mysqli_stmt_execute($insertPO);
             $poId = mysqli_insert_id($conn);
+            br_stamp($conn, 'purchase_orders', (int) $poId, $brBranch); // NEW (Multi-branch)
+            if ($brBranch) { mysqli_query($conn, 'UPDATE purchase_orders SET receiving_branch_id = ' . (int) $brBranch . ' WHERE id = ' . (int) $poId . ' AND receiving_branch_id IS NULL'); }
 
             $insertPOItem = mysqli_prepare($conn, 'INSERT INTO purchase_order_items
                 (purchase_order_id, product_id, quantity, unit_cost, line_total, pack_label, pack_size)

@@ -100,6 +100,7 @@ if (isset($_POST['save'])) {
                 $usefulLifeDays, $acquisitionValue, $departmentId, $status, $fundingType, $noteValue, $userId);
             mysqli_stmt_execute($insert);
             $assetId = mysqli_insert_id($conn);
+            require_once __DIR__ . '/../../includes/branch_helpers.php'; br_stamp($conn, 'assets', (int) $assetId); // NEW (Multi-branch): branch holding the asset
 
             $assetCode = asset_generate_code($conn, $assetId);
             $updateCode = mysqli_prepare($conn, 'UPDATE assets SET asset_code = ? WHERE id = ?');

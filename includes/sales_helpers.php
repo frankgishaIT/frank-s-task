@@ -247,6 +247,8 @@ function sales_finalize($conn, $saleId, $userId = null) {
     mysqli_stmt_bind_param($transactionStatement, 'sdssi', $category, $sale['total_amount'], $sale['sale_date'], $description, $sale['recorded_by']);
     mysqli_stmt_execute($transactionStatement);
     $transactionId = mysqli_insert_id($conn);
+    require_once __DIR__ . '/branch_helpers.php'; // NEW (Multi-branch): the sale's income belongs to the sale's branch
+    br_stamp($conn, 'transactions', (int) $transactionId, br_of($conn, 'sales', (int) $saleId));
 
     $newStatus = sales_compute_status((float) $sale['amount_paid'], (float) $sale['total_amount']);
     $profit = calculate_sale_profit($conn, $saleId);

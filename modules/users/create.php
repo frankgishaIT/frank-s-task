@@ -60,6 +60,16 @@ mysqli_stmt_bind_param(
     $monthly_salary
 );
         mysqli_stmt_execute($stmt);
+        // NEW (Multi-branch): the employee's PRIMARY branch (one account; other branches are added as assignments).
+        require_once __DIR__ . '/../../includes/branch_helpers.php'; 
+        if (br_enabled($conn)) {
+            $newUserId = (int) mysqli_insert_id($conn);
+            $pb = (int) ($_POST['primary_branch_id'] ?? 0);
+            $okB = array_filter(br_all($conn), function ($b) { return $b['status'] !== 'Closed'; });
+            if (!isset($okB[$pb]) || !br_can_access($conn, $pb)) { $pb = br_write_branch($conn) ?: br_main_id($conn); }
+            br_set_primary($conn, $newUserId, $pb, date('Y-m-d'), 'Registered with the account', null);
+            br_audit($conn, $pb, 'employee_registered', $names . ' registered with primary branch ' . (br_get($conn, $pb)['name'] ?? '') . '.');
+        }
         notify(
     $conn,
     'Employee Added',
@@ -139,6 +149,17 @@ include '../../includes/sidebar.php';
                         <?php } ?>
                     </select>
                 </div>
+                <?php /* NEW (Multi-branch): primary branch */ require_once __DIR__ . '/../../includes/branch_helpers.php'; if (br_enabled($conn)) { $brDefault = br_write_branch($conn); ?>
+                <div class="mb-4">
+                    <label class="form-label small fw-semibold text-muted">Primary branch</label>
+                    <select name="primary_branch_id" class="form-select rm-input">
+                        <?php foreach (br_all($conn) as $b) { if ($b['status'] === 'Closed' || !br_can_access($conn, (int) $b['id'])) { continue; } ?>
+                            <option value="<?= (int) $b['id']; ?>" <?= (int) $b['id'] === (int) $brDefault ? 'selected' : ''; ?>><?= htmlspecialchars($b['name'], ENT_QUOTES, 'UTF-8'); ?></option>
+                        <?php } ?>
+                    </select>
+                    <div class="form-text">One account. Other branches can be added later in Branch Management → Employee Assignments.</div>
+                </div>
+                <?php } ?>
                 <div class="mb-4">
                    <label class="form-label small fw-semibold text-muted">
                                            Department Role

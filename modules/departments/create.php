@@ -13,6 +13,7 @@ if (isset($_POST['save'])) {
         mysqli_stmt_bind_param($statement, 'ss', $name, $description);
 
         if (mysqli_stmt_execute($statement)) {
+            require_once __DIR__ . '/../../includes/branch_helpers.php'; br_stamp($conn, 'departments', (int) mysqli_insert_id($conn)); // NEW (Multi-branch): the selected branch (or your branch); can be changed on the branch profile
             notify(
     $conn,
     'Department Created',

@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/branch_helpers.php'; // NEW (Multi-branch): reports follow the branch selected in the top bar
 /**
  * NEW FILE: includes/attendance_report_queries.php
  * Data layer for the Attendance reports. Same return shape as the other reports, so
@@ -101,7 +102,7 @@ function attendance_report_build(mysqli $conn, string $type, array $req): array
             CASE WHEN a.check_in IS NOT NULL AND a.check_out IS NOT NULL AND a.check_out > a.check_in
                  THEN ROUND(TIME_TO_SEC(TIMEDIFF(a.check_out, a.check_in)) / 3600, 2) END AS hours
         FROM attendance a JOIN users u ON u.id = a.user_id LEFT JOIN departments d ON d.id = u.department_id
-        WHERE " . implode(' AND ', $where) . "
+        WHERE " . implode(' AND ', $where) . ' AND ' . br_report_scope($conn, 'a.branch_id') . "
         ORDER BY a.attendance_date DESC, u.names", $bt, $params);
 
     foreach ($rows as &$r) {

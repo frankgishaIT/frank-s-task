@@ -4,6 +4,7 @@ require '../../includes/purchase_order_helpers.php';
 require_role(['Admin', 'Manager']);
 
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT) ?: filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
+require_once __DIR__ . '/../../includes/branch_helpers.php'; br_guard_record($conn, 'purchase_orders', $id); // NEW (Multi-branch): records of other branches are refused (and logged)
 if (!$id) { header('Location: index.php?error=Invalid purchase order.'); exit; }
 
 $statement = mysqli_prepare($conn, 'SELECT purchase_orders.*, users.names AS created_by_name FROM purchase_orders LEFT JOIN users ON purchase_orders.created_by = users.id WHERE purchase_orders.id = ?');

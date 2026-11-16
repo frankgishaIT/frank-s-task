@@ -48,7 +48,7 @@ function br_users(mysqli $conn, bool $activeOnly = true): array
 function br_tabs(mysqli $conn, string $active): void
 {
     $ho = br_head_office($conn);
-    $tabs = [['index.php', 'Dashboard', 'bi-speedometer2', true], ['branches.php', 'Branches', 'bi-diagram-3', true],
+    $tabs = [['index.php', 'Dashboard', 'bi-speedometer2', true], ['branches.php', 'Branches', 'bi-diagram-3', true], ['reports.php', 'Reports', 'bi-bar-chart', in_array(current_user_role(), ['Admin', 'Manager'], true)],
         ['assignments.php', 'Employee Assignments', 'bi-people', access_can('branches.assign', $conn)],
         ['transfers.php', 'Transfers', 'bi-arrow-left-right', access_can('branches.assign', $conn) || access_can('branches.approve', $conn)],
         ['audit.php', 'Audit Trail', 'bi-journal-text', $ho], ['settings.php', 'Settings', 'bi-gear', $ho]];

@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/branch_helpers.php'; // NEW (Multi-branch): reports follow the branch selected in the top bar
 /**
  * NEW FILE: includes/task_report_queries.php
  * Data layer for the Tasks & Performance reports. Same return shape as the other reports, so
@@ -111,7 +112,7 @@ function task_report_build(mysqli $conn, string $type, array $req): array
         LEFT JOIN projects p ON p.id = t.project_id
         LEFT JOIN users u ON u.id = t.assigned_to
         LEFT JOIN departments d ON d.id = u.department_id"
-        . ($where ? ' WHERE ' . implode(' AND ', $where) : '') . "
+        . ' WHERE ' . implode(' AND ', array_merge($where, [br_report_scope($conn, 't.branch_id')])) . "
         ORDER BY " . ($type === 'overdue' ? 't.due_date, t.priority' : 't.created_at DESC'), $bt, $params);
 
     foreach ($rows as &$r) {

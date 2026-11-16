@@ -5,6 +5,7 @@ require_once '../../includes/sms_messages.php'; // NEW: cancellation SMS (MY MOT
 require_role(['Admin', 'Manager']);
 
 $saleId = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT) ?: filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
+require_once __DIR__ . '/../../includes/branch_helpers.php'; br_guard_record($conn, 'sales', $saleId); // NEW (Multi-branch): records of other branches are refused (and logged)
 if (!$saleId) {
     header('Location: index.php');
     exit;

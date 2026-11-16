@@ -315,6 +315,98 @@ function br_stamp(mysqli $conn, string $table, int $id, ?int $branchId = null): 
     } catch (Throwable $e) { error_log("br_stamp $table#$id: " . $e->getMessage()); }
 }
 
+/**
+ * NEW (Stage 2) SQL condition for EMPLOYEE lists ($col e.g. 'users.id'): Branch View = employees assigned to that branch
+ * today (primary, additional or temporary); Company View = everyone; limited users = employees of their branches.
+ */
+function br_user_scope_sql(mysqli $conn, string $col): string
+{
+    if (!br_enabled($conn)) { return '1=1'; }
+    $sel = br_current($conn);
+    $a = br_allowed_ids($conn);
+    if ($sel <= 0 && $a === null) { return '1=1'; }
+    $ids = $sel > 0 ? (br_can_access($conn, $sel) ? [$sel] : []) : $a;
+    if (!$ids) { return '1=0'; }
+    $t = date('Y-m-d');
+    return "$col IN (SELECT ea.user_id FROM employee_branch_assignments ea WHERE ea.status = 'active' AND ea.branch_id IN ("
+        . implode(',', array_map('intval', $ids)) . ") AND ea.start_date <= '$t' AND (ea.end_date IS NULL OR ea.end_date >= '$t'))";
+}
+
+/** NEW (Stage 2) " AND (...)" ready to append to a WHERE (lists, totals, reports). */
+function br_and(mysqli $conn, string $col): string
+{
+    try { return ' AND ' . br_scope_sql($conn, $col); } catch (Throwable $e) { error_log('br_and: ' . $e->getMessage()); return ''; }
+}
+
+/**
+ * NEW (Stage 2) Condition for the existing REPORTS (sales, transactions, attendance, payroll, tasks, purchase orders):
+ * they follow the branch selected in the top bar, and the report shows "Branch: ..." in its header and PDF.
+ */
+function br_report_scope(mysqli $conn, string $col): string
+{
+    try {
+        if (!br_enabled($conn)) { return '1=1'; }
+        $GLOBALS['br_report_label'] = br_scope_label($conn);
+        return br_scope_sql($conn, $col);
+    } catch (Throwable $e) { error_log('br_report_scope: ' . $e->getMessage()); return '1=1'; }
+}
+
+/** NEW (Stage 2) The "Branch" line for a report header (empty before the multi-branch setup). */
+function br_report_filter_row(): ?array
+{
+    return !empty($GLOBALS['br_report_label']) ? ['Branch', $GLOBALS['br_report_label']] : null;
+}
+
+/** NEW (Stage 2) Name of what lists show now: "Company View · All branches" or the branch name. */
+function br_scope_label(mysqli $conn): string
+{
+    if (!br_enabled($conn)) { return ''; }
+    $c = br_current($conn);
+    return $c > 0 ? (br_get($conn, $c)['name'] ?? '') : 'Company View · All branches';
+}
+
+/** NEW (Stage 2) Small line above a list: which branch's records are shown. */
+function br_scope_note(mysqli $conn): string
+{
+    try {
+        if (!br_enabled($conn)) { return ''; }
+        return '<div class="small text-muted mb-2"><i class="bi bi-diagram-3"></i> Showing: <strong>' . br_e(br_scope_label($conn))
+            . '</strong> · change it with the branch selector at the top</div>';
+    } catch (Throwable $e) { return ''; }
+}
+
+/**
+ * NEW (Stage 2) May the user open this record (sale, PO, task, payslip...)? Based on the branches the user may access,
+ * not on the branch currently selected, so links from the company dashboards keep working for company-wide users.
+ */
+function br_record_visible(mysqli $conn, string $table, int $id): bool
+{
+    if (!$id || !br_enabled($conn)) { return true; }
+    $a = br_allowed_ids($conn);
+    if ($a === null) { return true; }
+    $b = br_of($conn, $table, $id) ?? br_main_id($conn);
+    if (in_array($b, $a, true)) { return true; }
+    // Your own records (your attendance, payslips, leave, tasks, sales...) stay visible after a transfer.
+    $owner = BR_TABLES[$table][1] ?? null;
+    if ($owner) {
+        $r = mysqli_fetch_row(mysqli_query($conn, "SELECT `$owner` FROM `$table` WHERE id = " . (int) $id));
+        if ($r && (int) $r[0] === (int) ($_SESSION['user_id'] ?? 0)) { return true; }
+    }
+    return false;
+}
+
+/** NEW (Stage 2) Stops the page (403) when the record belongs to a branch the user may not access. Logged. */
+function br_guard_record(mysqli $conn, string $table, $id): void
+{
+    try {
+        if (br_record_visible($conn, $table, (int) $id)) { return; }
+        br_audit($conn, br_of($conn, $table, (int) $id), 'access_denied', "Tried to open $table #" . (int) $id . ' of another branch: ' . ($_SERVER['REQUEST_URI'] ?? ''));
+    } catch (Throwable $e) { error_log('br_guard_record: ' . $e->getMessage()); return; }
+    http_response_code(403);
+    include __DIR__ . '/access_denied.php';
+    exit;
+}
+
 /** The branch of an existing record (e.g. a sale), for related records (its income transaction...). */
 function br_of(mysqli $conn, string $table, int $id): ?int
 {

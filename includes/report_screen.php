@@ -34,7 +34,7 @@ function report_screen_result(array $report, string $pdfUrl, string $query): voi
         <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
             <div>
                 <h4 class="mb-1"><?= report_e($report['title']); ?></h4>
-                <?php foreach ($report['filters'] as $f) { ?>
+                <?php $brRow = function_exists('br_report_filter_row') ? br_report_filter_row() : null; foreach (array_merge($brRow ? [$brRow] : [], $report['filters']) as $f) { // NEW (Multi-branch): Branch line ?>
                     <div class="small text-muted"><strong><?= report_e($f[0]); ?>:</strong> <?= report_e($f[1]); ?></div>
                 <?php } ?>
             </div>

@@ -1,6 +1,7 @@
 <?php
 require '../../config/db.php';
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT); if (!$id) { header('Location: index.php?success=Invalid task selected.'); exit; }
+require_once __DIR__ . '/../../includes/branch_helpers.php'; br_guard_record($conn, 'tasks', $id); // NEW (Multi-branch): records of other branches are refused (and logged)
 $statement = mysqli_prepare($conn, 'SELECT tasks.*, projects.project_name, users.names AS assignee_name, reviewer.names AS reviewer_name FROM tasks INNER JOIN projects ON tasks.project_id = projects.id LEFT JOIN users ON tasks.assigned_to = users.id LEFT JOIN users reviewer ON tasks.reviewed_by = reviewer.id WHERE tasks.id = ?');
 mysqli_stmt_bind_param($statement, 'i', $id); mysqli_stmt_execute($statement); $task = mysqli_fetch_assoc(mysqli_stmt_get_result($statement)); if (!$task) { header('Location: index.php?success=Task not found.'); exit; }
 include '../../includes/header.php'; include '../../includes/sidebar.php';

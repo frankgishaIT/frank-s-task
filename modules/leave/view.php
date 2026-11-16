@@ -7,6 +7,7 @@ $role = current_user_role();
 
 // CHANGED: problems are shown as errors (they were shown as success messages), and messages are encoded.
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
+require_once __DIR__ . '/../../includes/branch_helpers.php'; br_guard_record($conn, 'leave_requests', $id); // NEW (Multi-branch): records of other branches are refused (and logged)
 if (!$id) { header('Location: index.php?error=' . urlencode('Invalid leave request selected.')); exit; }
 
 $statement = mysqli_prepare($conn, 'SELECT leave_requests.*, users.names AS employee_name FROM leave_requests INNER JOIN users ON leave_requests.user_id = users.id WHERE leave_requests.id = ?');
@@ -175,4 +176,4 @@ $modal_subtitle = htmlspecialchars($leave['employee_name'], ENT_QUOTES, 'UTF-8')
     </div> <!-- rm-modal -->
 </div> <!-- rm-modal-backdrop -->
 
-<?php include '../../includes/footer.php'; ?>
+<?php include '../../includes/footer.php'; ?>

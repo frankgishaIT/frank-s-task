@@ -5,6 +5,7 @@ require_role(['Manager', 'Admin']);
 define('WORK_START', '08:00:00');
 
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
+require_once __DIR__ . '/../../includes/branch_helpers.php'; br_guard_record($conn, 'attendance', $id); // NEW (Multi-branch): records of other branches are refused (and logged)
 if (!$id) { header('Location: index.php?success=Invalid attendance record selected.');
  exit; }
 

@@ -13,7 +13,8 @@ $canSendSms = in_array($role, ['Admin', 'Manager'], true); // NEW: same roles as
 // --- Credit view filter -------------------------------------------------
 $viewFilter = ($_GET['view'] ?? 'all') === 'credit' ? 'credit' : 'all';
 
-$conditions = [];
+require_once __DIR__ . '/../../includes/branch_helpers.php'; // NEW (Multi-branch): lists follow the branch selected in the top bar
+$conditions = [br_scope_sql($conn, 'sales.branch_id')];
 if ($role === 'Employee') {
     $conditions[] = 'sales.recorded_by = ' . (int) $userId;
 }
@@ -36,7 +37,7 @@ $sales = mysqli_query($conn, $sql);
 
 // --- Outstanding credit summary (always scoped by role, independent of the
 // current filter, so it's visible whichever tab the user is on) ---------
-$creditScopeWhere = $role === 'Employee' ? ' AND sales.recorded_by = ' . (int) $userId : '';
+$creditScopeWhere = ($role === 'Employee' ? ' AND sales.recorded_by = ' . (int) $userId : '') . br_and($conn, 'sales.branch_id');
 $creditSummary = mysqli_fetch_assoc(mysqli_query($conn, "
     SELECT COUNT(*) AS cnt, COALESCE(SUM(total_amount - amount_paid + charges_accrued - charges_paid), 0) AS balance
     FROM sales
@@ -45,13 +46,13 @@ $creditSummary = mysqli_fetch_assoc(mysqli_query($conn, "
 $pending = null;
 $cancelRequests = null;
 if (in_array($role, ['Manager', 'Admin'], true)) {
-    $pending = mysqli_query($conn, "SELECT sales.*, customers.name AS customer_name, users.names AS requested_by_name FROM sales LEFT JOIN customers ON sales.customer_id = customers.id LEFT JOIN users ON sales.discount_requested_by = users.id WHERE sales.status = 'Pending Discount Approval' ORDER BY sales.created_at");
+    $pending = mysqli_query($conn, "SELECT sales.*, customers.name AS customer_name, users.names AS requested_by_name FROM sales LEFT JOIN customers ON sales.customer_id = customers.id LEFT JOIN users ON sales.discount_requested_by = users.id WHERE sales.status = 'Pending Discount Approval'" . br_and($conn, 'sales.branch_id') . " ORDER BY sales.created_at");
     // CHANGED: loaded here, on its own. It used to be inside the "Awaiting Approval" card, so
     // cancellation requests were only visible when a discount/credit approval was also waiting.
     $cancelRequests = mysqli_query($conn, "SELECT sales.*, customers.name AS customer_name, users.names AS requested_by_name
         FROM sales LEFT JOIN customers ON sales.customer_id = customers.id
         LEFT JOIN users ON sales.cancel_requested_by = users.id
-        WHERE sales.cancel_requested_by IS NOT NULL ORDER BY sales.cancel_requested_at");
+        WHERE sales.cancel_requested_by IS NOT NULL" . br_and($conn, 'sales.branch_id') . " ORDER BY sales.cancel_requested_at");
 }
 
 function sale_status_badge($status) {

@@ -11,7 +11,8 @@ const PER_PAGE = 10;
 $role = current_user_role();
 $userId = current_user_id();
 
-$whereClause = $role === 'Employee' ? ' WHERE tasks.assigned_to = ' . (int) $userId : '';
+require_once __DIR__ . '/../../includes/branch_helpers.php'; // NEW (Multi-branch): lists follow the branch selected in the top bar
+$whereClause = ' WHERE ' . br_scope_sql($conn, 'tasks.branch_id') . ($role === 'Employee' ? ' AND tasks.assigned_to = ' . (int) $userId : '');
 
 $currentPage = get_current_page();
 $totalRows = mysqli_fetch_assoc(mysqli_query($conn, 'SELECT COUNT(*) AS c FROM tasks' . $whereClause))['c'];

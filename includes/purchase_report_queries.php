@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/branch_helpers.php'; // NEW (Multi-branch): reports follow the branch selected in the top bar
 /**
  * Data layer for the Purchase Order reports (Purchase Orders module).
  * Same return shape as the other report modules, so the shared screen and PDF code render it.
@@ -56,7 +57,7 @@ function purchase_report_rows(mysqli $conn, string $where, string $types, array 
               LEFT JOIN users ou ON ou.id = po.ordered_by
               LEFT JOIN users xu ON xu.id = po.cancelled_by
               LEFT JOIN business_parties bp ON bp.id = po.supplier_party_id
-             WHERE $where ORDER BY $order";
+             WHERE ($where) AND " . br_report_scope($conn, 'po.branch_id') . " ORDER BY $order";
     $rows = sales_report_fetch($conn, $sql, $types, $params);
     $today = new DateTimeImmutable('today');
     foreach ($rows as &$r) {

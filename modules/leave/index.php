@@ -1,6 +1,7 @@
 <?php
 require '../../config/db.php';
 require_once '../../includes/leave_type_helpers.php'; // NEW (Work Timetable): timed leave types
+require_once '../../includes/branch_helpers.php'; // NEW (Multi-branch): approvals follow the selected branch
 $pageSearchScope = 'leave'; // tells the topbar search what module we're in
 require '../../includes/pagination.php';
 include '../../includes/header.php';
@@ -28,9 +29,9 @@ $myLeaves = mysqli_stmt_get_result($myStatement);
 // Managers/Admins also see requests waiting on their decision.
 $pendingMyApproval = null;
 if ($role === 'Manager') {
-    $pendingMyApproval = mysqli_query($conn, "SELECT leave_requests.*, users.names AS employee_name FROM leave_requests INNER JOIN users ON leave_requests.user_id = users.id WHERE leave_requests.status = 'Pending' ORDER BY leave_requests.created_at");
+    $pendingMyApproval = mysqli_query($conn, "SELECT leave_requests.*, users.names AS employee_name FROM leave_requests INNER JOIN users ON leave_requests.user_id = users.id WHERE leave_requests.status = 'Pending'" . br_and($conn, 'leave_requests.branch_id') . " ORDER BY leave_requests.created_at");
 } elseif ($role === 'Admin') {
-    $pendingMyApproval = mysqli_query($conn, "SELECT leave_requests.*, users.names AS employee_name FROM leave_requests INNER JOIN users ON leave_requests.user_id = users.id WHERE leave_requests.status IN ('Pending', 'Manager Approved') ORDER BY leave_requests.created_at");
+    $pendingMyApproval = mysqli_query($conn, "SELECT leave_requests.*, users.names AS employee_name FROM leave_requests INNER JOIN users ON leave_requests.user_id = users.id WHERE leave_requests.status IN ('Pending', 'Manager Approved')" . br_and($conn, 'leave_requests.branch_id') . " ORDER BY leave_requests.created_at");
 }
 
 // Managers/Admins also need a way to get back to ANY request (including

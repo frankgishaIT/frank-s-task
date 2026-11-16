@@ -12,7 +12,7 @@ $users = br_users($conn);
 $error = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!br_csrf_ok()) { $error = 'The page had expired. Please try again.'; }
-    elseif (empty($_POST['backup_done']) || empty($_POST['approved'])) { $error = 'Please confirm the database backup and the management approval first.'; }
+    elseif (empty($_POST['backup_done']) || empty($_POST['approved'])) { $error = 'Nothing was changed. Please tick BOTH boxes in "3. Run the setup" (database backup taken, management approval), then click the button again.'; }
     else {
         $mgr = (int) ($_POST['manager_user_id'] ?? 0) ?: null;
         if ($mgr && !isset($users[$mgr])) { $mgr = null; }
@@ -72,10 +72,11 @@ include __DIR__ . '/../../includes/sidebar.php';
             <h6>3. Run the setup</h6>
             <label class="form-label small">Branch Manager of the Main Branch (authorized management)</label>
             <select name="manager_user_id" class="form-select mb-3"><option value="">Choose later</option>
-                <?php foreach ($users as $u) { if (!in_array($u['role'], ['Admin', 'Manager'], true)) { continue; } ?><option value="<?= (int) $u['id']; ?>"><?= br_e($u['names'] . ' · ' . $u['role']); ?></option><?php } ?>
+                <?php foreach ($users as $u) { if (!in_array($u['role'], ['Admin', 'Manager'], true)) { continue; } ?><option value="<?= (int) $u['id']; ?>" <?= (int) ($_POST['manager_user_id'] ?? 0) === (int) $u['id'] ? 'selected' : ''; ?>><?= br_e($u['names'] . ' · ' . $u['role']); ?></option><?php } ?>
             </select>
-            <div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="backup_done" id="b1" value="1"><label class="form-check-label" for="b1">A full <strong>database backup</strong> was taken today (hosting panel / phpMyAdmin → Export) and kept safely.</label></div>
-            <div class="form-check mb-3"><input class="form-check-input" type="checkbox" name="approved" id="b2" value="1"><label class="form-check-label" for="b2">Management approved this change for production.</label></div>
+            <div class="alert alert-warning small py-2 mb-2"><strong>Tick both boxes below</strong> before clicking the button.</div>
+            <div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="backup_done" id="b1" value="1" required <?= !empty($_POST['backup_done']) ? 'checked' : ''; ?>><label class="form-check-label" for="b1">A full <strong>database backup</strong> was taken today (hosting panel / phpMyAdmin → Export) and kept safely.</label></div>
+            <div class="form-check mb-3"><input class="form-check-input" type="checkbox" name="approved" id="b2" value="1" required <?= !empty($_POST['approved']) ? 'checked' : ''; ?>><label class="form-check-label" for="b2">Management approved this change for production.</label></div>
             <button class="btn btn-primary" onclick="return confirm('Register the existing operations as the Main Branch now?');"><i class="bi bi-diagram-3"></i> <?= $enabled ? 'Run again (attach records without a branch)' : 'Register Main Branch and attach existing records'; ?></button>
             <div class="small text-muted mt-2">Employees keep their accounts and passwords. Administrators get Company View (all branches); everyone else works in the Main Branch until assigned elsewhere.</div>
         </div></form>

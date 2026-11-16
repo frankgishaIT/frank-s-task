@@ -2,6 +2,7 @@
 require '../../config/db.php';
 
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
+require_once __DIR__ . '/../../includes/branch_helpers.php'; br_guard_record($conn, 'payroll', $id); // NEW (Multi-branch): records of other branches are refused (and logged)
 if (!$id) { header('Location: index.php?success=Invalid payslip requested.'); exit; }
 
 $statement = mysqli_prepare($conn, 'SELECT payroll.*, users.names AS employee_name, users.email AS employee_email, departments.name AS department_name

@@ -10,13 +10,15 @@ const PO_PER_PAGE = 10;
 $isAdmin = current_user_role() === 'Admin'; // NEW: only an Admin can delete
 
 $currentPage = get_current_page();
-$totalRows = mysqli_fetch_assoc(mysqli_query($conn, 'SELECT COUNT(*) AS c FROM purchase_orders'))['c'];
+require_once __DIR__ . '/../../includes/branch_helpers.php'; // NEW (Multi-branch): lists follow the branch selected in the top bar
+$poScope = ' WHERE ' . br_scope_sql($conn, 'purchase_orders.branch_id');
+$totalRows = mysqli_fetch_assoc(mysqli_query($conn, 'SELECT COUNT(*) AS c FROM purchase_orders' . $poScope))['c'];
 $totalPages = max(1, (int) ceil($totalRows / PO_PER_PAGE));
 $currentPage = min($currentPage, $totalPages);
 $offset = ($currentPage - 1) * PO_PER_PAGE;
 
 $sql = "SELECT purchase_orders.*, users.names AS created_by_name
-        FROM purchase_orders LEFT JOIN users ON purchase_orders.created_by = users.id
+        FROM purchase_orders LEFT JOIN users ON purchase_orders.created_by = users.id" . $poScope . "
         ORDER BY purchase_orders.created_at DESC LIMIT " . PO_PER_PAGE . " OFFSET " . $offset;
 $purchaseOrders = mysqli_query($conn, $sql);
 

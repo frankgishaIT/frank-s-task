@@ -19,6 +19,8 @@ $currentUserId = (int) ($_SESSION['user_id'] ?? 0);
 $visibilityWhere = $isAdmin
     ? '1=1'
     : "(transactions.status = 'approved' OR transactions.recorded_by = $currentUserId)";
+require_once __DIR__ . '/../../includes/branch_helpers.php'; // NEW (Multi-branch): lists follow the branch selected in the top bar
+$visibilityWhere = '(' . $visibilityWhere . ')' . br_and($conn, 'transactions.branch_id');
 
 $currentPage = get_current_page();
 $totalRows = mysqli_fetch_assoc(mysqli_query($conn, "SELECT COUNT(*) AS c FROM transactions WHERE $visibilityWhere"))['c'];
@@ -29,7 +31,7 @@ $offset = ($currentPage - 1) * PER_PAGE;
 // Totals only ever count approved transactions.
 // CHANGED: capital movements (borrowed money, loan principal, investor capital) are not income or expenses.
 $summary = mysqli_query($conn, "SELECT COALESCE(SUM(CASE WHEN transaction_type = 'Income' THEN amount ELSE 0 END), 0) AS income, COALESCE(SUM(CASE WHEN transaction_type = 'Expense' THEN amount ELSE 0 END), 0) AS expense FROM transactions WHERE status = 'approved'
-    AND category NOT IN ('Loan Received', 'Loan Principal Recovered', 'Investor Capital Contribution', 'Customer Loan Disbursed', 'Investor Loan Principal Repaid', 'Investor Capital Returned')");
+    AND category NOT IN ('Loan Received', 'Loan Principal Recovered', 'Investor Capital Contribution', 'Customer Loan Disbursed', 'Investor Loan Principal Repaid', 'Investor Capital Returned')" . br_and($conn, 'transactions.branch_id'));
 $totals = mysqli_fetch_assoc($summary);
 
 // Profit Overview — uses the shared rules in includes/profit_rules.php so it

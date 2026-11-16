@@ -154,7 +154,8 @@ function report_render_pdf(array $report): Mpdf
     </style>';
 
     $body .= '<table class="filters">';
-    foreach ($report['filters'] ?? [] as $f) {
+    $brRow = function_exists('br_report_filter_row') ? br_report_filter_row() : null; // NEW (Multi-branch): Branch line
+    foreach (array_merge($brRow ? [$brRow] : [], $report['filters'] ?? []) as $f) {
         $body .= '<tr><td><strong>' . report_e($f[0]) . ':</strong>&nbsp;</td><td>' . report_e($f[1]) . '</td></tr>';
     }
     $body .= '</table>';

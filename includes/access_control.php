@@ -291,7 +291,7 @@ function access_page_permission(string $script): ?string
     // NEW: Work Timetable. Own-data pages are open to everyone signed in (each page checks whose data it shows).
     // NEW: Branch Management. switch = everyone (the page itself checks which branches the user may use).
     if ($module === 'branches') {
-        return ['switch' => '*', 'index' => 'branches.view', 'branches' => 'branches.view', 'view' => 'branches.view', 'assignments' => 'branches.assign',
+        return ['switch' => '*', 'index' => 'branches.view', 'reports' => 'branches.view', 'branches' => 'branches.view', 'view' => 'branches.view', 'assignments' => 'branches.assign',
                 'transfers' => '*'][$f] ?? 'branches.manage';
     }
     if ($module === 'timetable') {

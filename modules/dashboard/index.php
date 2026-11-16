@@ -18,10 +18,12 @@ $approvedThisMonth = "status = 'approved' AND YEAR(transaction_date) = YEAR(CURD
 // Stock bought from the RM Capital Fund (purchase orders, re-stock) becomes stock; it is not a running cost.
 $stockPurchaseCategory = 'Purchase (Re-stock)';
 
-$activeEmployees = scalarQuery($conn, 'SELECT COUNT(*) FROM users WHERE is_active = 1');
-$activeDepartments = scalarQuery($conn, 'SELECT COUNT(*) FROM departments WHERE is_active = 1');
-$todayAttendance = scalarQuery($conn, "SELECT COUNT(*) FROM attendance WHERE attendance_date = CURDATE() AND status IN ('Present', 'Late')");
-$openTasks = scalarQuery($conn, "SELECT COUNT(*) FROM tasks WHERE status != 'Completed'");
+require_once __DIR__ . '/../../includes/branch_helpers.php'; // NEW (Multi-branch): dashboard figures follow the branch selected in the top bar
+$approvedThisMonth .= br_and($conn, 'transactions.branch_id');
+$activeEmployees = scalarQuery($conn, 'SELECT COUNT(*) FROM users WHERE is_active = 1 AND ' . br_user_scope_sql($conn, 'users.id'));
+$activeDepartments = scalarQuery($conn, 'SELECT COUNT(*) FROM departments WHERE is_active = 1' . br_and($conn, 'departments.branch_id'));
+$todayAttendance = scalarQuery($conn, "SELECT COUNT(*) FROM attendance WHERE attendance_date = CURDATE() AND status IN ('Present', 'Late')" . br_and($conn, 'attendance.branch_id'));
+$openTasks = scalarQuery($conn, "SELECT COUNT(*) FROM tasks WHERE status != 'Completed'" . br_and($conn, 'tasks.branch_id'));
 // CHANGED: capital movements are not income or running costs: borrowed money, recovered loan principal,
 // investor capital (in); customer loans disbursed, investor principal paid back (out).
 $capitalCategories = "'Loan Received', 'Loan Principal Recovered', 'Investor Capital Contribution', 'Customer Loan Disbursed', 'Investor Loan Principal Repaid', 'Investor Capital Returned'";
@@ -74,9 +76,9 @@ while ($row = mysqli_fetch_assoc($topCategoriesResult)) {
 }
 $categoryPalette = ['#3B4FE0', '#0FA968', '#1E2FE0', '#7C5CE0'];
 
-$recentTasksForFeed = mysqli_query($conn, "SELECT tasks.title, tasks.status, tasks.created_at, users.names AS assignee_name FROM tasks LEFT JOIN users ON tasks.assigned_to = users.id ORDER BY tasks.created_at DESC LIMIT 4");
+$recentTasksForFeed = mysqli_query($conn, "SELECT tasks.title, tasks.status, tasks.created_at, users.names AS assignee_name FROM tasks LEFT JOIN users ON tasks.assigned_to = users.id WHERE 1=1" . br_and($conn, 'tasks.branch_id') . " ORDER BY tasks.created_at DESC LIMIT 4");
 // CHANGED: deleted and rejected transactions are not shown as activity.
-$recentTransactionsForFeed = mysqli_query($conn, "SELECT transactions.amount, transactions.transaction_type, transactions.transaction_date, transactions.category AS category_name, transactions.status FROM transactions WHERE transactions.status IN ('approved', 'pending') ORDER BY transactions.transaction_date DESC, transactions.id DESC LIMIT 4");
+$recentTransactionsForFeed = mysqli_query($conn, "SELECT transactions.amount, transactions.transaction_type, transactions.transaction_date, transactions.category AS category_name, transactions.status FROM transactions WHERE transactions.status IN ('approved', 'pending')" . br_and($conn, 'transactions.branch_id') . " ORDER BY transactions.transaction_date DESC, transactions.id DESC LIMIT 4");
 
 $activityFeed = [];
 while ($row = mysqli_fetch_assoc($recentTasksForFeed)) {

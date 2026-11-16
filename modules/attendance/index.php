@@ -32,6 +32,8 @@ if (!$isManager) {
     $types .= 'i';
     $params[] = (int) current_user_id();
 }
+require_once __DIR__ . '/../../includes/branch_helpers.php'; // NEW (Multi-branch): lists follow the branch selected in the top bar
+$conditions[] = br_scope_sql($conn, 'attendance.branch_id');
 $where = $conditions ? ' WHERE ' . implode(' AND ', $conditions) : '';
 
 $countStatement = mysqli_prepare($conn, 'SELECT COUNT(*) AS c FROM attendance' . $where);
@@ -60,7 +62,7 @@ $pending = null;
 if ($isManager) {
     $pending = mysqli_query($conn, "SELECT attendance.*, users.names AS employee_name
         FROM attendance INNER JOIN users ON attendance.user_id = users.id
-        WHERE attendance.workflow_status IN ('Pending Clock-In Approval', 'Pending Clock-Out Confirmation')
+        WHERE attendance.workflow_status IN ('Pending Clock-In Approval', 'Pending Clock-Out Confirmation')" . br_and($conn, 'attendance.branch_id') . "
         ORDER BY attendance.attendance_date, users.names");
 }
 

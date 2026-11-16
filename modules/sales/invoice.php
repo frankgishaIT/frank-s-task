@@ -15,6 +15,7 @@ const INVOICE_HELP_PHONE = '0795 344 768';
 
 // CHANGED: problems are sent as "error" (they were sent as "success"), and messages are urlencoded.
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
+require_once __DIR__ . '/../../includes/branch_helpers.php'; br_guard_record($conn, 'sales', $id); // NEW (Multi-branch): records of other branches are refused (and logged)
 if (!$id) { header('Location: index.php?error=' . urlencode('Invalid invoice requested.')); exit; }
 
 // NEW: bring the overdue charges up to date before printing.

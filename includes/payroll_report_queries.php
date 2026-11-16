@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/branch_helpers.php'; // NEW (Multi-branch): reports follow the branch selected in the top bar
 /**
  * NEW FILE: includes/payroll_report_queries.php
  * Data layer for the Payroll reports. Same return shape as the other reports, so
@@ -100,7 +101,7 @@ function payroll_report_build(mysqli $conn, string $type, array $req): array
     $rows = sales_report_fetch($conn, "SELECT p.*, u.names AS employee, d.name AS department,
             " . PAYROLL_REPORT_EARNINGS_SQL . " AS earnings, " . PAYROLL_REPORT_DEDUCTIONS_SQL . " AS total_deductions
         FROM payroll p JOIN users u ON u.id = p.user_id LEFT JOIN departments d ON d.id = u.department_id"
-        . ($where ? ' WHERE ' . implode(' AND ', $where) : '') . "
+        . ' WHERE ' . implode(' AND ', array_merge($where, [br_report_scope($conn, 'p.branch_id')])) . "
         ORDER BY p.pay_period DESC, u.names", $bt, $params);
 
     foreach ($rows as &$r) {

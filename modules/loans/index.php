@@ -6,7 +6,7 @@ require_role(['Admin']);
 $totals = loan_report_totals($conn);
 // CHANGED: also counts each loan's repayments (only loans without repayments can be deleted).
 $loansResult = mysqli_query($conn, 'SELECT loans.*, (SELECT COUNT(*) FROM loan_payments WHERE loan_payments.loan_id = loans.id) AS payment_count
-    FROM loans WHERE status <> "Deleted" ORDER BY FIELD(status, "Active","Defaulted","Fully Paid","Cancelled"), created_at DESC'); // CHANGED (Task I): deleted loans are hidden
+    FROM loans WHERE status <> "Deleted"' . (function () use ($conn) { require_once __DIR__ . '/../../includes/branch_helpers.php'; return br_and($conn, 'loans.branch_id'); })() . ' ORDER BY FIELD(status, "Active","Defaulted","Fully Paid","Cancelled"), created_at DESC'); // CHANGED (Task I): deleted loans are hidden
 // NEW (Task I): deleting a loan is for the Managing Director / explicitly authorized people only.
 require_once __DIR__ . '/../../includes/access_control.php'; // loaded here too, so this works even before config/db.php loads it
 $canExecDelete = access_can('loans.executive_delete', $conn);

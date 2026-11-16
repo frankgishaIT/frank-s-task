@@ -8,12 +8,14 @@ require '../../includes/status_filter.php';
 require '../../includes/pagination.php';
 const PER_PAGE = 10;
 $currentPage = get_current_page();
-$totalRows = mysqli_fetch_assoc(mysqli_query($conn, 'SELECT COUNT(*) AS c FROM departments'))['c'];
+require_once __DIR__ . '/../../includes/branch_helpers.php'; // NEW (Multi-branch): lists follow the branch selected in the top bar
+$dpScope = ' WHERE ' . br_scope_sql($conn, 'departments.branch_id');
+$totalRows = mysqli_fetch_assoc(mysqli_query($conn, 'SELECT COUNT(*) AS c FROM departments' . $dpScope))['c'];
 $totalPages = max(1, (int) ceil($totalRows / PER_PAGE));
 $currentPage = min($currentPage, $totalPages);
 $offset = ($currentPage - 1) * PER_PAGE;
 
-$query = 'SELECT * FROM departments ORDER BY name LIMIT ' . PER_PAGE . ' OFFSET ' . $offset;
+$query = 'SELECT * FROM departments' . $dpScope . ' ORDER BY name LIMIT ' . PER_PAGE . ' OFFSET ' . $offset;
 $result = mysqli_query($conn, $query);
 $statusFilter = get_status_filter();
 $whereClause = status_where_clause($statusFilter, 'users.is_active');

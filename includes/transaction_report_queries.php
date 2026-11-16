@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/branch_helpers.php'; // NEW (Multi-branch): reports follow the branch selected in the top bar
 /**
  * Data layer for the Transactions reports (Transactions Management module).
  * Same return shape as the Sales and Stock reports, so the shared screen and PDF code render it.
@@ -145,7 +146,7 @@ function transaction_report_build(mysqli $conn, string $type, array $req): array
            FROM transactions t LEFT JOIN users u ON u.id = t.recorded_by
            LEFT JOIN business_parties bp ON bp.id = t.party_id
            LEFT JOIN sales s ON s.transaction_id = t.id
-          WHERE " . implode(' AND ', $where) . " ORDER BY t.transaction_date, t.id", $bt, $params);
+          WHERE " . implode(' AND ', $where) . ' AND ' . br_report_scope($conn, 't.branch_id') . " ORDER BY t.transaction_date, t.id", $bt, $params);
 
     // CHANGED: totals count APPROVED rows only; stock purchases are kept apart from running costs.
     $income = 0.0; $expense = 0.0; $stockPurchases = 0.0; $notCounted = 0; $byCategory = [];

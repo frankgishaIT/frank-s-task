@@ -21,7 +21,7 @@ try {
 
 $assetsResult = mysqli_query($conn, 'SELECT assets.*, departments.name AS department_name
     FROM assets LEFT JOIN departments ON assets.responsible_department_id = departments.id
-    WHERE assets.status <> "Deleted"
+    WHERE assets.status <> "Deleted"' . (function () use ($conn) { require_once __DIR__ . '/../../includes/branch_helpers.php'; return br_and($conn, 'assets.branch_id'); })() . '
     ORDER BY FIELD(assets.status, "Active","Under Maintenance","Disposed","Lost"), created_at DESC'); // CHANGED (Task I): deleted assets are hidden
 require_once __DIR__ . '/../../includes/access_control.php'; // loaded here too, so this works even before config/db.php loads it
 $canExecDelete = access_can('asset_management.executive_delete', $conn); // NEW (Task I)

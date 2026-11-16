@@ -8,7 +8,9 @@ include '../../includes/sidebar.php';
 
 const PER_PAGE = 10;
 $currentPage = get_current_page();
-$totalRows = mysqli_fetch_assoc(mysqli_query($conn, 'SELECT COUNT(*) AS c FROM users'))['c'];
+require_once __DIR__ . '/../../includes/branch_helpers.php'; // NEW (Multi-branch): lists follow the branch selected in the top bar
+$usScope = ' WHERE ' . br_user_scope_sql($conn, 'users.id');
+$totalRows = mysqli_fetch_assoc(mysqli_query($conn, 'SELECT COUNT(*) AS c FROM users' . $usScope))['c'];
 $totalPages = max(1, (int) ceil($totalRows / PER_PAGE));
 $currentPage = min($currentPage, $totalPages);
 $offset = ($currentPage - 1) * PER_PAGE;
@@ -25,7 +27,7 @@ $offset = ($currentPage - 1) * PER_PAGE;
 $query = "
 SELECT users.*, departments.name AS department_name
 FROM users
-LEFT JOIN departments ON users.department_id = departments.id
+LEFT JOIN departments ON users.department_id = departments.id" . $usScope . "
 ORDER BY users.id ASC
 LIMIT " . PER_PAGE . " OFFSET " . $offset;
 $result = mysqli_query($conn, $query);
@@ -107,4 +109,4 @@ setTimeout(function () {
     if (alert) { alert.remove(); }
 }, 3000);
 </script>
-<?php include '../../includes/footer.php'; ?>
+<?php include '../../includes/footer.php'; ?>   

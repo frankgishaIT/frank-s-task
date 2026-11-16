@@ -6,6 +6,7 @@ require_role(['Admin']);
 function money($v) { return number_format((float) $v, 2); }
 
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
+require_once __DIR__ . '/../../includes/branch_helpers.php'; br_guard_record($conn, 'assets', $id); // NEW (Multi-branch): records of other branches are refused (and logged)
 if (!$id) { header('Location: index.php?success=Invalid asset selected.'); exit; }
 
 if (isset($_POST['update_status'])) {

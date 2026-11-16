@@ -7,11 +7,13 @@ include '../../includes/header.php';
 include '../../includes/sidebar.php';
 const PER_PAGE = 10;
 $currentPage = get_current_page();
-$totalRows = mysqli_fetch_assoc(mysqli_query($conn, 'SELECT COUNT(*) AS c FROM payroll'))['c'];
+require_once __DIR__ . '/../../includes/branch_helpers.php'; // NEW (Multi-branch): lists follow the branch selected in the top bar
+$prScope = ' WHERE ' . br_scope_sql($conn, 'payroll.branch_id');
+$totalRows = mysqli_fetch_assoc(mysqli_query($conn, 'SELECT COUNT(*) AS c FROM payroll' . $prScope))['c'];
 $totalPages = max(1, (int) ceil($totalRows / PER_PAGE));
 $currentPage = min($currentPage, $totalPages);
 $offset = ($currentPage - 1) * PER_PAGE;
-$payrolls = mysqli_query($conn, 'SELECT payroll.*, users.names AS employee_name, departments.name AS department_name FROM payroll INNER JOIN users ON payroll.user_id = users.id LEFT JOIN departments ON users.department_id = departments.id ORDER BY payroll.pay_period DESC, users.names LIMIT ' . PER_PAGE . ' OFFSET ' . $offset);
+$payrolls = mysqli_query($conn, 'SELECT payroll.*, users.names AS employee_name, departments.name AS department_name FROM payroll INNER JOIN users ON payroll.user_id = users.id LEFT JOIN departments ON users.department_id = departments.id' . $prScope . ' ORDER BY payroll.pay_period DESC, users.names LIMIT ' . PER_PAGE . ' OFFSET ' . $offset);
 ?>
 <?php if (isset($_GET['success'])) { ?><div class="alert alert-success alert-dismissible fade show" role="alert"><?= htmlspecialchars($_GET['success'], ENT_QUOTES, 'UTF-8'); ?><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><?php } ?>
 <?php if (isset($_GET['error'])) { ?><div class="alert alert-danger alert-dismissible fade show" role="alert"><?= htmlspecialchars($_GET['error'], ENT_QUOTES, 'UTF-8'); ?><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><?php } ?>

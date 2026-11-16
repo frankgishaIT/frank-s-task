@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/branch_helpers.php'; // NEW (Multi-branch): reports follow the branch selected in the top bar
 /**
  * Data layer for the Sales reports.
  * sales_report_build() returns an array in the shape documented in report_pdf.php,
@@ -71,7 +72,7 @@ function sales_report_sale_rows(mysqli $conn, string $where, string $types, arra
               LEFT JOIN customers c ON c.id = s.customer_id
               LEFT JOIN users u ON u.id = s.recorded_by
               LEFT JOIN users cu ON cu.id = s.cancelled_by
-             WHERE $where
+             WHERE ($where) AND " . br_report_scope($conn, 's.branch_id') . "
              ORDER BY $order";
     $rows = sales_report_fetch($conn, $sql, $types, $params);
     foreach ($rows as &$r) {

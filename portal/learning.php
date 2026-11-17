@@ -7,8 +7,10 @@
  */
 require __DIR__ . '/portal_start.php';
 require_once __DIR__ . '/../includes/lc_helpers.php';
+require_once __DIR__ . '/../includes/lc_academic.php'; // NEW (stage 2)
 require_once __DIR__ . '/../includes/evidence_store.php';
 lc_ensure($conn);
+lc_acad_ensure($conn);
 $tab = in_array($_GET['tab'] ?? '', ['explore', 'apps', 'learning'], true) ? $_GET['tab'] : 'apps';
 $myKey = lc_phone_key((string) $me['phone']);
 $go = function (string $q, string $k, string $m) { header('Location: learning.php?' . $q . '&' . $k . '=' . urlencode($m)); exit; };
@@ -135,11 +137,43 @@ if ($appRef !== '' && ($a = $mine($appRef))) {
     <?php if (!$isStudent) { ?><div class="card"><div class="card-body small text-muted">You are not registered on a course yet. When you are admitted and registered, your courses appear here. Your Student ID will be your Customer ID <strong><?= portal_e($sid); ?></strong>.</div></div>
     <?php } else { ?>
     <div class="card mb-3"><div class="card-body d-flex align-items-center gap-3"><i class="bi bi-person-badge fs-2 text-primary"></i><div><div class="small text-muted">Student ID</div><div class="h5 fw-bold mb-0 font-monospace"><?= portal_e($sid); ?></div><div class="small text-muted">Same number as your RISE MOTIVE Customer ID.</div></div></div></div>
-    <div class="card"><div class="card-body p-0"><table class="table table-sm align-middle mb-0 small"><thead><tr><th class="ps-3">Course</th><th>Intake</th><th>Branch</th><th>Cohort</th><th>Dates</th><th>Status</th></tr></thead><tbody>
-        <?php foreach ($enr as $e2) { ?><tr><td class="ps-3"><strong><?= portal_e($e2['title']); ?></strong><div class="text-muted"><?= portal_e($e2['code']); ?></div></td><td><?= portal_e($e2['intake_name'] ?? '—'); ?></td><td><?= portal_e(lc_branch_name($conn, $e2['branch_id'] ? (int) $e2['branch_id'] : null)); ?></td>
-            <td><?= portal_e($e2['cohort'] ?? '—'); ?></td><td><?= $e2['start_date'] ? date('d M Y', strtotime($e2['start_date'])) . ($e2['end_date'] ? ' – ' . date('d M Y', strtotime($e2['end_date'])) : '') : '—'; ?></td><td><span class="badge bg-success"><?= portal_e($e2['status']); ?></span></td></tr><?php } ?>
-    </tbody></table></div></div>
-    <div class="small text-muted mt-2">Timetable, attendance, results and certificates will appear here.</div>
+    <?php foreach ($enr as $e2) {
+        // NEW (stage 2): class, timetable, attendance, published results, transcript and certificate.
+        $k = $e2['class_id'] ? lc_class($conn, (int) $e2['class_id']) : null;
+        $pub = $k ? lc_published_result($conn, (int) $k['id'], $cid) : null;
+        $att = $k ? (lc_class_attendance($conn, (int) $k['id'])[$cid] ?? null) : null;
+        $next = $k ? mysqli_fetch_all(mysqli_query($conn, 'SELECT * FROM lc_sessions WHERE class_id = ' . (int) $k['id'] . " AND session_date >= '" . date('Y-m-d') . "' ORDER BY session_date, start_time LIMIT 8"), MYSQLI_ASSOC) : [];
+        $exams = $k ? mysqli_fetch_all(mysqli_query($conn, 'SELECT name, type, due_date FROM lc_assessments WHERE class_id = ' . (int) $k['id'] . " AND due_date >= '" . date('Y-m-d') . "' ORDER BY due_date LIMIT 5"), MYSQLI_ASSOC) : [];
+        $cert = lc_enrollment_certificate($conn, (int) $e2['id']);
+        $mods = $pub ? (json_decode((string) $pub['modules'], true) ?: []) : [];
+        ?>
+    <div class="card mb-3"><div class="card-body">
+        <div class="d-flex flex-wrap justify-content-between gap-2"><div><div class="fw-bold"><?= portal_e($e2['title']); ?> <span class="text-muted small"><?= portal_e($e2['code']); ?></span></div>
+            <div class="small text-muted"><?= portal_e($e2['intake_name'] ?? ''); ?> · <?= portal_e(lc_branch_name($conn, $e2['branch_id'] ? (int) $e2['branch_id'] : null)); ?><?= $k ? ' · class ' . portal_e($k['code']) . ($k['classroom'] ? ' · ' . portal_e($k['classroom']) : '') : ''; ?>
+                <?= $e2['start_date'] ? ' · ' . date('d M Y', strtotime($e2['start_date'])) . ($e2['end_date'] ? ' – ' . date('d M Y', strtotime($e2['end_date'])) : '') : ''; ?></div></div>
+            <div><span class="badge bg-<?= $e2['status'] === 'Failed' ? 'danger' : 'success'; ?>"><?= portal_e($e2['status']); ?></span></div></div>
+        <?php if (!$k) { ?><div class="small text-muted mt-2">Your class and timetable will appear here soon.</div><?php } else { ?>
+        <div class="row g-3 mt-1">
+            <div class="col-md-6"><div class="small fw-semibold mb-1"><i class="bi bi-calendar-week"></i> Next sessions</div>
+                <?php foreach ($next as $s2) { ?><div class="small border-bottom py-1 <?= $s2['status'] === 'Cancelled' ? 'text-decoration-line-through text-muted' : ''; ?>"><?= date('D d M', strtotime($s2['session_date'])); ?> <?= portal_e(substr((string) $s2['start_time'], 0, 5)); ?><?= $s2['end_time'] ? '–' . portal_e(substr($s2['end_time'], 0, 5)) : ''; ?>
+                    <span class="text-muted"><?= portal_e($s2['classroom'] ?? ''); ?><?= $s2['topic'] ? ' · ' . portal_e($s2['topic']) : ''; ?></span><?= $s2['status'] === 'Cancelled' ? ' <span class="badge bg-secondary">cancelled</span>' : ''; ?></div><?php } ?>
+                <?php if (!$next) { ?><div class="small text-muted">No upcoming session.</div><?php } ?>
+                <?php foreach ($exams as $x) { ?><div class="small mt-1"><i class="bi bi-pencil-square text-primary"></i> <?= portal_e($x['name']); ?> (<?= portal_e($x['type']); ?>) — <?= date('D d M Y', strtotime($x['due_date'])); ?></div><?php } ?></div>
+            <div class="col-md-6"><div class="small fw-semibold mb-1"><i class="bi bi-clipboard-check"></i> Attendance and results</div>
+                <div class="small">Attendance: <strong class="<?= $att && $att['pct'] !== null && $att['pct'] < (float) $k['attendance_min'] ? 'text-danger' : ''; ?>"><?= $att && $att['pct'] !== null ? $att['pct'] . '%' : '—'; ?></strong>
+                    <span class="text-muted"><?= $att ? '(' . $att['present'] . ' present of ' . ($att['held'] - $att['excused']) . ' sessions; minimum ' . (float) $k['attendance_min'] . '%)' : ''; ?></span></div>
+                <?php if ($pub) { ?>
+                <div class="small mt-1">Final mark: <strong><?= $pub['final_pct'] !== null ? number_format((float) $pub['final_pct'], 1) . '%' : '—'; ?></strong> · Grade <strong><?= portal_e($pub['grade'] ?? '—'); ?></strong> ·
+                    <span class="badge bg-<?= $pub['decision'] === 'Pass' ? 'success' : ($pub['decision'] === 'Fail' ? 'danger' : 'warning text-dark'); ?>"><?= portal_e($pub['decision']); ?></span></div>
+                <?php if ($pub['reason']) { ?><div class="small text-muted"><?= portal_e($pub['reason']); ?></div><?php } ?>
+                <?php foreach ($mods as $m) { ?><div class="small text-muted"><?= portal_e($m['module']); ?>: <?= number_format((float) $m['pct'], 1); ?>% (<?= portal_e($m['grade']); ?>)</div><?php } ?>
+                <?php } else { ?><div class="small text-muted mt-1">Results are shown here when they are published.</div><?php } ?>
+                <div class="mt-2 d-flex flex-wrap gap-2"><a class="btn btn-sm btn-light border" href="learning_doc.php?type=transcript&enrollment=<?= (int) $e2['id']; ?>" target="_blank"><i class="bi bi-file-earmark-text"></i> Transcript<?= $pub ? '' : ' (provisional)'; ?></a>
+                    <?php if ($cert) { ?><a class="btn btn-sm btn-primary" href="learning_doc.php?type=certificate&id=<?= (int) $cert['id']; ?>" target="_blank"><i class="bi bi-patch-check"></i> Certificate <?= portal_e($cert['number']); ?></a><?php } ?></div></div>
+        </div>
+        <?php } ?>
+    </div></div>
+    <?php } ?>
     <?php } ?>
 <?php } else {
     $apps = mysqli_fetch_all(mysqli_query($conn, "SELECT a.ref, a.status, a.offer_status, a.registered_at, a.submitted_at, c.title, i.name intake_name FROM lc_applications a JOIN lc_courses c ON c.id = a.course_id LEFT JOIN lc_intakes i ON i.id = a.intake_id WHERE a.customer_id = $cid ORDER BY a.id DESC"), MYSQLI_ASSOC);

@@ -48,6 +48,19 @@ const LC_DEFAULTS = [
     'tpl_info' => 'RISE MOTIVE: we need more information for application {ref}: {message}. Please reply at {track_url}',
     'tpl_admitted' => 'Congratulations {name}! You are admitted to {course} ({intake}). Please accept your offer at {track_url}',
     'tpl_registered' => 'Welcome to RM Learning Centre, {name}! Your Student ID is {student_id} (same as your Customer ID).',
+    // Academic (stage 2)
+    'att_statuses' => "Present=present\nLate=present\nExcused=excused\nAbsent=absent",
+    'grade_scale' => "80=A\n70=B\n60=C\n50=D\n0=F",
+    'assessment_types' => "Assignment\nPractical examination\nWritten examination\nContinuous assessment\nFinal examination",
+    'att_alert_min_sessions' => '3',
+    'cert_format' => 'RMLC-C{YYYY}-{NNNNN}',
+    'cert_signatory' => 'Director, RM Learning Centre',
+    'accreditation_verified' => '0',
+    'tpl_timetable' => 'RM Learning Centre: {class} — {message}',
+    'tpl_exam' => 'RM Learning Centre: {assessment} for {class} is on {date}. Good luck!',
+    'tpl_attendance' => 'RM Learning Centre: {name}, your attendance in {class} is {pct}%. The minimum is {min}%. Please contact us if you need help.',
+    'tpl_results' => 'RM Learning Centre: {name}, your results for {class} are published: {decision}. See the Customer Portal.',
+    'tpl_certificate' => 'Congratulations {name}! Your certificate {number} for {course} is ready in the Customer Portal.',
 ];
 
 /* ------------------------------------------------------------------ schema */

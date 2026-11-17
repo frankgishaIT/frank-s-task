@@ -205,10 +205,12 @@ if ($rmCompactUi) { ?>
      </a>
     <?php }
     // NEW: RM Learning Centre (courses, public website, admissions, students)
-    $lcView = false; $lcAdm = false;
-    try { if (isset($conn)) { $lcView = access_can('learning.view', $conn); $lcAdm = access_can('learning.admissions', $conn) || access_can('learning.courses', $conn); } } catch (Throwable $lcMenuError) { error_log('learning menu: ' . $lcMenuError->getMessage()); }
-    if ($lcView || $lcAdm) { ?>
-    <a href="<?= $lcView ? '../learning/index.php' : '../learning/applications.php'; ?>" class="<?= strpos($currentPath, '/modules/learning/') !== false ? 'active' : '' ?>">
+    $lcView = false; $lcAdm = false; $lcTeach = false;
+    try { if (isset($conn)) { $lcView = access_can('learning.view', $conn); $lcAdm = access_can('learning.admissions', $conn) || access_can('learning.courses', $conn) || access_can('learning.academic', $conn); } } catch (Throwable $lcMenuError) { error_log('learning menu: ' . $lcMenuError->getMessage()); }
+    // NEW (stage 2): instructors (employees or external with a sign-in) see the menu for their own classes
+    if (!$lcView && !$lcAdm && isset($conn) && !empty($_SESSION['user_id'])) { try { $lcTeach = (bool) mysqli_fetch_row(mysqli_query($conn, "SELECT id FROM lc_instructors WHERE user_id = " . (int) $_SESSION['user_id'] . " AND status = 'Active'")); } catch (Throwable $lcMenuError) { $lcTeach = false; } }
+    if ($lcView || $lcAdm || $lcTeach) { ?>
+    <a href="<?= $lcView ? '../learning/index.php' : ($lcTeach || access_can('learning.academic', $conn) ? '../learning/classes.php' : '../learning/applications.php'); ?>" class="<?= strpos($currentPath, '/modules/learning/') !== false ? 'active' : '' ?>">
     <i class="bi bi-mortarboard"></i> RM Learning Centre
     </a>
     <?php } ?>

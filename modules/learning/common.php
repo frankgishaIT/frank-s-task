@@ -8,8 +8,10 @@ require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../includes/access_control.php';
 require_once __DIR__ . '/../../includes/lc_helpers.php';
 require_once __DIR__ . '/../../includes/branch_helpers.php';
+require_once __DIR__ . '/../../includes/lc_academic.php'; // NEW (stage 2)
 if (current_user_role() === 'Admin') { require_once __DIR__ . '/../../includes/admin_error_guard.php'; }
 lc_ensure($conn);
+lc_acad_ensure($conn);
 
 function lcs_can(mysqli $conn, string $a): bool { return access_can('learning.' . $a, $conn); }
 function lcs_require(mysqli $conn, string $a): void { if (!lcs_can($conn, $a)) { lcs_deny(); } }
@@ -40,7 +42,9 @@ function lcs_badge(string $s): string
           'Temporarily Unavailable' => 'warning text-dark', 'Archived' => 'light text-dark border', 'Submitted' => 'primary', 'Under Review' => 'info text-dark',
           'Additional Information Required' => 'warning text-dark', 'Application Fee Pending' => 'warning text-dark', 'Application Fee Paid' => 'info text-dark',
           'Accepted' => 'success', 'Rejected' => 'danger', 'Waitlisted' => 'secondary', 'Withdrawn' => 'light text-dark border', 'Registered' => 'success',
-          'Open' => 'success', 'Closed' => 'dark', 'Cancelled' => 'light text-dark border', 'Planned' => 'secondary', 'Running' => 'success', 'Completed' => 'dark', 'Suspended' => 'warning text-dark'][$s] ?? 'secondary';
+          'Open' => 'success', 'Closed' => 'dark', 'Cancelled' => 'light text-dark border', 'Planned' => 'secondary', 'Running' => 'success', 'Completed' => 'dark', 'Suspended' => 'warning text-dark',
+          'Scheduled' => 'primary', 'Held' => 'success', 'Pass' => 'success', 'Fail' => 'danger', 'Incomplete' => 'warning text-dark', 'Failed' => 'danger',
+          'Valid' => 'success', 'Revoked' => 'danger', 'Replaced' => 'secondary', 'Active' => 'success', 'Inactive' => 'secondary'][$s] ?? 'secondary';
     return '<span class="badge bg-' . $c . '">' . lc_e($s) . '</span>';
 }
 
@@ -48,15 +52,32 @@ function lcs_tabs(mysqli $conn, string $active, string $title, string $right = '
 {
     $tabs = [['index.php', 'Dashboard', 'bi-speedometer2', 'view'], ['courses.php', 'Courses', 'bi-journal-bookmark', 'view'], ['intakes.php', 'Intakes', 'bi-calendar-event', 'view'],
              ['applications.php', 'Applications', 'bi-inboxes', 'admissions'], ['students.php', 'Students', 'bi-mortarboard', 'view'],
+             ['classes.php', 'Classes', 'bi-easel', 'classes'], ['instructors.php', 'Instructors', 'bi-person-video3', 'academic'], ['certificates.php', 'Certificates', 'bi-patch-check', 'academic'],
              ['centres.php', 'Training Centres', 'bi-building', 'courses'], ['settings.php', 'Settings', 'bi-sliders', 'settings'], ['audit.php', 'Audit Trail', 'bi-journal-text', 'settings']];
     echo '<style>.lc-tabs{display:flex;flex-wrap:wrap;gap:2px;border-bottom:1px solid #E4E7EF;margin-bottom:14px}.lc-tabs a{padding:7px 12px;font-size:13.5px;color:#5B6275;text-decoration:none;border-bottom:2px solid transparent}
         .lc-tabs a.on{color:#1E2FE0;border-bottom-color:#1E2FE0;font-weight:600}.lc-tabs a:hover{color:#1E2FE0}.lc-k .lbl{font-size:12px;color:#6B7280}.lc-k .val{font-weight:700;font-size:1.25rem}</style>';
     echo '<div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-2"><div><h3 class="mb-0">' . lc_e($title) . '</h3><div class="small text-muted">RM Learning Centre · '
         . '<a href="' . lc_e(lc_public_base($conn)) . '/" target="_blank" rel="noopener">public website <i class="bi bi-box-arrow-up-right"></i></a></div></div>' . $right . '</div>';
     echo '<div class="lc-tabs">';
-    foreach ($tabs as [$f, $l, $i, $p]) { if (lcs_can($conn, $p)) { echo '<a href="' . $f . '" class="' . ($f === $active ? 'on' : '') . '"><i class="bi ' . $i . '"></i> ' . $l . '</a>'; } }
+    foreach ($tabs as [$f, $l, $i, $p]) { if ($p === 'classes' ? lcs_classes_visible($conn) : lcs_can($conn, $p)) { echo '<a href="' . $f . '" class="' . ($f === $active ? 'on' : '') . '"><i class="bi ' . $i . '"></i> ' . $l . '</a>'; } }
     echo '</div>';
     foreach (['success' => 'success', 'error' => 'danger'] as $k => $c) { if (!empty($_GET[$k])) { echo '<div class="alert alert-' . $c . ' py-2 alert-dismissible fade show">' . lc_e($_GET[$k]) . '<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>'; } }
+}
+
+/** NEW (stage 2): who may open Classes — staff with view / academic permission, and instructors (their own classes only). */
+function lcs_classes_visible(mysqli $conn): bool { return lcs_can($conn, 'view') || lcs_can($conn, 'academic') || lc_my_instructor_id($conn) !== null; }
+
+/**
+ * NEW (stage 2): what the signed-in user may do in a class: 'manage' (academic staff of the branch: everything, publish results,
+ * certificates), 'teach' (assigned instructor: register attendance, enter marks, see students), 'view' (view only), or null.
+ */
+function lcs_class_role(mysqli $conn, array $class): ?string
+{
+    if (!lcs_branch_ok($conn, $class['branch_id'] ? (int) $class['branch_id'] : null)) { return null; }
+    if (lcs_can($conn, 'academic')) { return 'manage'; }
+    $me = lc_my_instructor_id($conn);
+    if ($me !== null && in_array((int) $class['id'], lc_instructor_class_ids($conn, $me), true)) { return 'teach'; }
+    return lcs_can($conn, 'view') ? 'view' : null;
 }
 
 function lcs_users(mysqli $conn): array

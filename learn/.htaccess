@@ -1,0 +1,8 @@
+# NEW FILE: learn/.htaccess — permanent, shareable course links: /learn/courses/wdf-001 (or learn.risemotive.rw/courses/wdf-001)
+Options -Indexes
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule ^courses/([A-Za-z0-9-]+)/?$ course.php?code=$1 [L,QSA]
+RewriteRule ^apply/([A-Za-z0-9-]+)/?$ apply.php?course=$1 [L,QSA]
+RewriteRule ^sitemap\.xml$ sitemap.php [L]
+</IfModule>

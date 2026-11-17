@@ -203,6 +203,14 @@ if ($rmCompactUi) { ?>
     <a href="<?= $liView ? '../loan_intel/index.php' : '../loan_intel/proposals.php'; ?>" class="<?= (strpos($currentPath, '/modules/loans/') !== false || strpos($currentPath, '/loan_intel/') !== false) ? 'active' : '' ?>">
     <i class="bi bi-bank"></i> Company Loans &amp; Investment <span class="small opacity-75">· Corporate Borrowing</span>
      </a>
+    <?php }
+    // NEW: RM Learning Centre (courses, public website, admissions, students)
+    $lcView = false; $lcAdm = false;
+    try { if (isset($conn)) { $lcView = access_can('learning.view', $conn); $lcAdm = access_can('learning.admissions', $conn) || access_can('learning.courses', $conn); } } catch (Throwable $lcMenuError) { error_log('learning menu: ' . $lcMenuError->getMessage()); }
+    if ($lcView || $lcAdm) { ?>
+    <a href="<?= $lcView ? '../learning/index.php' : '../learning/applications.php'; ?>" class="<?= strpos($currentPath, '/modules/learning/') !== false ? 'active' : '' ?>">
+    <i class="bi bi-mortarboard"></i> RM Learning Centre
+    </a>
     <?php } ?>
      <?php if (current_user_role() === 'Admin') { ?>
       <a href="../asset_management/index.php" class="<?= navActive('asset_management', $currentPath) ?>">

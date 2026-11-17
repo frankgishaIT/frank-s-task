@@ -1,0 +1,4 @@
+User-agent: *
+Disallow: /track.php
+Disallow: /apply.php
+Sitemap: /sitemap.xml

@@ -21,6 +21,7 @@ function portal_logo_url(): string
 function portal_header(string $title, ?array $customer = null): void
 {
     $here = basename($_SERVER['SCRIPT_NAME'] ?? '');
+    if ($here === 'learning_apply.php') { $here = 'learning.php'; } // NEW: RM Learning Centre sub-page
     $unread = (int) ($GLOBALS['PORTAL_UNREAD'] ?? 0);
     $logo = portal_logo_url();
     $menu = [
@@ -32,6 +33,7 @@ function portal_header(string $title, ?array $customer = null): void
         ['RM Mutual Growth', 'people', [['loans.php', 'cash-coin', 'RM Loans'], ['invest.php', 'graph-up-arrow', 'RM Invest'], ['rewards.php', 'gift', 'Request Loyalty Reward']]],
         ['my_investments.php', 'graph-up', 'My Investments'],
         ['documents.php', 'folder2-open', 'My Documents'],
+        ['learning.php', 'mortarboard', 'RM Learning Centre'], // NEW: courses, applications, My learning
     ];
     if (!empty($GLOBALS['PORTAL_RECORDS_ON'])) { $menu[] = ['records.php', 'award', 'My Records']; }
     $menu[] = ['profile.php', 'person', 'My Profile'];

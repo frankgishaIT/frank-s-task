@@ -9,9 +9,12 @@ require_once __DIR__ . '/../../includes/access_control.php';
 require_once __DIR__ . '/../../includes/lc_helpers.php';
 require_once __DIR__ . '/../../includes/branch_helpers.php';
 require_once __DIR__ . '/../../includes/lc_academic.php'; // NEW (stage 2)
+require_once __DIR__ . '/../../includes/lc_finance.php'; // NEW (stage 3)
 if (current_user_role() === 'Admin') { require_once __DIR__ . '/../../includes/admin_error_guard.php'; }
 lc_ensure($conn);
 lc_acad_ensure($conn);
+lc_fin_ensure($conn);
+lc_fin_sync($conn); // NEW (stage 3): application fee paid → status; invoices approved in Sales get their plan deadline
 
 function lcs_can(mysqli $conn, string $a): bool { return access_can('learning.' . $a, $conn); }
 function lcs_require(mysqli $conn, string $a): void { if (!lcs_can($conn, $a)) { lcs_deny(); } }
@@ -51,7 +54,7 @@ function lcs_badge(string $s): string
 function lcs_tabs(mysqli $conn, string $active, string $title, string $right = ''): void
 {
     $tabs = [['index.php', 'Dashboard', 'bi-speedometer2', 'view'], ['courses.php', 'Courses', 'bi-journal-bookmark', 'view'], ['intakes.php', 'Intakes', 'bi-calendar-event', 'view'],
-             ['applications.php', 'Applications', 'bi-inboxes', 'admissions'], ['students.php', 'Students', 'bi-mortarboard', 'view'],
+             ['applications.php', 'Applications', 'bi-inboxes', 'admissions'], ['students.php', 'Students', 'bi-mortarboard', 'view'], ['fees.php', 'Fees', 'bi-cash-coin', 'finance'],
              ['classes.php', 'Classes', 'bi-easel', 'classes'], ['instructors.php', 'Instructors', 'bi-person-video3', 'academic'], ['certificates.php', 'Certificates', 'bi-patch-check', 'academic'],
              ['centres.php', 'Training Centres', 'bi-building', 'courses'], ['settings.php', 'Settings', 'bi-sliders', 'settings'], ['audit.php', 'Audit Trail', 'bi-journal-text', 'settings']];
     echo '<style>.lc-tabs{display:flex;flex-wrap:wrap;gap:2px;border-bottom:1px solid #E4E7EF;margin-bottom:14px}.lc-tabs a{padding:7px 12px;font-size:13.5px;color:#5B6275;text-decoration:none;border-bottom:2px solid transparent}

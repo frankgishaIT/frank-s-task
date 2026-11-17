@@ -5,7 +5,7 @@ $sale = portal_own_sale($conn, $cid, (string) ($_GET['id'] ?? ''));
 if (!$sale) { header('Location: lookup.php'); exit; }
 $sid = (int) $sale['id'];
 portal_log($conn, $cid, 'invoice_viewed', portal_sale_number($sid));
-$items = mysqli_fetch_all(mysqli_query($conn, "SELECT si.*, p.product_name, p.unit FROM sale_items si LEFT JOIN products p ON p.id = si.product_id WHERE si.sale_id = $sid ORDER BY si.id"), MYSQLI_ASSOC);
+$items = mysqli_fetch_all(mysqli_query($conn, "SELECT si.*, COALESCE(NULLIF(si.service_name, ''), p.product_name) AS product_name, p.unit FROM sale_items si LEFT JOIN products p ON p.id = si.product_id WHERE si.sale_id = $sid ORDER BY si.id"), MYSQLI_ASSOC);
 $bal = portal_sale_balance($sale);
 $charges = round((float) ($sale['charges_accrued'] ?? 0) - (float) ($sale['charges_paid'] ?? 0), 2);
 $isReceipt = $bal <= 0.009;

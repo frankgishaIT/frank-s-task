@@ -338,6 +338,8 @@ function lc_issue_certificate(mysqli $conn, array $class, int $customerId, ?arra
     if (!$r || $r['decision'] !== 'Pass') { throw new RuntimeException('Certificates are issued only to students with a published Pass result.'); }
     $eid = (int) $r['enrollment_id'];
     if (!$replaces && lc_enrollment_certificate($conn, $eid)) { throw new RuntimeException('This student already has a valid certificate for this course.'); }
+    // NEW (stage 3): financial clearance policy (Settings); by default fees never block a certificate.
+    if (function_exists('lc_clearance_ok') && !lc_clearance_ok($conn, $customerId, 'certificate')) { throw new RuntimeException('Fees are overdue and the clearance policy requires payment before the certificate.'); }
     $name = (string) mysqli_fetch_row(mysqli_query($conn, 'SELECT name FROM customers WHERE id = ' . $customerId))[0];
     $no = lc_cert_number($conn); $tok = bin2hex(random_bytes(12)); $now = date('Y-m-d H:i:s'); $uid = (int) current_user_id();
     $pubDay = substr((string) $r['published_at'], 0, 10);

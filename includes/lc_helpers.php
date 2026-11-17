@@ -61,6 +61,13 @@ const LC_DEFAULTS = [
     'tpl_attendance' => 'RM Learning Centre: {name}, your attendance in {class} is {pct}%. The minimum is {min}%. Please contact us if you need help.',
     'tpl_results' => 'RM Learning Centre: {name}, your results for {class} are published: {decision}. See the Customer Portal.',
     'tpl_certificate' => 'Congratulations {name}! Your certificate {number} for {course} is ready in the Customer Portal.',
+    // Fees (stage 3)
+    'fee_overdue_charges' => '0',
+    'clearance_policy' => 'none',
+    'fee_reminder_days' => '3',
+    'tpl_fee_invoice' => 'RISE MOTIVE: invoice {invoice} of {amount} for {course}. {plan} See the Customer Portal.',
+    'tpl_fee_reminder' => 'RISE MOTIVE: {name}, {amount} for {course} is due on {date} (invoice {invoice}). Thank you.',
+    'admission_letter' => "We are pleased to offer you a place on the course below. Please accept your offer online, then complete your registration with the RM Learning Centre team.\nBring your national ID (or passport) on the first day.",
 ];
 
 /* ------------------------------------------------------------------ schema */
@@ -451,7 +458,7 @@ function lc_submit_application(mysqli $conn, array $course, array $in, ?array $f
         mysqli_stmt_bind_param($d, 'isss', $id, $label, $fref, $orig);
         mysqli_stmt_execute($d);
     }
-    lc_log($conn, $id, 'status', null, 'Submitted', 'Application submitted (' . (LC_SOURCES[$source] ?? $source) . ', ' . ($channel === 'portal' ? 'Customer Portal' : 'public website') . ').', true);
+    lc_log($conn, $id, 'status', null, 'Submitted', 'Application submitted (' . ($channel === 'portal' ? 'Customer Portal' : 'public website' . ($source !== 'website' ? ', via ' . (LC_SOURCES[$source] ?? $source) : '')) . ').', true);
     lc_audit($conn, 'application_submit', 'application', $id, ['ref' => $ref, 'course' => $course['code'], 'channel' => $channel, 'source' => $source], $customerId);
     $app = lc_application($conn, $id);
     lc_notify_applicant($conn, $app, 'tpl_submitted');

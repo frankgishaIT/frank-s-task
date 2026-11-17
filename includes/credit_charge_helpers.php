@@ -77,6 +77,15 @@ function credit_accrue(mysqli $conn, int $saleId, ?int $userId = null): float
     if (!$sale || !in_array($sale['status'], ['Credit', 'Partially Paid'], true) || empty($sale['payment_deadline'])) {
         return 0.0;
     }
+    // NEW (RM Learning Centre): student fee invoices get NO overdue charges unless the Learning Centre setting
+    // "overdue charges on fees" is switched on (fees follow their own instalment plan, not the 72-hour shop rule).
+    try {
+        $lc = mysqli_query($conn, 'SELECT 1 FROM lc_invoices WHERE sale_id = ' . (int) $saleId);
+        if ($lc && mysqli_fetch_row($lc)) {
+            $on = mysqli_fetch_row(mysqli_query($conn, "SELECT value FROM lc_settings WHERE name = 'fee_overdue_charges'"));
+            if (!$on || $on[0] !== '1') { return 0.0; }
+        }
+    } catch (Throwable $e) { /* Learning Centre not installed */ }
     $due = mysqli_fetch_row(mysqli_query($conn, "SELECT GREATEST(0, FLOOR(TIMESTAMPDIFF(SECOND, '"
         . mysqli_real_escape_string($conn, $sale['payment_deadline']) . "', NOW()) / 86400))"))[0];
     $due = (int) $due;

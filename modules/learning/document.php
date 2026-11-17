@@ -21,4 +21,14 @@ if ($type === 'transcript') {
     lc_pdf_output(lc_transcript_html($conn, $eid), 'transcript-' . lc_customer_id_label($conn, (int) $e['customer_id']) . '.pdf');
     exit;
 }
+if ($type === 'admission') {
+    // NEW (stage 3): admission letter (admitted applicants only)
+    lcs_require($conn, 'admissions');
+    $a = lc_application($conn, (int) ($_GET['application'] ?? 0));
+    if (!$a || !lcs_branch_ok($conn, (int) $a['branch_id'] ?: null)) { lcs_deny(); }
+    try { $html = lc_admission_letter_html($conn, $a); } catch (RuntimeException $e) { lcs_go('application.php?id=' . (int) ($a['id'] ?? 0), 'error', $e->getMessage()); }
+    lc_audit($conn, 'admission_letter', 'application', (int) $a['id']);
+    lc_pdf_output($html, 'admission-' . $a['ref'] . '.pdf');
+    exit;
+}
 lcs_go('index.php', 'error', 'Unknown document.');

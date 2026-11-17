@@ -38,7 +38,7 @@ if (!$isCustomerCopy && current_user_role() === 'Employee' && (int) $sale['recor
     exit;
 }
 
-$itemsStatement = mysqli_prepare($conn, 'SELECT sale_items.*, products.product_name, products.product_code, products.unit FROM sale_items LEFT JOIN products ON sale_items.product_id = products.id WHERE sale_id = ? ORDER BY sale_items.id');
+$itemsStatement = mysqli_prepare($conn, 'SELECT sale_items.*, COALESCE(NULLIF(sale_items.service_name, \'\'), products.product_name) AS product_name, products.product_code, products.unit FROM sale_items LEFT JOIN products ON sale_items.product_id = products.id WHERE sale_id = ? ORDER BY sale_items.id');
 mysqli_stmt_bind_param($itemsStatement, 'i', $id);
 mysqli_stmt_execute($itemsStatement);
 $items = mysqli_stmt_get_result($itemsStatement);

@@ -7,6 +7,8 @@
  */
 require __DIR__ . '/lc_public.php';
 require_once __DIR__ . '/../includes/evidence_store.php';
+require_once __DIR__ . '/../includes/lc_finance.php'; // NEW (stage 3): admission letter and fees
+lc_fin_ensure($conn);
 lcp_track_source();
 $msg = ''; $err = ''; $otpFor = null;
 $ttl = 7200; // access stays open 2 hours on this device
@@ -110,6 +112,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $app = null;
+// NEW (stage 3): admission letter PDF for an admitted applicant with access on this device
+if ($ref !== '' && !empty($_GET['letter']) && $access($ref)) {
+    $s = mysqli_prepare($conn, 'SELECT id FROM lc_applications WHERE ref = ?'); mysqli_stmt_bind_param($s, 's', $ref); mysqli_stmt_execute($s);
+    $la = lc_application($conn, (int) (mysqli_fetch_row(mysqli_stmt_get_result($s))[0] ?? 0));
+    if ($la && $la['status'] === 'Accepted') { lc_audit($conn, 'admission_letter_download', 'application', (int) $la['id'], ['tracking' => true], $la['customer_id'] ? (int) $la['customer_id'] : null); lc_pdf_output(lc_admission_letter_html($conn, $la), 'admission-' . $la['ref'] . '.pdf'); exit; }
+}
 if ($ref !== '' && $access($ref)) {
     $s = mysqli_prepare($conn, 'SELECT id FROM lc_applications WHERE ref = ?'); mysqli_stmt_bind_param($s, 's', $ref); mysqli_stmt_execute($s);
     $id = (int) (mysqli_fetch_row(mysqli_stmt_get_result($s))[0] ?? 0);
@@ -156,6 +164,8 @@ $csrf = '<input type="hidden" name="csrf" value="' . lc_e(lcp_csrf()) . '"><inpu
             <div class="col-md-6"><span class="text-muted">Applicant:</span> <?= lc_e($app['full_name']); ?></div>
             <div class="col-md-6"><span class="text-muted">Submitted:</span> <?= $app['submitted_at'] ? date('d M Y H:i', strtotime($app['submitted_at'])) : '—'; ?></div>
         </div>
+        <?php if ($app['status'] === 'Accepted') { ?><div class="mt-2"><a class="btn btn-sm btn-outline-primary" href="track.php?ref=<?= rawurlencode($app['ref']); ?>&letter=1" target="_blank"><i class="bi bi-file-earmark-pdf"></i> Admission letter</a></div><?php } ?>
+        <?php $tInv = array_filter(lc_invoices_for($conn, (int) $app['id']), function ($x) { return !$x['pending'] && !$x['cancelled']; }); if ($tInv) { ?><div class="small mt-2"><strong>Fees:</strong> <?php foreach ($tInv as $iv) { echo lc_e($iv['number']) . ' — ' . ($iv['balance'] <= 0.009 ? 'paid' : 'balance ' . lc_money($iv['balance']) . ($iv['next'] ? ', next ' . lc_money($iv['next']['due']) . ' by ' . date('d M Y', strtotime($iv['next']['due_date'])) : '')) . '. '; } ?></div><?php } ?>
         <?php if ($app['status'] === 'Accepted' && ($app['offer_status'] ?: 'Pending') === 'Pending') { ?>
         <div class="border rounded p-3 mt-3 bg-light"><div class="fw-bold mb-1"><i class="bi bi-award text-success"></i> Admission offer</div>
             <?php if ($app['offer_note']) { ?><div class="small mb-2" style="white-space:pre-line;"><?= lc_e($app['offer_note']); ?></div><?php } ?>

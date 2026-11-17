@@ -67,7 +67,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     if ($do === 'create_customer') {
         if ($a['customer_id']) { lcs_go($back, 'error', 'Already linked to a customer.'); }
-        if ($a['status'] !== 'Accepted') { lcs_go($back, 'error', 'Customer records are created at admission (status Accepted), not for every applicant.'); }
+        // CHANGED (stage 3): also when an application fee must be invoiced (invoices always go to a customer record).
+        if (!in_array($a['status'], ['Accepted', 'Application Fee Pending'], true)) { lcs_go($back, 'error', 'Customer records are created at admission (status Accepted) or to invoice an application fee, not for every applicant.'); }
         try { $cid = lc_create_customer($conn, $a); } catch (RuntimeException $e) { lcs_go($back, 'error', $e->getMessage()); }
         lc_link_customer($conn, $id, $cid, 'new customer created at admission');
         lcs_go($back, 'success', 'Customer created: ' . lc_customer_id_label($conn, $cid) . '. This Customer ID will be the Student ID.');
@@ -179,8 +180,21 @@ $row = function ($l, $v) { if ($v === null || $v === '') { return; } echo '<tr><
             <form method="POST" class="mt-2 border-top pt-2"><?= lcs_csrf_field(); ?><input type="hidden" name="do" value="link">
                 <div class="input-group input-group-sm"><span class="input-group-text">Customer #</span><input name="customer_id" type="number" min="1" class="form-control" placeholder="id"><button class="btn btn-outline-secondary">Link other</button></div>
                 <div class="form-check small"><input class="form-check-input" type="checkbox" name="confirm_other" value="1" id="co"><label class="form-check-label" for="co">I checked this is the same person (different phone/email)</label></div></form>
-            <?php if ($a['status'] === 'Accepted' && !$matches) { ?><form method="POST" class="mt-2"><?= lcs_csrf_field(); ?><input type="hidden" name="do" value="create_customer"><button class="btn btn-sm btn-primary" onclick="return confirm('Create ONE new customer record for this applicant?');">Create the customer record (new Customer ID)</button></form><?php } ?>
+            <?php if (in_array($a['status'], ['Accepted', 'Application Fee Pending'], true) && !$matches) { ?><form method="POST" class="mt-2"><?= lcs_csrf_field(); ?><input type="hidden" name="do" value="create_customer"><button class="btn btn-sm btn-primary" onclick="return confirm('Create ONE new customer record for this applicant?');">Create the customer record (new Customer ID)</button></form><?php } ?>
         <?php } ?>
+    </div></div>
+    <?php /* NEW (stage 3): fees of this application — normal Sales invoices; payments and receipts in Sales */
+    $invs = lc_invoices_for($conn, $id); $fin = lcs_can($conn, 'finance'); ?>
+    <div class="card border-0 shadow-sm mb-3"><div class="card-body">
+        <div class="d-flex justify-content-between align-items-center"><h6 class="mb-0">Fees</h6><?php if ($a['status'] === 'Accepted') { ?><a class="small" href="document.php?type=admission&application=<?= $id; ?>" target="_blank"><i class="bi bi-file-earmark-pdf"></i> Admission letter</a><?php } ?></div>
+        <?php foreach ($invs as $iv) { ?><div class="small border-top py-1 mt-1 <?= $iv['cancelled'] ? 'text-muted' : ''; ?>"><div class="d-flex justify-content-between"><span><a href="../sales/invoice.php?id=<?= (int) $iv['sale_id']; ?>"><?= lc_e($iv['number']); ?></a> · <?= lc_e(implode(', ', array_map(function ($t) { return LC_FEE_TYPES[$t] ?? $t; }, array_filter(explode(',', (string) $iv['fee_types']))))); ?></span><span><?= lc_e($iv['status']); ?></span></div>
+            <div class="d-flex justify-content-between"><span><?= lc_money($iv['total']); ?> · paid <?= lc_money($iv['paid']); ?></span><strong class="<?= $iv['overdue'] > 0 ? 'text-danger' : ''; ?>">balance <?= lc_money($iv['balance']); ?></strong></div>
+            <?php if (count($iv['installments']) > 1 || $iv['next']) { ?><div class="text-muted"><?= lc_e(implode(' · ', array_map(function ($t) { return date('d M', strtotime($t['due_date'])) . ' ' . lc_money($t['amount']) . ' (' . $t['state'] . ')'; }, $iv['installments']))); ?></div><?php } ?>
+            <?php if ($fin && in_array($iv['status'], ['Credit', 'Partially Paid'], true)) { ?><a href="../sales/pay_credit.php?id=<?= (int) $iv['sale_id']; ?>">Record payment</a><?php } ?></div><?php } ?>
+        <?php if (!$invs) { ?><div class="small text-muted">No invoice.</div><?php } ?>
+        <?php if ($fin && !$a['customer_id']) { ?><div class="small text-muted mt-1">To invoice, link or create the customer first.</div><?php } elseif ($fin) { ?>
+        <div class="mt-2 d-flex flex-wrap gap-1"><a class="btn btn-sm btn-outline-primary" href="invoice_new.php?application=<?= $id; ?>&kind=application">Application fee</a><a class="btn btn-sm btn-outline-primary" href="invoice_new.php?application=<?= $id; ?>&kind=tuition">Registration / tuition</a><a class="btn btn-sm btn-light border" href="invoice_new.php?application=<?= $id; ?>&kind=other">Other charge</a></div><?php } ?>
+        <div class="small text-muted mt-1">Paying a fee never admits anyone; an unpaid fee does not block studies unless the clearance policy says so.</div>
     </div></div>
     <div class="card border-0 shadow-sm mb-3"><div class="card-body">
         <h6>Internal note</h6>

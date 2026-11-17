@@ -7,7 +7,9 @@ $fields = ['public_enabled' => 'bool', 'public_url' => 'text', 'portal_url' => '
            'tpl_submitted' => 'area', 'tpl_status' => 'area', 'tpl_info' => 'area', 'tpl_admitted' => 'area', 'tpl_registered' => 'area',
            // NEW (stage 2): academic
            'att_statuses' => 'area', 'att_alert_min_sessions' => 'text', 'grade_scale' => 'area', 'assessment_types' => 'area', 'cert_format' => 'text', 'cert_signatory' => 'text', 'accreditation_verified' => 'bool',
-           'tpl_timetable' => 'area', 'tpl_exam' => 'area', 'tpl_attendance' => 'area', 'tpl_results' => 'area', 'tpl_certificate' => 'area'];
+           'tpl_timetable' => 'area', 'tpl_exam' => 'area', 'tpl_attendance' => 'area', 'tpl_results' => 'area', 'tpl_certificate' => 'area',
+           // NEW (stage 3): fees
+           'clearance_policy' => 'clearance', 'fee_overdue_charges' => 'bool', 'fee_reminder_days' => 'text', 'tpl_fee_invoice' => 'area', 'tpl_fee_reminder' => 'area', 'admission_letter' => 'area'];
 $labels = ['public_enabled' => 'Public website open', 'public_url' => 'Public address (e.g. https://learn.risemotive.rw — empty = this server /learn)', 'portal_url' => 'Customer Portal sign-in address (only when the website runs on a sub-domain, e.g. https://os.risemotive.rw/portal/login.php)', 'title' => 'Name', 'tagline' => 'Tagline',
            'intro' => 'Introduction (home page)', 'benefits' => 'Key benefits (one per line)', 'contact_phone' => 'Telephone', 'contact_whatsapp' => 'WhatsApp number (international, e.g. 250795344768)',
            'contact_email' => 'Email', 'contact_address' => 'Address', 'accreditation_note' => 'Accreditation statement (only if verified; leave empty otherwise)',
@@ -18,13 +20,17 @@ $labels = ['public_enabled' => 'Public website open', 'public_url' => 'Public ad
            'grade_scale' => 'Grading scale, one per line: minimum %=grade (e.g. 80=A)', 'assessment_types' => 'Assessment types (one per line)', 'cert_format' => 'Certificate number format ({YYYY}, {NNNNN})',
            'cert_signatory' => 'Signatory printed on certificates', 'accreditation_verified' => 'Accreditation verified by management: print the accreditation statement on certificates and transcripts',
            'tpl_timetable' => 'Message: timetable change ({class} {message})', 'tpl_exam' => 'Message: examination date ({assessment} {class} {date})', 'tpl_attendance' => 'Message: attendance alert ({pct} {min} {class})',
-           'tpl_results' => 'Message: results published ({class} {decision})', 'tpl_certificate' => 'Message: certificate ready ({number} {course})'];
+           'tpl_results' => 'Message: results published ({class} {decision})', 'tpl_certificate' => 'Message: certificate ready ({number} {course})',
+           'clearance_policy' => 'Financial clearance (overdue fees only)', 'fee_overdue_charges' => 'Apply the Sales overdue charges (1% a day) to fee invoices after their last due date (off = no charges on fees)',
+           'fee_reminder_days' => 'Payment reminders: days before a due date', 'tpl_fee_invoice' => 'Message: new fee invoice ({invoice} {amount} {course} {plan})', 'tpl_fee_reminder' => 'Message: payment reminder ({amount} {course} {date} {invoice})',
+           'admission_letter' => 'Admission letter: main text'];
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!lcs_csrf_ok()) { lcs_go('settings.php', 'error', 'The page had expired.'); }
     $chg = []; $vals = [];
     foreach ($fields as $k => $t) {
         $v = $t === 'bool' ? (!empty($_POST[$k]) ? '1' : '0') : trim((string) ($_POST[$k] ?? ''));
         if ($k === 'ref_format' && !preg_match('/^[A-Za-z0-9\-\/{}]+$/', $v)) { lcs_go('settings.php', 'error', 'The reference format may contain letters, numbers, - / and the {YYYY} {YY} {NNNN} parts.'); }
+        if ($k === 'clearance_policy' && !in_array($v, ['none', 'certificate', 'documents'], true)) { $v = 'none'; }
         if ($k === 'cert_format' && !preg_match('/^[A-Za-z0-9\-\/{}]+$/', $v)) { lcs_go('settings.php', 'error', 'The certificate number format may contain letters, numbers, - / and {YYYY} {YY} {NNNNN}.'); }
         if ($k === 'grade_scale' && $v !== '' && !preg_match('/^(\s*\d+(\.\d+)?\s*=\s*\S+\s*(\r?\n|$))+$/', $v)) { lcs_go('settings.php', 'error', 'Grading scale: one line per grade, like 80=A.'); }
         if (in_array($k, ['public_url', 'portal_url'], true) && $v !== '' && !preg_match('#^https?://#', $v)) { lcs_go('settings.php', 'error', 'The public address must start with https://'); }
@@ -43,6 +49,7 @@ lcs_tabs($conn, 'settings.php', 'Learning Centre Settings');
     <?php foreach ($fields as $k => $t) { $v = trim(lc_setting($conn, $k)); ?>
     <div class="<?= $t === 'area' ? 'col-12' : 'col-md-6'; ?>">
         <?php if ($t === 'bool') { ?><div class="form-check form-switch mt-2"><input class="form-check-input" type="checkbox" name="<?= $k; ?>" value="1" id="s<?= $k; ?>" <?= $v === '1' ? 'checked' : ''; ?>><label class="form-check-label small" for="s<?= $k; ?>"><?= lc_e($labels[$k]); ?></label></div>
+        <?php } elseif ($t === 'clearance') { ?><label class="form-label small"><?= lc_e($labels[$k]); ?></label><select name="<?= $k; ?>" class="form-select form-select-sm"><?php foreach (['none' => 'Fees never block studies or documents', 'certificate' => 'No certificate while fees are overdue', 'documents' => 'No certificate and no final transcript while fees are overdue'] as $cv => $cl) { ?><option value="<?= $cv; ?>" <?= $v === $cv ? 'selected' : ''; ?>><?= $cl; ?></option><?php } ?></select>
         <?php } elseif ($t === 'area') { ?><label class="form-label small"><?= lc_e($labels[$k]); ?></label><textarea name="<?= $k; ?>" rows="<?= strpos($k, 'tpl_') === 0 ? 2 : 3; ?>" class="form-control form-control-sm"><?= lc_e($v); ?></textarea>
         <?php } else { ?><label class="form-label small"><?= lc_e($labels[$k]); ?></label><input name="<?= $k; ?>" class="form-control form-control-sm" value="<?= lc_e($v); ?>"><?php } ?>
     </div><?php } ?>

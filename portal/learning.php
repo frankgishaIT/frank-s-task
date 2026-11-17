@@ -8,9 +8,12 @@
 require __DIR__ . '/portal_start.php';
 require_once __DIR__ . '/../includes/lc_helpers.php';
 require_once __DIR__ . '/../includes/lc_academic.php'; // NEW (stage 2)
+require_once __DIR__ . '/../includes/lc_finance.php'; // NEW (stage 3)
 require_once __DIR__ . '/../includes/evidence_store.php';
 lc_ensure($conn);
 lc_acad_ensure($conn);
+lc_fin_ensure($conn);
+lc_fin_sync($conn);
 $tab = in_array($_GET['tab'] ?? '', ['explore', 'apps', 'learning'], true) ? $_GET['tab'] : 'apps';
 $myKey = lc_phone_key((string) $me['phone']);
 $go = function (string $q, string $k, string $m) { header('Location: learning.php?' . $q . '&' . $k . '=' . urlencode($m)); exit; };
@@ -107,6 +110,15 @@ if ($appRef !== '' && ($a = $mine($appRef))) {
             <form method="POST" class="d-inline" onsubmit="return confirm('Decline the admission offer?');"><?= portal_csrf_field(); ?><input type="hidden" name="app" value="<?= portal_e($a['ref']); ?>"><input type="hidden" name="do" value="decline"><button class="btn btn-sm btn-outline-danger">Decline</button></form></div>
         <?php } ?>
     </div></div>
+    <?php /* NEW (stage 3): fees of this application and the admission letter */ $invs = array_filter(lc_invoices_for($conn, (int) $a['id']), function ($x) { return !$x['pending']; });
+    if ($invs || $a['status'] === 'Accepted') { ?>
+    <div class="card mb-3"><div class="card-body"><div class="d-flex justify-content-between"><div class="fw-bold small mb-1">Fees and documents</div><?php if ($a['status'] === 'Accepted') { ?><a class="small" target="_blank" href="learning_doc.php?type=admission&app=<?= rawurlencode($a['ref']); ?>"><i class="bi bi-file-earmark-pdf"></i> Admission letter</a><?php } ?></div>
+        <?php foreach ($invs as $iv) { ?><div class="small border-top py-1"><div class="d-flex justify-content-between"><a href="invoice.php?id=<?= (int) $iv['sale_id']; ?>"><?= portal_e($iv['number']); ?></a><span><?= portal_e($iv['cancelled'] ? 'Cancelled' : ($iv['balance'] <= 0.009 ? 'Paid' : 'Balance ' . lc_money($iv['balance']))); ?></span></div>
+            <div class="text-muted"><?= lc_money($iv['total']); ?> · paid <?= lc_money($iv['paid']); ?><?= $iv['next'] && !$iv['cancelled'] ? ' · next: ' . lc_money($iv['next']['due']) . ' by ' . date('d M Y', strtotime($iv['next']['due_date'])) . ($iv['next']['state'] === 'Overdue' ? ' (overdue)' : '') : ''; ?></div></div><?php } ?>
+        <?php if (!$invs) { ?><div class="small text-muted">No invoice yet.</div><?php } ?>
+        <div class="small text-muted mt-1">Pay at RISE MOTIVE (cash, MoMo, bank) and keep your receipt. Paying a fee does not by itself mean admission.</div>
+    </div></div>
+    <?php } ?>
     <?php if ($open) { ?>
     <div class="card mb-3"><div class="card-body"><div class="fw-bold small mb-1"><?= $a['status'] === 'Additional Information Required' ? 'Information requested' : 'Send a message or a document'; ?></div>
         <?php if ($req && $a['status'] === 'Additional Information Required') { ?><div class="alert alert-warning small py-2"><?= portal_e($req['note']); ?></div><?php } ?>
@@ -136,7 +148,10 @@ if ($appRef !== '' && ($a = $mine($appRef))) {
     ?>
     <?php if (!$isStudent) { ?><div class="card"><div class="card-body small text-muted">You are not registered on a course yet. When you are admitted and registered, your courses appear here. Your Student ID will be your Customer ID <strong><?= portal_e($sid); ?></strong>.</div></div>
     <?php } else { ?>
-    <div class="card mb-3"><div class="card-body d-flex align-items-center gap-3"><i class="bi bi-person-badge fs-2 text-primary"></i><div><div class="small text-muted">Student ID</div><div class="h5 fw-bold mb-0 font-monospace"><?= portal_e($sid); ?></div><div class="small text-muted">Same number as your RISE MOTIVE Customer ID.</div></div></div></div>
+    <?php /* NEW (stage 3): Learning Centre fees summary */ $myInv = array_filter(lc_invoices_for($conn, null, $cid), function ($x) { return !$x['pending'] && !$x['cancelled']; }); $bal = array_sum(array_column($myInv, 'balance')); ?>
+    <div class="card mb-3"><div class="card-body d-flex align-items-center gap-3"><i class="bi bi-person-badge fs-2 text-primary"></i><div><div class="small text-muted">Student ID</div><div class="h5 fw-bold mb-0 font-monospace"><?= portal_e($sid); ?></div><div class="small text-muted">Same number as your RISE MOTIVE Customer ID.</div></div>
+        <?php if ($myInv) { ?><div class="ms-auto text-end"><div class="small text-muted">Learning Centre fees</div><div class="fw-bold <?= $bal > 0 ? 'text-danger' : 'text-success'; ?>"><?= $bal > 0 ? 'Balance ' . lc_money($bal) : 'All paid'; ?></div>
+            <div class="small"><?php foreach ($myInv as $iv) { ?><a href="invoice.php?id=<?= (int) $iv['sale_id']; ?>" class="me-1"><?= portal_e($iv['number']); ?></a><?php } ?></div></div><?php } ?></div></div>
     <?php foreach ($enr as $e2) {
         // NEW (stage 2): class, timetable, attendance, published results, transcript and certificate.
         $k = $e2['class_id'] ? lc_class($conn, (int) $e2['class_id']) : null;

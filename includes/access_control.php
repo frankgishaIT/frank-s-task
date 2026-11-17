@@ -50,7 +50,7 @@ function access_catalog(): array
         'forecasting'       => ['RM Business Forecasting', ['view', 'reports', 'manage']],
         'rm_loans'          => ['RM Credit Hub (customer loans)', ['view', 'edit', 'approve', 'reports', 'manage']],
         'loan_intel'        => ['Company Loans & Investment Intelligence (corporate borrowing)', ['view', 'propose', 'finance', 'approve', 'configure']], // NEW
-        'learning'          => ['RM Learning Centre (courses, admissions, students)', ['view', 'courses', 'admissions', 'academic', 'finance', 'internship', 'settings']], // NEW
+        'learning'          => ['RM Learning Centre (courses, admissions, students)', ['view', 'courses', 'admissions', 'academic', 'finance', 'accommodation', 'internship', 'settings']], // NEW
         'budget'            => ['Budget & Fund Control', ['view', 'create', 'approve', 'manage', 'reports']],
         'marketing'         => ['Marketing & Growth', ['view', 'create', 'leads', 'approve', 'finance', 'reports', 'manage']],
         'rm_invest'         => ['RM Investors Hub', ['view', 'create', 'edit', 'approve', 'reports', 'manage']],
@@ -100,7 +100,7 @@ const ACCESS_NEW_DEFAULTS = [
     // NEW: Branch Management. Head Office (company-wide users) registers and controls branches; managers/HR assign staff.
     'loan_intel.view' => ['admin', 'manager'], 'loan_intel.propose' => ['admin', 'manager'], 'loan_intel.finance' => ['admin'], 'loan_intel.approve' => ['admin'], 'loan_intel.configure' => ['admin'], // NEW
     'learning.view' => ['admin', 'manager'], 'learning.courses' => ['admin'], 'learning.admissions' => ['admin', 'manager'], 'learning.academic' => ['admin'], // NEW
-    'learning.finance' => ['admin'], 'learning.internship' => ['admin'], 'learning.settings' => ['admin'], // NEW
+    'learning.finance' => ['admin'], 'learning.internship' => ['admin'], 'learning.settings' => ['admin'], 'learning.accommodation' => ['admin', 'manager'], // NEW
     'branches.view' => ['admin', 'manager'], 'branches.assign' => ['admin', 'manager'], 'branches.approve' => ['admin'], 'branches.manage' => ['admin'],
     'rm_invest.view' => ['admin', 'manager'], 'rm_invest.create' => ['admin', 'manager'], 'rm_invest.edit' => ['admin', 'manager'],
     'rm_invest.reports' => ['admin', 'manager'], 'rm_invest.approve' => ['admin'], 'rm_invest.manage' => ['admin'],

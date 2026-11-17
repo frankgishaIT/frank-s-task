@@ -121,13 +121,13 @@ function lc_suggest_lines(mysqli $conn, array $app, string $kind): array
  * A discount / scholarship entered by an Employee waits for Manager / Admin approval (the existing Sales approval).
  * Returns the sale id. Throws RuntimeException for the user.
  */
-function lc_create_invoice(mysqli $conn, array $app, string $kind, array $lines, array $adj, array $plan, string $notes = ''): int
+function lc_create_invoice(mysqli $conn, array $app, string $kind, array $lines, array $adj, array $plan, string $notes = '', ?int $branchOverride = null): int
 {
     require_once __DIR__ . '/sales_helpers.php';
     require_once __DIR__ . '/branch_helpers.php';
     lc_fin_ensure($conn);
     if (empty($app['customer_id'])) { throw new RuntimeException('Link the application to the customer first (existing customer, or create the customer record).'); }
-    if (!in_array($kind, ['application', 'tuition', 'other'], true)) { throw new RuntimeException('Unknown invoice kind.'); }
+    if (!in_array($kind, ['application', 'tuition', 'other', 'accommodation'], true)) { throw new RuntimeException('Unknown invoice kind.'); }
     $course = lc_course($conn, (int) $app['course_id']);
     $billed = lc_billed_types($conn, (int) $app['id']);
     $clean = []; $sub = 0.0; $types = [];
@@ -167,7 +167,7 @@ function lc_create_invoice(mysqli $conn, array $app, string $kind, array $lines,
     $status = $needsApproval ? 'Pending Discount Approval' : 'Credit';
     $reqBy = $disc > 0 ? $uid : null; $apBy = ($disc > 0 && !$needsApproval) ? $uid : null; $apAt = $apBy ? date('Y-m-d H:i:s') : null;
     $cid = (int) $app['customer_id']; $today = date('Y-m-d'); $zero = 0.0; $method = 'Credit'; $nca = 0;
-    $branch = $app['branch_id'] ? (int) $app['branch_id'] : null;
+    $branch = $branchOverride ?? ($app['branch_id'] ? (int) $app['branch_id'] : null); // CHANGED (stage 4): accommodation is billed by the facility's branch
 
     mysqli_begin_transaction($conn);
     try {
@@ -227,6 +227,7 @@ function lc_invoice_notify(mysqli $conn, int $saleId): void
     $inv = lc_invoice_by_sale($conn, $saleId);
     if (!$inv) { return; }
     $plan = count($inv['installments']) > 1 ? count($inv['installments']) . ' instalments, first due ' . date('d M Y', strtotime($inv['installments'][0]['due_date'])) . '.' : 'Due ' . date('d M Y', strtotime($inv['installments'][0]['due_date'])) . '.';
+    if (lc_setting($conn, 'notify_portal') !== '1') { return; }
     try {
         $text = strtr(lc_setting($conn, 'tpl_fee_invoice'), ['{invoice}' => $inv['number'], '{amount}' => lc_money($inv['total']), '{course}' => $inv['course_title'], '{plan}' => $plan]);
         $t = 'RM Learning Centre'; $b = mb_substr($text, 0, 500); $l = 'invoice.php?id=' . $saleId; $cid = (int) $inv['customer_id'];

@@ -93,7 +93,7 @@ function lcp_header(mysqli $conn, array $meta = []): void
 </style></head><body>
 <nav class="lc-nav py-2"><div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
     <a class="brand" href="./"><img src="<?= lc_e($logoUrl); ?>" alt="" onerror="this.style.display='none'"><span><?= lc_e(strtoupper($site)); ?></span></a>
-    <div class="d-flex flex-wrap gap-1"><a class="nav-link px-2" href="./">Home</a><a class="nav-link px-2" href="courses.php">Courses</a><a class="nav-link px-2" href="track.php">Track my application</a>
+    <div class="d-flex flex-wrap gap-1"><a class="nav-link px-2" href="./">Home</a><a class="nav-link px-2" href="courses.php">Courses</a><a class="nav-link px-2" href="internships.php">Internships</a><a class="nav-link px-2" href="track.php">Track my application</a>
         <a class="nav-link px-2" href="<?= lc_e(lcp_portal_url($conn)); ?>">Customer Portal</a></div>
 </div></nav>
 <?php
@@ -111,7 +111,7 @@ function lcp_footer(mysqli $conn): void
         <?php if ($wa) { ?><div><i class="bi bi-whatsapp"></i> <a href="https://wa.me/<?= lc_e($wa); ?>" target="_blank" rel="noopener">WhatsApp</a></div><?php } ?>
         <?php if (lc_setting($conn, 'contact_email')) { ?><div><i class="bi bi-envelope"></i> <a href="mailto:<?= lc_e(lc_setting($conn, 'contact_email')); ?>"><?= lc_e(lc_setting($conn, 'contact_email')); ?></a></div><?php } ?>
         <div><i class="bi bi-geo-alt"></i> <?= lc_e(lc_setting($conn, 'contact_address')); ?></div></div>
-    <div class="col-md-3"><div class="fw-bold mb-1">Quick links</div><div><a href="courses.php">All courses</a></div><div><a href="track.php">Track my application</a></div><div><a href="<?= lc_e(lcp_portal_url($conn)); ?>">Customer Portal</a></div></div>
+    <div class="col-md-3"><div class="fw-bold mb-1">Quick links</div><div><a href="courses.php">All courses</a></div><div><a href="internships.php">Internships</a></div><div><a href="verify.php">Verify a certificate</a></div><div><a href="track.php">Track my application</a></div><div><a href="<?= lc_e(lcp_portal_url($conn)); ?>">Customer Portal</a></div></div>
 </div><div class="text-center small opacity-75 mt-3">© <?= date('Y'); ?> RISE MOTIVE Ltd · Your information is used only to process your application.</div></div></footer>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body></html><?php

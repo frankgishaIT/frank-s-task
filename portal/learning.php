@@ -9,12 +9,16 @@ require __DIR__ . '/portal_start.php';
 require_once __DIR__ . '/../includes/lc_helpers.php';
 require_once __DIR__ . '/../includes/lc_academic.php'; // NEW (stage 2)
 require_once __DIR__ . '/../includes/lc_finance.php'; // NEW (stage 3)
+require_once __DIR__ . '/../includes/lc_accommodation.php'; // NEW (stage 4)
+require_once __DIR__ . '/../includes/lc_internship.php'; // NEW (stage 4)
 require_once __DIR__ . '/../includes/evidence_store.php';
 lc_ensure($conn);
 lc_acad_ensure($conn);
 lc_fin_ensure($conn);
 lc_fin_sync($conn);
-$tab = in_array($_GET['tab'] ?? '', ['explore', 'apps', 'learning'], true) ? $_GET['tab'] : 'apps';
+lc_acc_ensure($conn);
+lc_int_ensure($conn);
+$tab = in_array($_GET['tab'] ?? '', ['explore', 'apps', 'learning', 'internships'], true) ? $_GET['tab'] : 'apps';
 $myKey = lc_phone_key((string) $me['phone']);
 $go = function (string $q, string $k, string $m) { header('Location: learning.php?' . $q . '&' . $k . '=' . urlencode($m)); exit; };
 $appRef = strtoupper(trim((string) ($_GET['app'] ?? $_POST['app'] ?? '')));
@@ -28,6 +32,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $do = (string) ($_POST['do'] ?? '');
     try {
         if (!portal_csrf_ok()) { throw new RuntimeException('Your session expired. Please try again.'); }
+        if ($do === 'intern') {
+            // NEW (stage 4): internship application from the portal (name and telephone from the customer record)
+            $ip = lc_int_post($conn, (int) ($_POST['post'] ?? 0));
+            if (!$ip || $ip['status'] !== 'Open') { throw new RuntimeException('This internship is closed.'); }
+            if (empty($_POST['consent'])) { throw new RuntimeException('Please confirm your information.'); }
+            $r = lc_int_submit($conn, $ip, $_POST, $_FILES['cv'] ?? null, $me, 'portal');
+            $go('tab=internships', 'success', ($r['duplicate'] ? 'You already applied: ' : 'Application sent: ') . $r['ref'] . '.');
+        }
         if ($do === 'claim') {
             if (!lc_rate_ok($conn, 'claim', 10, 15)) { throw new RuntimeException('Too many attempts. Please wait 15 minutes.'); }
             lc_rate_hit($conn, 'claim');
@@ -77,14 +89,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             lc_audit($conn, 'application_withdraw', 'application', $aid, ['portal' => true], $cid);
             $go('app=' . rawurlencode($a['ref']), 'success', 'Your application was withdrawn.');
         }
-    } catch (RuntimeException $e) { $go($appRef !== '' && $do !== 'claim' ? 'app=' . rawurlencode($appRef) : 'tab=apps', 'error', $e->getMessage()); }
+    } catch (RuntimeException $e) { $go($do === 'intern' ? 'tab=internships' : ($appRef !== '' && $do !== 'claim' ? 'app=' . rawurlencode($appRef) : 'tab=apps'), 'error', $e->getMessage()); }
 }
 
 $sid = lc_customer_id_label($conn, $cid);
 $isStudent = lc_is_student($conn, $cid);
 portal_header('RM Learning Centre', $me);
 portal_alerts();
-$tabs = ['explore' => ['compass', 'Explore courses'], 'apps' => ['file-earmark-text', 'My applications'], 'learning' => ['mortarboard', 'My learning']];
+$tabs = ['explore' => ['compass', 'Explore courses'], 'apps' => ['file-earmark-text', 'My applications'], 'learning' => ['mortarboard', 'My learning'], 'internships' => ['briefcase', 'Internships']];
 ?>
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <div><h1 class="h4 fw-bold mb-0">RM Learning Centre</h1><div class="small text-muted">Your <?= $isStudent ? 'Student ID' : 'Customer ID'; ?>: <strong><?= portal_e($sid); ?></strong><?= $isStudent ? ' (same as your Customer ID)' : ''; ?></div></div>
@@ -143,6 +155,35 @@ if ($appRef !== '' && ($a = $mine($appRef))) {
             <div class="mt-auto d-flex gap-2"><a class="btn btn-sm btn-light border" target="_blank" rel="noopener" href="<?= portal_e(lc_course_url($conn, $c, 'portal')); ?>">Details</a><?php if ($ok) { ?><a class="btn btn-sm btn-primary" href="learning_apply.php?course=<?= portal_e(strtolower($c['code'])); ?>">Apply</a><?php } ?></div>
         </div></div></div><?php } ?>
         <?php if (!$courses) { ?><div class="col-12 text-muted small">No course is published yet.</div><?php } ?></div>
+<?php } elseif ($tab === 'internships') {
+    // NEW (stage 4): internships open to this customer, and their internship applications
+    $stu = $isStudent;
+    $posts = array_filter(mysqli_fetch_all(mysqli_query($conn, "SELECT p.*, d.name department FROM lc_int_posts p LEFT JOIN departments d ON d.id = p.department_id WHERE p.status = 'Open' ORDER BY p.id DESC"), MYSQLI_ASSOC),
+        function ($p) use ($stu) { return $p['open_to'] === 'both' || ($p['open_to'] === 'students') === $stu; });
+    $mine = mysqli_fetch_all(mysqli_query($conn, "SELECT a.*, p.title FROM lc_int_apps a JOIN lc_int_posts p ON p.id = a.post_id WHERE a.customer_id = $cid ORDER BY a.id DESC"), MYSQLI_ASSOC);
+    $sel = null; foreach ($posts as $p) { if ((int) $p['id'] === (int) ($_GET['post'] ?? 0)) { $sel = $p; } }
+    ?>
+    <?php if ($mine) { ?><div class="card mb-3"><div class="card-body p-0"><table class="table table-sm align-middle mb-0 small"><thead><tr><th class="ps-3">Reference</th><th>Internship</th><th>Period</th><th>Status</th><th></th></tr></thead><tbody>
+        <?php foreach ($mine as $m) { ?><tr><td class="ps-3 font-monospace"><?= portal_e($m['ref']); ?></td><td><?= portal_e($m['title']); ?></td><td><?= $m['start_date'] ? date('d M Y', strtotime($m['start_date'])) . ' – ' . ($m['end_date'] ? date('d M Y', strtotime($m['end_date'])) : '') : '—'; ?></td>
+            <td><span class="badge bg-primary"><?= portal_e($m['status']); ?></span></td><td class="text-end pe-3"><?php if ($m['status'] === 'Completed' && $m['completion_approved_at']) { ?><a href="learning_doc.php?type=internship&id=<?= (int) $m['id']; ?>" target="_blank">Completion letter</a><?php } ?></td></tr><?php } ?>
+    </tbody></table></div></div><?php } ?>
+    <?php if ($sel) { [$ok, $why] = lc_int_post_open($conn, $sel); ?>
+    <div class="card mb-3"><div class="card-body"><div class="small"><a href="learning.php?tab=internships">All internships</a></div><div class="fw-bold mt-1"><?= portal_e($sel['title']); ?></div>
+        <div class="small text-muted mb-1"><?= portal_e($sel['department'] ?? ''); ?> · <?= portal_e(lc_branch_name($conn, (int) $sel['branch_id'] ?: null)); ?><?= $sel['start_date'] ? ' · ' . date('d M Y', strtotime($sel['start_date'])) . ' – ' . ($sel['end_date'] ? date('d M Y', strtotime($sel['end_date'])) : '') : ''; ?></div>
+        <div class="small" style="white-space:pre-line;"><?= portal_e($sel['description']); ?></div>
+        <?php if (!$ok) { ?><div class="alert alert-secondary small mt-2 mb-0"><?= portal_e($why); ?></div><?php } else { ?>
+        <form method="POST" enctype="multipart/form-data" class="row g-2 mt-1"><?= portal_csrf_field(); ?><input type="hidden" name="do" value="intern"><input type="hidden" name="post" value="<?= (int) $sel['id']; ?>">
+            <div class="col-md-6"><input class="form-control form-control-sm" value="<?= portal_e($me['name'] . ' · ' . $me['phone']); ?>" readonly></div><div class="col-md-6"><input type="file" name="cv" class="form-control form-control-sm" accept=".pdf,.jpg,.jpeg,.png"></div>
+            <div class="col-12"><textarea name="education" class="form-control form-control-sm" rows="2" maxlength="2000" placeholder="Education and experience"></textarea></div>
+            <div class="col-12"><textarea name="motivation" class="form-control form-control-sm" rows="2" maxlength="2000" placeholder="Why this internship?"></textarea></div>
+            <div class="col-12 form-check small ms-2"><input class="form-check-input" type="checkbox" name="consent" value="1" id="ic" required><label class="form-check-label" for="ic">I confirm my information.</label></div>
+            <div class="col-12"><button class="btn btn-sm btn-primary">Apply</button></div></form>
+        <?php } ?>
+    </div></div>
+    <?php } ?>
+    <div class="row g-3"><?php foreach ($posts as $p) { ?><div class="col-md-6"><div class="card h-100"><div class="card-body"><div class="small text-muted"><?= portal_e($p['department'] ?? 'RISE MOTIVE'); ?></div><div class="fw-bold"><?= portal_e($p['title']); ?></div>
+        <div class="small text-muted mb-2"><?= portal_e(mb_strimwidth((string) $p['description'], 0, 120, '…')); ?></div><a class="btn btn-sm btn-outline-primary" href="learning.php?tab=internships&post=<?= (int) $p['id']; ?>">Details and apply</a></div></div></div><?php } ?>
+        <?php if (!$posts) { ?><div class="col-12 small text-muted">No internship is open for you at the moment.</div><?php } ?></div>
 <?php } elseif ($tab === 'learning') {
     $enr = mysqli_fetch_all(mysqli_query($conn, "SELECT e.*, c.title, c.code, i.name intake_name, i.start_date, i.end_date FROM lc_enrollments e JOIN lc_courses c ON c.id = e.course_id LEFT JOIN lc_intakes i ON i.id = e.intake_id WHERE e.customer_id = $cid ORDER BY e.id DESC"), MYSQLI_ASSOC);
     ?>
@@ -152,6 +193,11 @@ if ($appRef !== '' && ($a = $mine($appRef))) {
     <div class="card mb-3"><div class="card-body d-flex align-items-center gap-3"><i class="bi bi-person-badge fs-2 text-primary"></i><div><div class="small text-muted">Student ID</div><div class="h5 fw-bold mb-0 font-monospace"><?= portal_e($sid); ?></div><div class="small text-muted">Same number as your RISE MOTIVE Customer ID.</div></div>
         <?php if ($myInv) { ?><div class="ms-auto text-end"><div class="small text-muted">Learning Centre fees</div><div class="fw-bold <?= $bal > 0 ? 'text-danger' : 'text-success'; ?>"><?= $bal > 0 ? 'Balance ' . lc_money($bal) : 'All paid'; ?></div>
             <div class="small"><?php foreach ($myInv as $iv) { ?><a href="invoice.php?id=<?= (int) $iv['sale_id']; ?>" class="me-1"><?= portal_e($iv['number']); ?></a><?php } ?></div></div><?php } ?></div></div>
+    <?php /* NEW (stage 4): accommodation */ foreach (lc_acc_customer_bookings($conn, $cid) as $bk) { ?>
+    <div class="card mb-3"><div class="card-body small d-flex flex-wrap justify-content-between gap-2"><div><i class="bi bi-house-door text-primary"></i> <strong>Accommodation</strong> · <?= portal_e($bk['facility']); ?>, room <?= portal_e($bk['room']); ?> (<?= portal_e($bk['room_type']); ?>), bed <?= (int) $bk['bed_no']; ?>
+        <div class="text-muted"><?= date('d M Y', strtotime($bk['start_date'])); ?> → <?= date('d M Y', strtotime($bk['end_date'])); ?><?= $bk['address'] ? ' · ' . portal_e($bk['address']) : ''; ?></div><?php if ($bk['rules']) { ?><div class="text-muted" style="white-space:pre-line;"><?= portal_e($bk['rules']); ?></div><?php } ?></div>
+        <div class="text-end"><span class="badge bg-<?= $bk['status'] === 'Checked in' ? 'primary' : ($bk['status'] === 'Reserved' ? 'info text-dark' : 'secondary'); ?>"><?= portal_e($bk['status']); ?></span><?php if ($bk['sale_id']) { ?><div><a href="invoice.php?id=<?= (int) $bk['sale_id']; ?>">Invoice <?= portal_e(lc_sale_number((int) $bk['sale_id'])); ?></a></div><?php } ?></div></div></div>
+    <?php } ?>
     <?php foreach ($enr as $e2) {
         // NEW (stage 2): class, timetable, attendance, published results, transcript and certificate.
         $k = $e2['class_id'] ? lc_class($conn, (int) $e2['class_id']) : null;

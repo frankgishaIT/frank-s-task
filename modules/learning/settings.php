@@ -9,7 +9,9 @@ $fields = ['public_enabled' => 'bool', 'public_url' => 'text', 'portal_url' => '
            'att_statuses' => 'area', 'att_alert_min_sessions' => 'text', 'grade_scale' => 'area', 'assessment_types' => 'area', 'cert_format' => 'text', 'cert_signatory' => 'text', 'accreditation_verified' => 'bool',
            'tpl_timetable' => 'area', 'tpl_exam' => 'area', 'tpl_attendance' => 'area', 'tpl_results' => 'area', 'tpl_certificate' => 'area',
            // NEW (stage 3): fees
-           'clearance_policy' => 'clearance', 'fee_overdue_charges' => 'bool', 'fee_reminder_days' => 'text', 'tpl_fee_invoice' => 'area', 'tpl_fee_reminder' => 'area', 'admission_letter' => 'area'];
+           'clearance_policy' => 'clearance', 'fee_overdue_charges' => 'bool', 'fee_reminder_days' => 'text', 'tpl_fee_invoice' => 'area', 'tpl_fee_reminder' => 'area', 'admission_letter' => 'area',
+           // NEW (stage 4): channels, accommodation, internships
+           'notify_sms' => 'bool', 'notify_email' => 'bool', 'notify_portal' => 'bool', 'tpl_accommodation' => 'area', 'tpl_internship' => 'area', 'internship_ref_format' => 'text', 'internship_intro' => 'area', 'internship_letter' => 'area'];
 $labels = ['public_enabled' => 'Public website open', 'public_url' => 'Public address (e.g. https://learn.risemotive.rw — empty = this server /learn)', 'portal_url' => 'Customer Portal sign-in address (only when the website runs on a sub-domain, e.g. https://os.risemotive.rw/portal/login.php)', 'title' => 'Name', 'tagline' => 'Tagline',
            'intro' => 'Introduction (home page)', 'benefits' => 'Key benefits (one per line)', 'contact_phone' => 'Telephone', 'contact_whatsapp' => 'WhatsApp number (international, e.g. 250795344768)',
            'contact_email' => 'Email', 'contact_address' => 'Address', 'accreditation_note' => 'Accreditation statement (only if verified; leave empty otherwise)',
@@ -23,13 +25,17 @@ $labels = ['public_enabled' => 'Public website open', 'public_url' => 'Public ad
            'tpl_results' => 'Message: results published ({class} {decision})', 'tpl_certificate' => 'Message: certificate ready ({number} {course})',
            'clearance_policy' => 'Financial clearance (overdue fees only)', 'fee_overdue_charges' => 'Apply the Sales overdue charges (1% a day) to fee invoices after their last due date (off = no charges on fees)',
            'fee_reminder_days' => 'Payment reminders: days before a due date', 'tpl_fee_invoice' => 'Message: new fee invoice ({invoice} {amount} {course} {plan})', 'tpl_fee_reminder' => 'Message: payment reminder ({amount} {course} {date} {invoice})',
-           'admission_letter' => 'Admission letter: main text'];
+           'admission_letter' => 'Admission letter: main text',
+           'notify_sms' => 'Send notifications by SMS', 'notify_email' => 'Send notifications by email (when an email is known)', 'notify_portal' => 'Show notifications in the Customer Portal',
+           'tpl_accommodation' => 'Message: accommodation ({status} {facility} {room} {bed} {from} {to})', 'tpl_internship' => 'Message: internship application ({ref} {post} {status} {message})',
+           'internship_ref_format' => 'Internship reference format ({YYYY}, {NNNN})', 'internship_intro' => 'Internships page: introduction', 'internship_letter' => 'Internship completion letter: main text'];
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!lcs_csrf_ok()) { lcs_go('settings.php', 'error', 'The page had expired.'); }
     $chg = []; $vals = [];
     foreach ($fields as $k => $t) {
         $v = $t === 'bool' ? (!empty($_POST[$k]) ? '1' : '0') : trim((string) ($_POST[$k] ?? ''));
         if ($k === 'ref_format' && !preg_match('/^[A-Za-z0-9\-\/{}]+$/', $v)) { lcs_go('settings.php', 'error', 'The reference format may contain letters, numbers, - / and the {YYYY} {YY} {NNNN} parts.'); }
+        if ($k === 'internship_ref_format' && !preg_match('/^[A-Za-z0-9\-\/{}]+$/', $v)) { lcs_go('settings.php', 'error', 'The internship reference format may contain letters, numbers, - / and {YYYY} {YY} {NNNN}.'); }
         if ($k === 'clearance_policy' && !in_array($v, ['none', 'certificate', 'documents'], true)) { $v = 'none'; }
         if ($k === 'cert_format' && !preg_match('/^[A-Za-z0-9\-\/{}]+$/', $v)) { lcs_go('settings.php', 'error', 'The certificate number format may contain letters, numbers, - / and {YYYY} {YY} {NNNNN}.'); }
         if ($k === 'grade_scale' && $v !== '' && !preg_match('/^(\s*\d+(\.\d+)?\s*=\s*\S+\s*(\r?\n|$))+$/', $v)) { lcs_go('settings.php', 'error', 'Grading scale: one line per grade, like 80=A.'); }

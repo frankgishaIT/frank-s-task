@@ -16,6 +16,15 @@ if ($type === 'admission') {
     lc_pdf_output(lc_admission_letter_html($conn, $a), 'admission-' . $a['ref'] . '.pdf');
     exit;
 }
+if ($type === 'internship') {
+    // NEW (stage 4): own internship completion letter (approved by HR)
+    require_once __DIR__ . '/../includes/lc_internship.php'; lc_int_ensure($conn);
+    $ia = lc_int_app($conn, (int) ($_GET['id'] ?? 0));
+    if (!$ia || (int) $ia['customer_id'] !== $cid) { header('Location: learning.php?tab=internships'); exit; }
+    try { $html = lc_int_letter_html($conn, $ia); } catch (RuntimeException $e) { header('Location: learning.php?tab=internships&error=' . urlencode($e->getMessage())); exit; }
+    lc_audit($conn, 'internship_letter_download', 'internship', (int) $ia['id'], ['portal' => true], $cid);
+    lc_pdf_output($html, 'internship-' . $ia['ref'] . '.pdf'); exit;
+}
 if (!lc_is_student($conn, $cid)) { header('Location: learning.php?tab=learning'); exit; }
 if ($type === 'transcript') {
     $eid = (int) ($_GET['enrollment'] ?? 0);

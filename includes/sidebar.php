@@ -209,8 +209,11 @@ if ($rmCompactUi) { ?>
     try { if (isset($conn)) { $lcView = access_can('learning.view', $conn); $lcAdm = access_can('learning.admissions', $conn) || access_can('learning.courses', $conn) || access_can('learning.academic', $conn); } } catch (Throwable $lcMenuError) { error_log('learning menu: ' . $lcMenuError->getMessage()); }
     // NEW (stage 2): instructors (employees or external with a sign-in) see the menu for their own classes
     if (!$lcView && !$lcAdm && isset($conn) && !empty($_SESSION['user_id'])) { try { $lcTeach = (bool) mysqli_fetch_row(mysqli_query($conn, "SELECT id FROM lc_instructors WHERE user_id = " . (int) $_SESSION['user_id'] . " AND status = 'Active'")); } catch (Throwable $lcMenuError) { $lcTeach = false; } }
-    if ($lcView || $lcAdm || $lcTeach) { ?>
-    <a href="<?= $lcView ? '../learning/index.php' : ($lcTeach || access_can('learning.academic', $conn) ? '../learning/classes.php' : '../learning/applications.php'); ?>" class="<?= strpos($currentPath, '/modules/learning/') !== false ? 'active' : '' ?>">
+    // NEW (stage 4): internship officers and supervisors of interns
+    $lcIntern = false;
+    if (!$lcView && !$lcAdm && !$lcTeach && isset($conn) && !empty($_SESSION['user_id'])) { try { $lcIntern = access_can('learning.internship', $conn) || access_can('learning.accommodation', $conn) || (bool) mysqli_fetch_row(mysqli_query($conn, 'SELECT 1 FROM lc_int_apps WHERE supervisor_user_id = ' . (int) $_SESSION['user_id'] . ' LIMIT 1')); } catch (Throwable $lcMenuError) { $lcIntern = false; } }
+    if ($lcView || $lcAdm || $lcTeach || $lcIntern) { ?>
+    <a href="<?= $lcView ? '../learning/index.php' : ($lcTeach || access_can('learning.academic', $conn) ? '../learning/classes.php' : ($lcIntern ? (access_can('learning.accommodation', $conn) && !access_can('learning.internship', $conn) ? '../learning/accommodation.php' : '../learning/internships.php') : '../learning/applications.php')); ?>" class="<?= strpos($currentPath, '/modules/learning/') !== false ? 'active' : '' ?>">
     <i class="bi bi-mortarboard"></i> RM Learning Centre
     </a>
     <?php } ?>

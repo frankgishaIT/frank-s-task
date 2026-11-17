@@ -378,8 +378,9 @@ function lc_notify_student(mysqli $conn, int $customerId, string $tpl, array $va
     if (!$c) { return; }
     $text = strtr(lc_setting($conn, $tpl), $vars + ['{name}' => strtok((string) $c['name'], ' ')]);
     try {
-        if (is_file(__DIR__ . '/sms_helpers.php')) { require_once __DIR__ . '/sms_helpers.php'; if (function_exists('sms_send') && $c['phone']) { sms_send($conn, $c['phone'], $text, 'learning_' . $tpl, 'lc_student', $customerId, null); } }
+        if (is_file(__DIR__ . '/sms_helpers.php')) { require_once __DIR__ . '/sms_helpers.php'; if (function_exists('sms_send') && $c['phone'] && lc_setting($conn, 'notify_sms') === '1') { sms_send($conn, $c['phone'], $text, 'learning_' . $tpl, 'lc_student', $customerId, null); } }
     } catch (Throwable $e) { error_log('lc student sms: ' . $e->getMessage()); }
+    if (lc_setting($conn, 'notify_portal') !== '1') { return; }
     try {
         $t = 'RM Learning Centre'; $b = mb_substr($text, 0, 500);
         $s = mysqli_prepare($conn, 'INSERT INTO portal_notifications (customer_id, title, body, link) VALUES (?, ?, ?, ?)');

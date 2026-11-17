@@ -68,6 +68,15 @@ const LC_DEFAULTS = [
     'tpl_fee_invoice' => 'RISE MOTIVE: invoice {invoice} of {amount} for {course}. {plan} See the Customer Portal.',
     'tpl_fee_reminder' => 'RISE MOTIVE: {name}, {amount} for {course} is due on {date} (invoice {invoice}). Thank you.',
     'admission_letter' => "We are pleased to offer you a place on the course below. Please accept your offer online, then complete your registration with the RM Learning Centre team.\nBring your national ID (or passport) on the first day.",
+    // Stage 4: accommodation, internships, channels
+    'notify_sms' => '1',
+    'notify_email' => '1',
+    'notify_portal' => '1',
+    'tpl_accommodation' => 'RM Learning Centre: {name}, your accommodation {status}: {facility}, room {room}, bed {bed}, {from} to {to}.',
+    'tpl_internship' => 'RISE MOTIVE internships: your application {ref} for {post} is now "{status}". {message}',
+    'internship_ref_format' => 'RMIN{YYYY}-{NNNN}',
+    'internship_intro' => 'Internships at RISE MOTIVE: real work in our teams, with a supervisor, for RM Learning Centre students and other young professionals.',
+    'internship_letter' => 'This is to confirm that the person named below completed an internship at RISE MOTIVE Ltd as described. We thank them for their contribution and wish them success.',
 ];
 
 /* ------------------------------------------------------------------ schema */
@@ -491,17 +500,17 @@ function lc_notify_applicant(mysqli $conn, array $app, string $tpl, array $extra
     try {
         if (is_file(__DIR__ . '/sms_helpers.php')) {
             require_once __DIR__ . '/sms_helpers.php';
-            if (function_exists('sms_send')) { sms_send($conn, $app['phone'], $text, 'learning_' . $tpl, 'lc_application', (int) $app['id'], null); }
+            if (function_exists('sms_send') && lc_setting($conn, 'notify_sms') === '1') { sms_send($conn, $app['phone'], $text, 'learning_' . $tpl, 'lc_application', (int) $app['id'], null); }
         }
     } catch (Throwable $e) { error_log('lc sms: ' . $e->getMessage()); }
     try {
-        if (!empty($app['email']) && is_file(__DIR__ . '/mailer.php')) {
+        if (!empty($app['email']) && is_file(__DIR__ . '/mailer.php') && lc_setting($conn, 'notify_email') === '1') {
             require_once __DIR__ . '/mailer.php';
             if (function_exists('send_email')) { send_email($app['email'], $app['full_name'], 'RM Learning Centre — application ' . $app['ref'], '<p>' . nl2br(lc_e($text)) . '</p><p>RISE MOTIVE Ltd</p>'); }
         }
     } catch (Throwable $e) { error_log('lc email: ' . $e->getMessage()); }
     try {
-        if (!empty($app['customer_id'])) {
+        if (!empty($app['customer_id']) && lc_setting($conn, 'notify_portal') === '1') {
             $t = 'RM Learning Centre: ' . $app['ref'];
             $s = mysqli_prepare($conn, 'INSERT INTO portal_notifications (customer_id, title, body, link) VALUES (?, ?, ?, ?)');
             $cid = (int) $app['customer_id']; $b = mb_substr($text, 0, 500); $l = 'learning.php?app=' . $app['ref'];

@@ -16,7 +16,7 @@ try {
     if (!empty($photoRow['photo'])) {
         $userPhotoUrl = BASE_URL . '/assets/uploads/users/' . rawurlencode(basename($photoRow['photo']));
     }
-} catch (Throwable $e) {
+} catch (Throwable $photoError) { // FIXED: not $e (pages use $e)
     $userPhotoUrl = null; // photo column not added yet
 }
 ?>
@@ -196,9 +196,11 @@ if ($rmCompactUi) { ?>
         <i class="bi bi-phone-fill"></i> Digital Payments
     </a>
     <?php /* CHANGED: Company Loans & Investment Intelligence (corporate borrowing); kept apart from RM Credit Hub (customer lending) */
-    $liShow = current_user_role() === 'Admin'; try { $liShow = $liShow || (isset($conn) && access_can('loan_intel.view', $conn)) || (isset($conn) && access_can('loan_intel.propose', $conn)); } catch (Throwable $e) { }
+    // FIXED: own variable names here (pages use $e as their HTML-escape function) and access_control loaded explicitly
+    $liShow = current_user_role() === 'Admin'; $liView = $liShow;
+    try { require_once __DIR__ . '/access_control.php'; if (isset($conn)) { $liView = $liView || access_can('loan_intel.view', $conn); $liShow = $liView || access_can('loan_intel.propose', $conn); } } catch (Throwable $liMenuError) { error_log('loan menu: ' . $liMenuError->getMessage()); }
     if ($liShow) { ?>
-    <a href="<?= current_user_role() === 'Admin' || (isset($conn) && access_can('loan_intel.view', $conn)) ? '../loan_intel/index.php' : '../loan_intel/proposals.php'; ?>" class="<?= (strpos($currentPath, '/modules/loans/') !== false || strpos($currentPath, '/loan_intel/') !== false) ? 'active' : '' ?>">
+    <a href="<?= $liView ? '../loan_intel/index.php' : '../loan_intel/proposals.php'; ?>" class="<?= (strpos($currentPath, '/modules/loans/') !== false || strpos($currentPath, '/loan_intel/') !== false) ? 'active' : '' ?>">
     <i class="bi bi-bank"></i> Company Loans &amp; Investment <span class="small opacity-75">· Corporate Borrowing</span>
      </a>
     <?php } ?>
@@ -310,7 +312,7 @@ if ($rmCompactUi) { ?>
             $recentNotifications = mysqli_stmt_get_result($recentStatement);
             ?>
             <!-- NEW (Multi-branch): the branch you are working in (Company View or one branch). Checked on the server. -->
-            <?php if (isset($conn) && $conn instanceof mysqli) { try { require_once __DIR__ . '/branch_helpers.php'; echo br_switcher_html($conn); } catch (Throwable $e) { error_log('branch switcher: ' . $e->getMessage()); } } ?>
+            <?php if (isset($conn) && $conn instanceof mysqli) { try { require_once __DIR__ . '/branch_helpers.php'; echo br_switcher_html($conn); } catch (Throwable $brSwitchError) { error_log('branch switcher: ' . $brSwitchError->getMessage()); } } ?>
             <!-- NEW (Work Timetable): the OFFICIAL MY MOTIVE time, from the server (Africa/Kigali), on every page -->
             <a href="../timetable/my.php" class="rm-official-clock" title="Official MY MOTIVE time (server, Africa/Kigali, UTC+2). Your device clock is not used.">
                 <i class="bi bi-clock"></i>

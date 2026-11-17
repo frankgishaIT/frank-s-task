@@ -50,12 +50,15 @@ function loan_calculate_emi($principal, $periodicRate, $numInstallments) {
 
 // Builds and saves the full repayment schedule for a newly created loan.
 // Returns ['total_interest', 'total_payable', 'installment_amount', 'maturity_date'].
-function loan_generate_schedule($conn, $loanId, $principal, $annualRatePercent, $numInstallments, $frequency, $startDate, $fixedInstallmentAmount = null) {
+// CHANGED (Company Loans & Investment Intelligence): optional $gracePeriods = first installments that pay INTEREST ONLY;
+// the principal is then repaid over the remaining installments. 0 (the default) = exactly as before.
+function loan_generate_schedule($conn, $loanId, $principal, $annualRatePercent, $numInstallments, $frequency, $startDate, $fixedInstallmentAmount = null, $gracePeriods = 0) {
     $periodicRate = ($annualRatePercent / 100) / loan_periods_per_year($frequency);
+    $gracePeriods = max(0, min((int) $gracePeriods, (int) $numInstallments - 1));
 
     $installmentAmount = $fixedInstallmentAmount > 0
         ? round($fixedInstallmentAmount, 2)
-        : loan_calculate_emi($principal, $periodicRate, $numInstallments);
+        : loan_calculate_emi($principal, $periodicRate, $numInstallments - $gracePeriods);
 
     $balance = $principal;
     $totalInterest = 0;
@@ -67,7 +70,7 @@ function loan_generate_schedule($conn, $loanId, $principal, $annualRatePercent, 
         $lastDueDate = $dueDate->format('Y-m-d');
 
         $interestDue = round($balance * $periodicRate, 2);
-        $principalDue = round($installmentAmount - $interestDue, 2);
+        $principalDue = $i <= $gracePeriods ? 0.0 : round($installmentAmount - $interestDue, 2); // grace: interest only
 
         // Final installment: absorb any rounding drift so the schedule
         // clears the balance to exactly zero rather than leaving a stray
@@ -75,6 +78,8 @@ function loan_generate_schedule($conn, $loanId, $principal, $annualRatePercent, 
         if ($i === $numInstallments) {
             $principalDue = round($balance, 2);
             $installmentThis = round($principalDue + $interestDue, 2);
+        } elseif ($i <= $gracePeriods) {
+            $installmentThis = $interestDue;
         } else {
             $installmentThis = $installmentAmount;
         }

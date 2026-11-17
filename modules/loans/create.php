@@ -4,6 +4,9 @@ require '../../includes/loan_helpers.php';
 require_once '../../includes/fund_helpers.php';
 require '../../includes/business_party_helpers.php';
 require_role(['Admin']);
+require_once '../../includes/loan_intel.php'; // NEW: Company Loans & Investment Intelligence (details, fees, investment purpose)
+li_ensure($conn);
+$liProposals = mysqli_fetch_all(mysqli_query($conn, "SELECT id, code, name, approved_funding FROM li_proposals WHERE status IN ('Approved', 'Funded') ORDER BY id DESC"), MYSQLI_ASSOC);
 
 // Lenders are drawn from Business Parties of type 'Partner' — Partners
 // store their name in the 'name' column (not 'business_name', which is
@@ -27,6 +30,16 @@ if (isset($_POST['save'])) {
     $loanPurpose = trim($_POST['loan_purpose'] ?? '');
     $collateral = trim($_POST['collateral'] ?? '');
     $status = $_POST['status'] ?? 'Active';
+    // NEW (Company Loans & Investment Intelligence)
+    $liGrace = max(0, (int) ($_POST['grace_periods'] ?? 0));
+    $liFee = max(0, (float) ($_POST['processing_fee'] ?? 0)); $liOther = max(0, (float) ($_POST['other_charges'] ?? 0));
+    $liFeeHow = ($_POST['fees_how'] ?? '') === 'separate' ? 'OPERATING' : 'CAPITAL';
+    $liRateType = ($_POST['rate_type'] ?? '') === 'Variable' ? 'Variable' : 'Fixed';
+    $liProduct = mb_substr(trim((string) ($_POST['loan_product'] ?? '')), 0, 100);
+    $liCategory = in_array($_POST['purpose_category'] ?? '', LI_CATEGORIES, true) ? $_POST['purpose_category'] : null;
+    $liApproved = ($_POST['approved_amount'] ?? '') === '' ? null : max(0, (float) $_POST['approved_amount']);
+    $liRef = mb_substr(trim((string) ($_POST['reference_no'] ?? '')), 0, 60);
+    $liProposal = (int) ($_POST['li_proposal_id'] ?? 0);
 
     $validStartDate = DateTime::createFromFormat('Y-m-d', $startDate);
     $validFrequencies = ['Weekly', 'Monthly', 'Quarterly', 'Annually'];
@@ -48,6 +61,10 @@ if (isset($_POST['save'])) {
         $error = 'Installment Amount must be greater than zero, or left blank to auto-calculate.';
     } elseif (!in_array($status, $validStatuses, true)) {
         $error = 'Invalid status.';
+    } elseif ($repaymentPeriod && $liGrace >= $repaymentPeriod) {
+        $error = 'The grace period must be shorter than the number of installments.';
+    } elseif ($loanAmount && $liFee + $liOther >= $loanAmount) {
+        $error = 'Fees and charges cannot be equal to or more than the loan amount.';
     } else {
         $userId = current_user_id();
         $fixedInstallment = ($installmentAmountInput !== false && $installmentAmountInput !== null) ? $installmentAmountInput : null;
@@ -66,7 +83,7 @@ if (isset($_POST['save'])) {
             $loanId = mysqli_insert_id($conn);
             require_once __DIR__ . '/../../includes/branch_helpers.php'; br_stamp($conn, 'loans', (int) $loanId); // NEW (Multi-branch)
 
-            $schedule = loan_generate_schedule($conn, $loanId, $loanAmount, $interestRate, $repaymentPeriod, $repaymentFrequency, $startDate, $fixedInstallment);
+            $schedule = loan_generate_schedule($conn, $loanId, $loanAmount, $interestRate, $repaymentPeriod, $repaymentFrequency, $startDate, $fixedInstallment, $liGrace); // CHANGED: + grace period
 
             $updateLoan = mysqli_prepare($conn, 'UPDATE loans SET
                 total_interest = ?, total_payable = ?, outstanding_balance = ?, installment_amount = ?, maturity_date = ?
@@ -86,9 +103,40 @@ if (isset($_POST['save'])) {
                 $receivedDescription, $userId ? (int) $userId : null, 'loan', (int) $loanId
             );
 
+            // NEW (Company Loans & Investment Intelligence): loan details, and the fees posted ONCE as a borrowing cost
+            // (expense "Loan Charges" = finance costs in the Profit & Loss). The loan liability stays at the full principal.
+            $liTx = null;
+            if ($liFee + $liOther > 0) {
+                $liTx = fund_post_automatic_expense($conn, $liFeeHow, 'Loan Charges', $liFee + $liOther, $startDate,
+                    'Loan #' . $loanId . ' fees and charges (' . $lender . '): processing RWF ' . number_format($liFee, 2) . ', other RWF ' . number_format($liOther, 2),
+                    $userId ? (int) $userId : null, 'Loan fees and charges', 'LOAN_FEE', (int) $loanId);
+            }
+            $liReceived = $liFeeHow === 'CAPITAL' ? round($loanAmount - $liFee - $liOther, 2) : (float) $loanAmount;
+            $liUid = $userId ? (int) $userId : null;
+            $d = mysqli_prepare($conn, 'INSERT INTO li_loan_details (loan_id, loan_product, rate_type, grace_periods, processing_fee, other_charges, fees_transaction_id, approved_amount, received_amount, purpose_category, reference_no, updated_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+            mysqli_stmt_bind_param($d, 'issiddiddssi', $loanId, $liProduct, $liRateType, $liGrace, $liFee, $liOther, $liTx, $liApproved, $liReceived, $liCategory, $liRef, $liUid);
+            mysqli_stmt_execute($d);
+            if ($liProposal > 0) {
+                foreach ($liProposals as $lp) {
+                    if ((int) $lp['id'] === $liProposal) {
+                        $amt = min($liReceived, (float) ($lp['approved_funding'] ?: $liReceived));
+                        $a = mysqli_prepare($conn, "INSERT INTO li_allocations (loan_id, proposal_id, amount, note, created_by) VALUES (?, ?, ?, 'Linked when the loan was registered', ?)");
+                        mysqli_stmt_bind_param($a, 'iidi', $loanId, $liProposal, $amt, $liUid);
+                        mysqli_stmt_execute($a);
+                    }
+                }
+            }
+            li_audit($conn, 'loan_register', 'loan', (int) $loanId, null, ['lender' => $lender, 'amount' => $loanAmount, 'rate' => $interestRate, 'installments' => $repaymentPeriod, 'grace' => $liGrace,
+                'fees' => $liFee + $liOther, 'fees_fund' => $liFeeHow, 'proposal' => $liProposal ?: null]);
+            li_cache_clear($conn);
+
             mysqli_commit($conn);
-            header('Location: view.php?id=' . $loanId . '&success=' . urlencode('Loan created and repayment schedule generated. The money was added to the RM Capital Fund.'));
+            header('Location: view.php?id=' . $loanId . '&success=' . urlencode('Loan created and repayment schedule generated. The money was added to the RM Capital Fund.' . ($liFee + $liOther > 0 ? ' Fees recorded as "Loan Charges".' : '') . ($liProposal ? ' Link to the investment sent for management approval.' : '')));
             exit;
+        } catch (InsufficientFundException $e) { // NEW: fees paid separately need money in the Operating Fund
+            mysqli_rollback($conn);
+            $error = $e->getMessage();
         } catch (Throwable $e) {
             mysqli_rollback($conn);
             $error = 'Unable to save the loan. Please try again.';
@@ -170,6 +218,52 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
                     <label class="form-label small fw-semibold text-muted">Installment Amount <span class="text-muted fw-normal">(optional)</span></label>
                     <input type="number" name="installment_amount" class="form-control rm-input" min="0" step="0.01" placeholder="Leave blank to auto-calculate" value="<?= htmlspecialchars($_POST['installment_amount'] ?? '', ENT_QUOTES, 'UTF-8'); ?>">
                     <div class="form-text">Leave blank and the system calculates the standard installment amount for you.</div>
+                </div>
+            </div>
+
+            <!-- NEW (Company Loans & Investment Intelligence): more loan terms -->
+            <div class="row g-3 mb-3">
+                <div class="col-md-3">
+                    <label class="form-label small fw-semibold text-muted">Loan product</label>
+                    <input name="loan_product" class="form-control rm-input" maxlength="100" placeholder="e.g. SME loan" value="<?= htmlspecialchars($_POST['loan_product'] ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-semibold text-muted">Interest rate type</label>
+                    <select name="rate_type" class="form-select rm-input"><?php foreach (['Fixed', 'Variable'] as $x) { ?><option <?= ($_POST['rate_type'] ?? 'Fixed') === $x ? 'selected' : ''; ?>><?= $x; ?></option><?php } ?></select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-semibold text-muted">Grace period <span class="fw-normal">(installments, interest only)</span></label>
+                    <input type="number" name="grace_periods" min="0" step="1" class="form-control rm-input" value="<?= (int) ($_POST['grace_periods'] ?? 0); ?>">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-semibold text-muted">Amount approved by the lender</label>
+                    <input type="number" name="approved_amount" min="0" step="0.01" class="form-control rm-input" placeholder="same as the loan amount" value="<?= htmlspecialchars($_POST['approved_amount'] ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-semibold text-muted">Processing fee (RWF)</label>
+                    <input type="number" name="processing_fee" min="0" step="0.01" class="form-control rm-input" value="<?= htmlspecialchars($_POST['processing_fee'] ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-semibold text-muted">Other charges (RWF)</label>
+                    <input type="number" name="other_charges" min="0" step="0.01" class="form-control rm-input" value="<?= htmlspecialchars($_POST['other_charges'] ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label small fw-semibold text-muted">Fees and charges were</label>
+                    <select name="fees_how" class="form-select rm-input"><option value="deducted">Deducted by the lender from the money received</option><option value="separate" <?= ($_POST['fees_how'] ?? '') === 'separate' ? 'selected' : ''; ?>>Paid separately (from the Operating Fund)</option></select>
+                    <div class="form-text">Recorded once as an expense "Loan Charges" (a borrowing cost). The loan still owes the full principal.</div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small fw-semibold text-muted">Purpose category</label>
+                    <select name="purpose_category" class="form-select rm-input"><option value="">—</option><?php foreach (LI_CATEGORIES as $x) { ?><option <?= ($_POST['purpose_category'] ?? '') === $x ? 'selected' : ''; ?>><?= htmlspecialchars($x, ENT_QUOTES, 'UTF-8'); ?></option><?php } ?></select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small fw-semibold text-muted">Finances the approved investment</label>
+                    <select name="li_proposal_id" class="form-select rm-input"><option value="0">— none / later —</option><?php foreach ($liProposals as $x) { ?><option value="<?= (int) $x['id']; ?>" <?= (int) ($_POST['li_proposal_id'] ?? 0) === (int) $x['id'] ? 'selected' : ''; ?>><?= htmlspecialchars($x['code'] . ' ' . $x['name'], ENT_QUOTES, 'UTF-8'); ?></option><?php } ?></select>
+                    <div class="form-text">Management approves the link (Investment Opportunities).</div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small fw-semibold text-muted">Lender's reference / contract no.</label>
+                    <input name="reference_no" class="form-control rm-input" maxlength="60" value="<?= htmlspecialchars($_POST['reference_no'] ?? '', ENT_QUOTES, 'UTF-8'); ?>">
                 </div>
             </div>
 

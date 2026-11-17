@@ -172,7 +172,7 @@ if ($rmCompactUi) { ?>
     <?php if (rm_feature_enabled('customer_loans')) { ?>
     <!-- RM Credit Hub (formerly RM Loan Management; customer loans, RISE MOTIVE only) -->
     <a href="../rm_loans/index.php" class="<?= navActive('/rm_loans/', $currentPath) ?>">
-        <i class="bi bi-cash-coin"></i> RM Credit Hub
+        <i class="bi bi-cash-coin"></i> RM Credit Hub <span class="small opacity-75">· Customer Lending</span>
     </a>
     <?php } ?>
     <?php if (rm_feature_enabled('customer_invest')) { ?>
@@ -195,9 +195,13 @@ if ($rmCompactUi) { ?>
     <a href="../sales/digital_payments.php" class="<?= navActive('digital_payments', $currentPath) ?>">
         <i class="bi bi-phone-fill"></i> Digital Payments
     </a>
-    <a href="../loans/index.php" class="<?= navActive('loans', $currentPath) ?>">
-    <i class="bi bi-bank"></i> Loans
+    <?php /* CHANGED: Company Loans & Investment Intelligence (corporate borrowing); kept apart from RM Credit Hub (customer lending) */
+    $liShow = current_user_role() === 'Admin'; try { $liShow = $liShow || (isset($conn) && access_can('loan_intel.view', $conn)) || (isset($conn) && access_can('loan_intel.propose', $conn)); } catch (Throwable $e) { }
+    if ($liShow) { ?>
+    <a href="<?= current_user_role() === 'Admin' || (isset($conn) && access_can('loan_intel.view', $conn)) ? '../loan_intel/index.php' : '../loan_intel/proposals.php'; ?>" class="<?= (strpos($currentPath, '/modules/loans/') !== false || strpos($currentPath, '/loan_intel/') !== false) ? 'active' : '' ?>">
+    <i class="bi bi-bank"></i> Company Loans &amp; Investment <span class="small opacity-75">· Corporate Borrowing</span>
      </a>
+    <?php } ?>
      <?php if (current_user_role() === 'Admin') { ?>
       <a href="../asset_management/index.php" class="<?= navActive('asset_management', $currentPath) ?>">
       <i class="bi bi-building-gear"></i> Assets

@@ -67,6 +67,9 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2><?= htmlspecialchars($loan['lender'], ENT_QUOTES, 'UTF-8'); ?> <span class="text-muted fs-6 fw-normal"><?= htmlspecialchars($loan['loan_type'], ENT_QUOTES, 'UTF-8'); ?></span></h2>
     <div class="d-flex gap-2">
+    <!-- NEW: Company Loans & Investment Intelligence -->
+    <a href="../loan_intel/loan_details.php?id=<?= (int) $loan['id']; ?>" class="btn btn-outline-primary">Details &amp; fees</a>
+    <a href="../loan_intel/performance.php?loan=<?= (int) $loan['id']; ?>" class="btn btn-outline-primary">Investment impact</a>
     <a href="edit.php?id=<?= (int) $loan['id']; ?>" class="rm-btn rm-btn-primary"><i class="bi bi-pencil-square me-2"></i>Edit Loan</a>
     <a href="index.php" class="rm-btn rm-btn-light">Back to Loans</a>
 </div>

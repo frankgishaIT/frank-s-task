@@ -49,6 +49,7 @@ function access_catalog(): array
         'portal'            => ['RM Customer Portal (staff side)', ['view', 'edit', 'manage']],
         'forecasting'       => ['RM Business Forecasting', ['view', 'reports', 'manage']],
         'rm_loans'          => ['RM Credit Hub (customer loans)', ['view', 'edit', 'approve', 'reports', 'manage']],
+        'loan_intel'        => ['Company Loans & Investment Intelligence (corporate borrowing)', ['view', 'propose', 'finance', 'approve', 'configure']], // NEW
         'budget'            => ['Budget & Fund Control', ['view', 'create', 'approve', 'manage', 'reports']],
         'marketing'         => ['Marketing & Growth', ['view', 'create', 'leads', 'approve', 'finance', 'reports', 'manage']],
         'rm_invest'         => ['RM Investors Hub', ['view', 'create', 'edit', 'approve', 'reports', 'manage']],
@@ -96,6 +97,7 @@ const ACCESS_NEW_DEFAULTS = [
     'timetable.view' => ['admin', 'manager', 'employee'], 'timetable.approve' => ['admin', 'manager'],
     'timetable.reports' => ['admin', 'manager'], 'timetable.manage' => ['admin'],
     // NEW: Branch Management. Head Office (company-wide users) registers and controls branches; managers/HR assign staff.
+    'loan_intel.view' => ['admin', 'manager'], 'loan_intel.propose' => ['admin', 'manager'], 'loan_intel.finance' => ['admin'], 'loan_intel.approve' => ['admin'], 'loan_intel.configure' => ['admin'], // NEW
     'branches.view' => ['admin', 'manager'], 'branches.assign' => ['admin', 'manager'], 'branches.approve' => ['admin'], 'branches.manage' => ['admin'],
     'rm_invest.view' => ['admin', 'manager'], 'rm_invest.create' => ['admin', 'manager'], 'rm_invest.edit' => ['admin', 'manager'],
     'rm_invest.reports' => ['admin', 'manager'], 'rm_invest.approve' => ['admin'], 'rm_invest.manage' => ['admin'],
@@ -294,6 +296,8 @@ function access_page_permission(string $script): ?string
         return ['switch' => '*', 'index' => 'branches.view', 'reports' => 'branches.view', 'branches' => 'branches.view', 'view' => 'branches.view', 'assignments' => 'branches.assign',
                 'transfers' => '*'][$f] ?? 'branches.manage';
     }
+    // NEW: Company Loans & Investment Intelligence. Proposal and audit pages check view / propose / approve inside.
+    if ($module === 'loan_intel') { return in_array($f, ['proposals', 'proposal', 'proposal_edit', 'audit', 'common'], true) ? '*' : ($f === 'settings' ? 'loan_intel.configure' : 'loan_intel.view'); }
     if ($module === 'timetable') {
         return ['index' => '*', 'my' => '*', 'action' => '*', 'api' => '*', 'timetable_pdf' => '*', 'day' => '*', 'corrections' => '*', 'cron' => '*',
                 'board' => 'timetable.approve', 'approvals' => 'timetable.approve', 'reports' => 'timetable.reports'][$f] ?? 'timetable.manage';

@@ -246,7 +246,11 @@ function fin_depreciation(mysqli $conn, ?string $start, ?string $end): float
 function fin_interest(mysqli $conn, ?string $start, ?string $end): float
 {
     [$r, $t, $p] = fin_range('payment_date', $start, $end);
-    return fin_value($conn, "SELECT COALESCE(SUM(interest_portion), 0) FROM loan_payments WHERE loan_id NOT IN (SELECT id FROM loans WHERE status = 'Deleted')" . $r, $t, $p);
+    $interest = fin_value($conn, "SELECT COALESCE(SUM(interest_portion), 0) FROM loan_payments WHERE loan_id NOT IN (SELECT id FROM loans WHERE status = 'Deleted')" . $r, $t, $p);
+    // NEW (Company Loans & Investment Intelligence): fees and charges of company loans are borrowing costs too (expense "Loan Charges").
+    [$r2, $t2, $p2] = fin_range('transaction_date', $start, $end);
+    $charges = fin_value($conn, "SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE transaction_type = 'Expense' AND status = 'approved' AND category = 'Loan Charges'" . $r2, $t2, $p2);
+    return round($interest + $charges, 2);
 }
 
 /** Stock corrections posted on the Capital Fund Check (positive = stock lost). */
@@ -554,7 +558,7 @@ function fin_report_pnl(mysqli $conn, array $report, string $s, string $e): arra
     }
     $rows[] = $L('', 'TOTAL OPERATING EXPENSES', $c['opex_total'], $p['opex_total']);
     $rows[] = $L('', 'OPERATING PROFIT', $c['operating'], $p['operating']);
-    $rows[] = $L('Finance costs', 'Loan interest', $c['interest'], $p['interest']);
+    $rows[] = $L('Finance costs', 'Loan interest and charges', $c['interest'], $p['interest']); // CHANGED: + company loan fees
     $rows[] = $L('', $c['net'] >= 0 ? 'NET PROFIT' : 'NET LOSS', $c['net'], $p['net']);
 
     $report['rows'] = $rows;
@@ -702,7 +706,7 @@ function fin_report_expenses(mysqli $conn, array $report, string $s, string $e):
         'Cost of sales' => ['Cost of goods sold (buying price)' => [$c['product_cost'], $p['product_cost']],
                             fin_service_cost_label() => [$c['service_cost'], $p['service_cost']]],
         'Operating expenses' => [],
-        'Finance costs' => ['Loan interest' => [$c['interest'], $p['interest']]],
+        'Finance costs' => ['Loan interest and charges' => [$c['interest'], $p['interest']]],
     ];
     foreach (array_unique(array_merge(array_keys($c['opex']), array_keys($p['opex']))) as $k) {
         $groups['Operating expenses'][$k] = [$c['opex'][$k] ?? 0.0, $p['opex'][$k] ?? 0.0];

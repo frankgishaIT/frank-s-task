@@ -80,7 +80,8 @@ if (isset($_POST['save'])) {
             mysqli_stmt_bind_param($del, 'i', $loanId);
             mysqli_stmt_execute($del);
 
-            $schedule = loan_generate_schedule($conn, $loanId, $loanAmount, $interestRate, $repaymentPeriod, $repaymentFrequency, $startDate, $fixedInstallment);
+            $graceKeep = 0; try { $graceKeep = (int) (mysqli_fetch_row(mysqli_query($conn, 'SELECT grace_periods FROM li_loan_details WHERE loan_id = ' . (int) $loanId))[0] ?? 0); } catch (Throwable $e) { $graceKeep = 0; } // NEW: keep the grace period
+            $schedule = loan_generate_schedule($conn, $loanId, $loanAmount, $interestRate, $repaymentPeriod, $repaymentFrequency, $startDate, $fixedInstallment, $graceKeep);
 
             // 2. Existing payments must still fit inside the new total.
             $alreadyPaid = (float) mysqli_fetch_row(mysqli_query($conn, 'SELECT COALESCE(SUM(amount), 0) FROM loan_payments WHERE loan_id = ' . (int) $loanId))[0];

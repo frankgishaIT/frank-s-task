@@ -38,9 +38,10 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
 <?php } ?>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h2>Loan Management</h2>
+    <div><h2 class="mb-0">Company Loans</h2><div class="small text-muted">Money RISE MOTIVE borrows (loans payable). Customer loans are in RM Credit Hub.</div></div>
     <!-- CHANGED: both buttons together on the right. -->
     <div class="d-flex gap-2">
+        <a href="../loan_intel/index.php" class="btn btn-outline-primary"><i class="bi bi-speedometer2"></i> Loans &amp; Investment Intelligence</a>
         <?php if (in_array(current_user_role(), ['Admin', 'Manager'], true)) { ?>
             <a href="reports.php" class="btn btn-outline-primary">Reports</a>
         <?php } ?>

@@ -719,7 +719,7 @@ function li_build_recommendation(mysqli $conn, ?array $p, ?array $sc): array
     if ($loan['n'] < 36) { $alts[] = 'A longer term or a grace period lowers the instalment and raises the DSCR (compare in Loan Simulation).'; }
     $alts[] = 'Negotiate the interest rate and fees: compare lenders side by side in Loan Simulation.';
     $assume = ['Base CFADS = average of the last ' . min(6, $co['active_months']) . ' completed month(s) with sales (RWF ' . number_format($co['cfads'], 0) . ' a month), kept flat (no growth assumed).',
-        'Existing company loans: repayment schedules as recorded. RM Credit Hub (customer loans) is not company borrowing and is excluded.',
+        'Existing company loans: repayment schedules as recorded. RMC - Credit Hub (customer loans) is not company borrowing and is excluded.',
         'Cash reserve kept: ' . li_setting($conn, 'reserve_months') . ' month(s) of operating costs (RWF ' . number_format($co['reserve'], 0) . ').',
         'Discount rate for NPV: ' . li_setting($conn, 'discount_rate') . '% a year.'];
     if ($p) { $assume[] = 'Investment figures were entered in proposal ' . ($p['code'] ?: '#' . $p['id']) . ' (' . ['data' => 'based on MY MOTIVE records', 'partial' => 'partly based on records', 'assumption' => "management's assumptions"][$p['evidence_level']] . ').'; }

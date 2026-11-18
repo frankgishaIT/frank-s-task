@@ -172,13 +172,13 @@ if ($rmCompactUi) { ?>
     <?php if (rm_feature_enabled('customer_loans')) { ?>
     <!-- RM Credit Hub (formerly RM Loan Management; customer loans, RISE MOTIVE only) -->
     <a href="../rm_loans/index.php" class="<?= navActive('/rm_loans/', $currentPath) ?>">
-        <i class="bi bi-cash-coin"></i> RM Credit Hub <span class="small opacity-75">· Customer Lending</span>
+        <i class="bi bi-cash-coin"></i> RMC - Credit Hub
     </a>
     <?php } ?>
     <?php if (rm_feature_enabled('customer_invest')) { ?>
     <!-- RM Investors Hub (formerly RM Investment Management; RISE MOTIVE only) -->
     <a href="../rm_invest/index.php" class="<?= navActive('/rm_invest/', $currentPath) ?>">
-        <i class="bi bi-graph-up-arrow"></i> RM Investors Hub
+        <i class="bi bi-graph-up-arrow"></i> RMC - Investors Hub
     </a>
     <?php } ?>
     <?php if (rm_feature_enabled('customer_portal')) { ?>
@@ -201,7 +201,7 @@ if ($rmCompactUi) { ?>
     try { require_once __DIR__ . '/access_control.php'; if (isset($conn)) { $liView = $liView || access_can('loan_intel.view', $conn); $liShow = $liView || access_can('loan_intel.propose', $conn); } } catch (Throwable $liMenuError) { error_log('loan menu: ' . $liMenuError->getMessage()); }
     if ($liShow) { ?>
     <a href="<?= $liView ? '../loan_intel/index.php' : '../loan_intel/proposals.php'; ?>" class="<?= (strpos($currentPath, '/modules/loans/') !== false || strpos($currentPath, '/loan_intel/') !== false) ? 'active' : '' ?>">
-    <i class="bi bi-bank"></i> Company Loans &amp; Investment <span class="small opacity-75">· Corporate Borrowing</span>
+    <i class="bi bi-bank"></i> RM Loan Intelligence
      </a>
     <?php }
     // NEW: RM Learning Centre (courses, public website, admissions, students)

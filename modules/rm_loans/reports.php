@@ -33,7 +33,7 @@ if (isset($_GET['export'])) {
 }
 $print = isset($_GET['print']);
 if (!$print) { include '../../includes/header.php'; include '../../includes/sidebar.php'; cl_tabs('reports.php'); }
-else { echo '<!doctype html><html><head><meta charset="utf-8"><title>RM Loans portfolio</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"></head><body class="p-4"><h4>RM Loans: portfolio report</h4><div class="small text-muted mb-3">Generated ' . date('d M Y, H:i') . ' by ' . $e($_SESSION['user_name'] ?? '') . (cl_testing($conn) ? ' · TESTING MODE (assessment only)' : '') . '</div>'; }
+else { echo '<!doctype html><html><head><meta charset="utf-8"><title>RMC - Credit Hub portfolio</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"></head><body class="p-4"><h4>RMC - Credit Hub: portfolio report</h4><div class="small text-muted mb-3">Generated ' . date('d M Y, H:i') . ' by ' . $e($_SESSION['user_name'] ?? '') . (cl_testing($conn) ? ' · TESTING MODE (assessment only)' : '') . '</div>'; }
 ?>
 <?php if (!$print) { ?><div class="d-flex gap-2 mb-3"><a href="reports.php?export=1" class="btn btn-sm btn-outline-success"><i class="bi bi-file-earmark-excel"></i> Excel (CSV)</a><a href="reports.php?print=1" target="_blank" class="btn btn-sm btn-outline-primary"><i class="bi bi-printer"></i> PDF / print</a></div><?php } ?>
 <div class="row g-3 mb-3">

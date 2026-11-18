@@ -46,6 +46,8 @@ $customers = mysqli_query($conn, "SELECT customers.*,
             <a href="reports.php" class="btn btn-outline-primary">Reports</a>
             <!-- NEW (Task 2): Customer Analytics -->
             <a href="analytics.php" class="btn btn-outline-primary"><i class="bi bi-bar-chart-line"></i> Analytics</a>
+            <!-- NEW: new customers by original registration branch -->
+            <a href="registrations.php" class="btn btn-outline-primary"><i class="bi bi-diagram-3"></i> Registration branches</a>
             <!-- NEW: Rewards Management -->
             <a href="rewards.php" class="btn btn-outline-primary">Rewards</a>
         <?php } ?>

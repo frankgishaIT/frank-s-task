@@ -86,7 +86,7 @@ function li_tabs(mysqli $conn, string $active, string $title, string $sub = ''):
         .li-sec{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#1E2FE0;font-weight:700;margin:6px 0 8px}
         .li-formula{font-family:ui-monospace,Consolas,monospace;font-size:12px;background:#F4F6FB;border-radius:6px;padding:2px 6px}</style>';
     echo '<div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-2"><div><h3 class="mb-0">' . li_e($title) . '</h3>'
-        . '<div class="small text-muted">Company Loans &amp; Investment Intelligence · corporate borrowing (loans payable). RM Credit Hub (customer lending) is separate.' . ($sub ? ' ' . $sub : '') . '</div></div></div>';
+        . '<div class="small text-muted">RM Loan Intelligence · corporate borrowing (loans payable). RMC - Credit Hub (customer lending) is separate.' . ($sub ? ' ' . $sub : '') . '</div></div></div>';
     echo '<div class="li-tabs">';
     foreach ($tabs as [$f, $l, $i, $show]) { if ($show) { echo '<a href="' . $f . '" class="' . ($f === $active ? 'on' : '') . '"><i class="bi ' . $i . '"></i> ' . $l . '</a>'; } }
     echo '</div>';

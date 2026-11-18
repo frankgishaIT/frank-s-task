@@ -15,7 +15,14 @@ const INVOICE_HELP_PHONE = '0795 344 768';
 
 // CHANGED: problems are sent as "error" (they were sent as "success"), and messages are urlencoded.
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
-require_once __DIR__ . '/../../includes/branch_helpers.php'; br_guard_record($conn, 'sales', $id); // NEW (Multi-branch): records of other branches are refused (and logged)
+// FIXED (customer portal "Access Denied"): the branch guard is for STAFF only. The customer's copy comes from
+// portal/invoice_pdf.php, which has already checked that the invoice belongs to the signed-in customer; with no staff
+// session the branch guard refused every customer. The portal also passes the id in $_GET (not the raw request).
+if ($isCustomerCopy) {
+    $id = (int) ($_GET['id'] ?? 0);
+} else {
+    require_once __DIR__ . '/../../includes/branch_helpers.php'; br_guard_record($conn, 'sales', $id); // NEW (Multi-branch): records of other branches are refused (and logged)
+}
 if (!$id) { header('Location: index.php?error=' . urlencode('Invalid invoice requested.')); exit; }
 
 // NEW: bring the overdue charges up to date before printing.
@@ -65,6 +72,14 @@ $balanceDue = round($principalDue + $chargesDue, 2);
 $createdTs = strtotime($sale['invoice_issued_at'] ?? $sale['created_at'] ?? $sale['sale_date']);
 $deadlineTs = !empty($sale['payment_deadline']) ? strtotime($sale['payment_deadline']) : $createdTs + INVOICE_PAYMENT_HOURS * 3600;
 $isOverdue = $isUnpaidInvoice && time() > $deadlineTs;
+// NEW (RM Learning Centre): a fee invoice follows its instalment plan, not the 72-hour shop rule (overdue charges only
+// when the Learning Centre setting switches them on).
+$lcPlan = []; $lcCharges = true;
+try {
+    $lcq = mysqli_query($conn, 'SELECT t.due_date, t.amount FROM lc_installments t JOIN lc_invoices i ON i.id = t.invoice_id WHERE i.sale_id = ' . (int) $id . ' ORDER BY t.seq');
+    if ($lcq) { $lcPlan = mysqli_fetch_all($lcq, MYSQLI_ASSOC); }
+    if ($lcPlan) { $lcs = mysqli_fetch_row(mysqli_query($conn, "SELECT value FROM lc_settings WHERE name = 'fee_overdue_charges'")); $lcCharges = $lcs && $lcs[0] === '1'; }
+} catch (Throwable $e) { $lcPlan = []; }
 
 $customerLocationParts = array_filter([$sale['customer_sector'] ?? '', $sale['customer_district'] ?? '', $sale['customer_province'] ?? '']);
 $customerLocation = $customerLocationParts ? implode(', ', $customerLocationParts) : null;
@@ -171,12 +186,16 @@ ob_start();
 <?php if ($isUnpaidInvoice) { ?>
 <!-- NEW: payment deadline (72 hours after the invoice was created) -->
 <div class="deadline" style="background:<?= $isOverdue ? '#FCE9E9' : '#FFF8E6'; ?>; border:1px solid <?= $isOverdue ? '#F3C1C1' : '#F5DFA6'; ?>;">
+  <?php if ($lcPlan) { // NEW (RM Learning Centre): instalment plan ?>
+  <strong>Payment plan:</strong> <?= htmlspecialchars(implode(' · ', array_map(function ($t) { return date('d M Y', strtotime($t['due_date'])) . ': RWF ' . number_format((float) $t['amount'], 0); }, $lcPlan)), ENT_QUOTES, 'UTF-8'); ?>.
+  <?php } else { ?>
   <strong>Payment due by: <?= date('d M Y, H:i', $deadlineTs); ?></strong>
   (<?= INVOICE_PAYMENT_HOURS; ?> hours after issue on <?= date('d M Y, H:i', $createdTs); ?>).
+  <?php } ?>
   <?php if ($isOverdue) { ?>
     <strong style="color:#E24B4A;">This invoice is overdue.</strong>
   <?php } else { ?>
-    Pay in full to avoid overdue charges.
+    <?= $lcPlan && !$lcCharges ? 'Please pay each instalment by its date.' : 'Pay in full to avoid overdue charges.'; ?>
   <?php } ?>
 </div>
 <?php } ?>
@@ -291,7 +310,8 @@ ob_start();
   <div style="margin-bottom:3px;">By Accepting This Invoice, The Customer Agrees That:</div>
   <ol>
     <li>This is not an official RRA/EBM tax invoice. Request an EBM Receipt after payment via <?= INVOICE_HELP_PHONE; ?>.</li>
-    <li>Credit invoices must be paid within <?= INVOICE_PAYMENT_HOURS; ?> hours. Thereafter, a <?= INVOICE_DAILY_CHARGE_PERCENT; ?>% daily compound charge applies.</li>
+    <?php if ($lcPlan) { ?><li>RM Learning Centre fees are paid according to the payment plan above<?= $lcCharges ? '; after the last date, a ' . INVOICE_DAILY_CHARGE_PERCENT . '% daily compound charge applies' : ''; ?>.</li>
+    <?php } else { ?><li>Credit invoices must be paid within <?= INVOICE_PAYMENT_HOURS; ?> hours. Thereafter, a <?= INVOICE_DAILY_CHARGE_PERCENT; ?>% daily compound charge applies.</li><?php } ?>
     <li>Rise Motive Ltd is not responsible for delays caused by incomplete information or late customer responses.</li>
     <li>Additional work or changes after confirmation may incur extra charges.</li>
     <li>Payments are non-refundable once service has started or products have been delivered.</li>

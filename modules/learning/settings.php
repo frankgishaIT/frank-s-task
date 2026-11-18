@@ -2,7 +2,7 @@
 /** NEW FILE: modules/learning/settings.php — public website texts and address, reference format, tracking security, categories, message templates. */
 require __DIR__ . '/common.php';
 lcs_require($conn, 'settings');
-$fields = ['public_enabled' => 'bool', 'public_url' => 'text', 'portal_url' => 'text', 'title' => 'text', 'tagline' => 'text', 'intro' => 'area', 'benefits' => 'area', 'contact_phone' => 'text', 'contact_whatsapp' => 'text',
+$fields = ['public_enabled' => 'bool', 'pretty_urls' => 'bool', 'public_url' => 'text', 'portal_url' => 'text', 'title' => 'text', 'tagline' => 'text', 'intro' => 'area', 'benefits' => 'area', 'contact_phone' => 'text', 'contact_whatsapp' => 'text',
            'contact_email' => 'text', 'contact_address' => 'text', 'accreditation_note' => 'area', 'ref_format' => 'text', 'tracking_otp' => 'bool', 'categories' => 'area',
            'tpl_submitted' => 'area', 'tpl_status' => 'area', 'tpl_info' => 'area', 'tpl_admitted' => 'area', 'tpl_registered' => 'area',
            // NEW (stage 2): academic
@@ -12,7 +12,7 @@ $fields = ['public_enabled' => 'bool', 'public_url' => 'text', 'portal_url' => '
            'clearance_policy' => 'clearance', 'fee_overdue_charges' => 'bool', 'fee_reminder_days' => 'text', 'tpl_fee_invoice' => 'area', 'tpl_fee_reminder' => 'area', 'admission_letter' => 'area',
            // NEW (stage 4): channels, accommodation, internships
            'notify_sms' => 'bool', 'notify_email' => 'bool', 'notify_portal' => 'bool', 'tpl_accommodation' => 'area', 'tpl_internship' => 'area', 'internship_ref_format' => 'text', 'internship_intro' => 'area', 'internship_letter' => 'area'];
-$labels = ['public_enabled' => 'Public website open', 'public_url' => 'Public address (e.g. https://learn.risemotive.rw — empty = this server /learn)', 'portal_url' => 'Customer Portal sign-in address (only when the website runs on a sub-domain, e.g. https://os.risemotive.rw/portal/login.php)', 'title' => 'Name', 'tagline' => 'Tagline',
+$labels = ['public_enabled' => 'Public website open', 'pretty_urls' => 'Short course links (/courses/wdf-001) — only if the server runs Apache mod_rewrite with learn/.htaccess; otherwise links are course.php?code=wdf-001', 'public_url' => 'Public address (e.g. https://learn.risemotive.rw — empty = this server /learn)', 'portal_url' => 'Customer Portal sign-in address (only when the website runs on a sub-domain, e.g. https://os.risemotive.rw/portal/login.php)', 'title' => 'Name', 'tagline' => 'Tagline',
            'intro' => 'Introduction (home page)', 'benefits' => 'Key benefits (one per line)', 'contact_phone' => 'Telephone', 'contact_whatsapp' => 'WhatsApp number (international, e.g. 250795344768)',
            'contact_email' => 'Email', 'contact_address' => 'Address', 'accreditation_note' => 'Accreditation statement (only if verified; leave empty otherwise)',
            'ref_format' => 'Application reference format ({YYYY} or {YY} = year, {NNNN} = number)', 'tracking_otp' => 'Ask an SMS code before showing an application (in addition to reference + telephone/email)',

@@ -85,7 +85,7 @@ $summary = [['Total borrowed', li_rwf($borrowed)], ['Outstanding principal', li_
     ['Unallocated borrowed funds', li_rwf($unalloc)], ['Affordable repayment capacity / month', li_rwf($room)], ['Data confidence', $co['confidence']]];
 if (($_GET['export'] ?? '') === 'pdf') {
     li_audit($conn, 'export', 'dashboard', null, null, ['from' => $from, 'to' => $to], 'Dashboard PDF');
-    an_render_pdf('Company Loans & Investment Intelligence', [['Period', $from . ' to ' . $to], ['Prepared', date('d M Y H:i')]], $summary, an_posted_charts(), [
+    an_render_pdf('RM Loan Intelligence', [['Period', $from . ' to ' . $to], ['Prepared', date('d M Y H:i')]], $summary, an_posted_charts(), [
         ['title' => 'Company loans', 'columns' => ['Lender', 'Type', 'Principal', 'Rate %', 'Start', 'Outstanding principal', 'Status'],
          'rows' => array_map(function ($l) { return [$l['lender'], $l['loan_type'], number_format($l['loan_amount'], 0), $l['interest_rate'], $l['loan_start_date'], number_format(max(0, $l['loan_amount'] - $l['principal_repaid']), 0), $l['status']]; }, $loans)],
         ['title' => 'Financing needs detected', 'columns' => ['Need', 'Classification', 'Funding (RWF)', 'Funding gap (RWF)', 'Basis'],
@@ -97,7 +97,7 @@ $allLoans = mysqli_fetch_all(mysqli_query($conn, "SELECT id, lender, loan_amount
 
 include __DIR__ . '/../../includes/header.php';
 include __DIR__ . '/../../includes/sidebar.php';
-li_tabs($conn, 'index.php', 'Company Loans & Investment Intelligence', 'All recommendations are advisory: only authorized management approves borrowing or investments.');
+li_tabs($conn, 'index.php', 'RM Loan Intelligence', 'All recommendations are advisory: only authorized management approves borrowing or investments.');
 ?>
 <form class="row g-2 align-items-end mb-3" method="GET">
     <div class="col-6 col-md-2"><label class="form-label small mb-0">From</label><input type="date" name="from" value="<?= li_e($from); ?>" class="form-control form-control-sm"></div>

@@ -382,7 +382,10 @@ function mkt_convert_lead(mysqli $conn, int $leadId, int $uid, ?int $chosenCusto
             if (mkt_col_exists($conn, 'customers', 'first_name')) { $parts = preg_split('/\s+/', trim((string) ($l['contact_person'] ?: $name)), 2); $cols['first_name'] = $parts[0]; if (mkt_col_exists($conn, 'customers', 'last_name')) { $cols['last_name'] = $parts[1] ?? ''; } }
             $s = mysqli_prepare($conn, 'INSERT INTO customers (' . implode(', ', array_keys($cols)) . ') VALUES (' . implode(', ', array_fill(0, count($cols), '?')) . ')');
             $vals = array_values($cols); mysqli_stmt_bind_param($s, str_repeat('s', count($vals)), ...$vals); mysqli_stmt_execute($s);
-            $cust = mysqli_fetch_assoc(mysqli_query($conn, 'SELECT * FROM customers WHERE id = ' . (int) mysqli_insert_id($conn))); $created = true;
+            $newCid = (int) mysqli_insert_id($conn);
+            // NEW: branch that registered the customer + permanent original registration record
+            try { require_once __DIR__ . '/branch_helpers.php'; br_stamp($conn, 'customers', $newCid); require_once __DIR__ . '/customer_registration.php'; cr_record_new($conn, $newCid, !empty($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null, 'Registered from a Marketing lead'); } catch (Throwable $e) { error_log('mkt customer registration: ' . $e->getMessage()); }
+            $cust = mysqli_fetch_assoc(mysqli_query($conn, 'SELECT * FROM customers WHERE id = ' . $newCid)); $created = true;
         }
         $cid = (int) $cust['id'];
         $existing = mysqli_fetch_assoc(mysqli_query($conn, "SELECT * FROM mkt_acquisitions WHERE customer_id = $cid"));

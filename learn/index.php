@@ -20,7 +20,7 @@ lcp_header($conn, ['url' => lc_public_base($conn) . '/', 'image' => lc_public_ba
 <div class="container" style="margin-top:-28px;">
     <?php if ($intakes) { ?><div class="card mb-4"><div class="card-body"><h2 class="sec mb-2">Upcoming intakes</h2><div class="table-responsive"><table class="table table-sm align-middle mb-0">
         <tr><th>Course</th><th>Intake</th><th>Branch</th><th>Starts</th><th>Apply by</th><th></th></tr>
-        <?php foreach ($intakes as $i) { ?><tr><td><a href="courses/<?= lc_e(strtolower($i['code'])); ?>"><?= lc_e($i['title']); ?></a></td><td><?= lc_e($i['name']); ?></td><td><?= lc_e(lc_branch_name($conn, (int) $i['branch_id'] ?: null)); ?></td>
+        <?php foreach ($intakes as $i) { ?><tr><td><a href="<?= lc_e(lcp_course_href($conn, $i['code'])); ?>"><?= lc_e($i['title']); ?></a></td><td><?= lc_e($i['name']); ?></td><td><?= lc_e(lc_branch_name($conn, (int) $i['branch_id'] ?: null)); ?></td>
             <td><?= date('d M Y', strtotime($i['start_date'])); ?></td><td><?= $i['apply_close'] ? date('d M Y', strtotime($i['apply_close'])) : '—'; ?></td><td class="text-end"><a href="apply.php?course=<?= lc_e(strtolower($i['code'])); ?>&intake=<?= (int) $i['id']; ?>" class="btn btn-sm btn-primary">Apply</a></td></tr><?php } ?>
     </table></div></div></div><?php } ?>
     <div class="d-flex justify-content-between align-items-end mb-2"><h2 class="sec mb-0">Courses</h2><a href="courses.php">All courses <i class="bi bi-arrow-right"></i></a></div>

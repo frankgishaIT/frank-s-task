@@ -132,6 +132,30 @@ $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APO
     </div>
 </div></div>
 
+<?php /* NEW: original registration branch (permanent; every branch can still serve this customer) */
+require_once '../../includes/customer_registration.php';
+$crRec = cr_get($conn, (int) $id);
+if ($crRec) {
+    if (empty($_SESSION['cr_csrf'])) { $_SESSION['cr_csrf'] = bin2hex(random_bytes(16)); }
+    $crBranches = br_enabled($conn) ? br_all($conn) : [];
+    $crH = function ($v) { return htmlspecialchars((string) ($v ?? ''), ENT_QUOTES, 'UTF-8'); }; ?>
+<div class="card border-0 shadow-sm mt-3" id="origin" style="max-width:900px;"><div class="card-body">
+    <div class="d-flex justify-content-between"><h6 class="mb-1">Original registration</h6><a class="small" href="registrations.php">Report</a></div>
+    <div class="small"><span class="text-muted">Branch:</span> <strong><?= $crH($crRec['branch_id'] !== null ? cr_branch_name($conn, (int) $crRec['branch_id']) : 'Not established'); ?></strong>
+        <?= $crRec['status'] === 'review' ? ' <span class="badge bg-warning text-dark">to review</span>' . ($crRec['suggested_branch_id'] ? ' <span class="text-muted">(suggestion: ' . $crH(cr_branch_name($conn, (int) $crRec['suggested_branch_id'])) . ')</span>' : '') : ''; ?>
+        · <span class="text-muted">Date:</span> <?= $crH($crRec['registered_at'] ? substr($crRec['registered_at'], 0, 16) : '—'); ?>
+        · <span class="text-muted">Registered by:</span> <?= $crH($crRec['registered_by_name'] ?: '—'); ?></div>
+    <div class="small text-muted"><?= $crH($crRec['basis']); ?>. It never changes when the customer is served at another branch.</div>
+    <?php if (current_user_role() === 'Admin' && $crBranches) { ?>
+    <form method="POST" action="registrations.php" class="row g-2 mt-1"><input type="hidden" name="csrf" value="<?= $crH($_SESSION['cr_csrf']); ?>"><input type="hidden" name="do" value="set"><input type="hidden" name="customer_id" value="<?= (int) $id; ?>"><input type="hidden" name="back" value="edit.php?id=<?= (int) $id; ?>">
+        <div class="col-md-3"><select name="branch_id" class="form-select form-select-sm"><?php foreach ($crBranches as $bid => $b) { ?><option value="<?= (int) $bid; ?>" <?= (int) ($crRec['branch_id'] ?? $crRec['suggested_branch_id']) === (int) $bid ? 'selected' : ''; ?>><?= $crH($b['name']); ?></option><?php } ?></select></div>
+        <div class="col-md-2"><input type="date" name="date" class="form-control form-control-sm" value="<?= $crH(substr((string) $crRec['registered_at'], 0, 10)); ?>"></div>
+        <div class="col-md-5"><input name="reason" class="form-control form-control-sm" placeholder="Reason / source of the information (required)" required></div>
+        <div class="col-md-2"><button name="mode" value="<?= $crRec['status'] === 'review' ? 'confirm' : 'correct'; ?>" class="btn btn-sm btn-outline-primary w-100" onclick="return confirm('Change the permanent original registration record?');"><?= $crRec['status'] === 'review' ? 'Confirm' : 'Correct'; ?></button></div>
+    </form><?php } ?>
+</div></div>
+<?php } ?>
+
 <script src="../../includes/rwanda_locations.js"></script>
 <script>
 (function () {

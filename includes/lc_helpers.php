@@ -69,6 +69,7 @@ const LC_DEFAULTS = [
     'tpl_fee_reminder' => 'RISE MOTIVE: {name}, {amount} for {course} is due on {date} (invoice {invoice}). Thank you.',
     'admission_letter' => "We are pleased to offer you a place on the course below. Please accept your offer online, then complete your registration with the RM Learning Centre team.\nBring your national ID (or passport) on the first day.",
     // Stage 4: accommodation, internships, channels
+    'pretty_urls' => '0',
     'notify_sms' => '1',
     'notify_email' => '1',
     'notify_portal' => '1',
@@ -368,7 +369,11 @@ function lc_public_base(mysqli $conn): string
 /** Permanent shareable link of a course (pretty URL; the .htaccess maps it to course.php). */
 function lc_course_url(mysqli $conn, array $course, string $source = ''): string
 {
-    return lc_public_base($conn) . '/courses/' . rawurlencode(strtolower($course['code'])) . ($source !== '' ? '?src=' . rawurlencode($source) : '');
+    // FIXED (404 on course pages): links use course.php?code=… which works on every server. The short form /courses/<code>
+    // needs Apache mod_rewrite + the learn/.htaccess file; it is used only when "Short course links" is switched on in Settings.
+    $code = rawurlencode(strtolower($course['code']));
+    if (lc_setting($conn, 'pretty_urls') === '1') { return lc_public_base($conn) . '/courses/' . $code . ($source !== '' ? '?src=' . rawurlencode($source) : ''); }
+    return lc_public_base($conn) . '/course.php?code=' . $code . ($source !== '' ? '&src=' . rawurlencode($source) : '');
 }
 
 function lc_track_url(mysqli $conn, ?string $ref = null): string { return lc_public_base($conn) . '/track.php' . ($ref ? '?ref=' . rawurlencode($ref) : ''); }
@@ -614,6 +619,7 @@ function lc_create_customer(mysqli $conn, array $app): int
     mysqli_stmt_execute($s);
     $id = (int) mysqli_insert_id($conn);
     try { require_once __DIR__ . '/branch_helpers.php'; br_stamp($conn, 'customers', $id, $app['branch_id'] ? (int) $app['branch_id'] : null); } catch (Throwable $e) { }
+    try { require_once __DIR__ . '/customer_registration.php'; cr_record_new($conn, $id, !empty($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null, 'Registered at admission to the RM Learning Centre (branch of the intake)'); } catch (Throwable $e) { } // NEW
     lc_audit($conn, 'customer_create', 'customer', $id, ['from_application' => $app['ref']], $id);
     return $id;
 }

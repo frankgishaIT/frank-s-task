@@ -31,6 +31,16 @@ function an_pdf_button(string $label = 'Download PDF'): void
         . '<button type="submit" class="btn btn-sm btn-outline-primary" onclick="return rmAnalyticsPdf(this.form);"><i class="bi bi-file-earmark-pdf"></i> ' . an_e($label) . '</button></form>';
 }
 
+/** NEW: "Preview PDF" (opens in a new tab) and "Download PDF" buttons; both send the drawn charts. */
+function an_pdf_buttons(): void
+{
+    $qs = $_GET; unset($qs['export'], $qs['drill'], $qs['dl']);
+    foreach ([['Preview PDF', 'bi-eye', []], ['Download PDF', 'bi-download', ['dl' => 1]]] as [$l, $i, $x]) {
+        echo '<form method="POST" action="?' . an_e(http_build_query($qs + ['export' => 'pdf'] + $x)) . '" target="_blank" class="d-inline">'
+            . '<button type="submit" class="btn btn-sm btn-outline-primary" onclick="return rmAnalyticsPdf(this.form);"><i class="bi ' . $i . '"></i> ' . an_e($l) . '</button></form> ';
+    }
+}
+
 /** Chart pictures sent by the browser for the PDF: [['title', 'data' => data URI]] (JPEG/PNG only, size-limited). */
 function an_posted_charts(): array
 {
@@ -95,7 +105,8 @@ function an_render_pdf(string $title, array $filters, array $summary, array $cha
     }
     $mpdf->WriteHTML($h);
     while (ob_get_level() > 0) { ob_end_clean(); }
-    $mpdf->Output($fileName, \Mpdf\Output\Destination::INLINE);
+    // CHANGED: ?dl=1 downloads the file; otherwise the PDF opens in the browser (preview).
+    $mpdf->Output($fileName, !empty($_GET['dl']) ? \Mpdf\Output\Destination::DOWNLOAD : \Mpdf\Output\Destination::INLINE);
     exit;
 }
 

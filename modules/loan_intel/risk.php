@@ -71,7 +71,7 @@ li_tabs($conn, 'risk.php', 'Financial Risk Analysis');
         <table class="table table-sm small mb-0"><tr><th>Lender</th><th>Type</th><th class="text-end">Loans</th><th class="text-end">Outstanding principal</th><th class="text-end">Rate</th><th>Rate type</th></tr>
         <?php foreach ($lenders as $r) { ?><tr><td><?= li_e($r['lender']); ?></td><td><?= li_e($r['loan_type']); ?></td><td class="text-end"><?= (int) $r['n']; ?></td><td class="text-end"><?= li_n($r['o']); ?></td><td class="text-end"><?= (float) $r['r']; ?>%</td><td><?= li_e($r['rt']); ?></td></tr><?php } ?>
         <?php if (!$lenders) { ?><tr><td colspan="6" class="text-muted">No open company loan.</td></tr><?php } ?></table>
-        <div class="small text-muted mt-2">Not included (different modules): customer loans of RM Credit Hub (money owed TO the company)<?= $investorLoans ? ', and investor loans of RM Investors Hub (' . li_rwf($investorLoans) . ' owed to investors — shown in the Balance Sheet)' : ''; ?>.</div>
+        <div class="small text-muted mt-2">Not included (different modules): customer loans of RMC - Credit Hub (money owed TO the company)<?= $investorLoans ? ', and investor loans of RMC - Investors Hub (' . li_rwf($investorLoans) . ' owed to investors — shown in the Balance Sheet)' : ''; ?>.</div>
     </div></div></div>
 </div>
 <?php if ($flow && $flow['days']) { ?><div class="mb-3"><?php an_chart_card('liFlow', 'Cash forecast, next 90 days (forecast)', 'From RM Business Forecasting: projected sales and expenses, money customers owe, stock purchases and loan instalments on their due dates', 230); ?></div><?php } ?>

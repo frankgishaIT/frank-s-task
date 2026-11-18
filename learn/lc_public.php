@@ -23,6 +23,24 @@ header('Referrer-Policy: strict-origin-when-cross-origin');
 /** Customer Portal sign-in (its own address when this website runs on a sub-domain). */
 function lcp_portal_url(mysqli $conn): string { $u = lc_setting($conn, 'portal_url'); return $u !== '' ? $u : (defined('BASE_URL') ? BASE_URL : '') . '/portal/login.php'; }
 
+/**
+ * FIXED (404 on course pages): the <base> of the public pages is the folder these pages are really served from
+ * (…/learn on the main domain, or / on learn.risemotive.rw), never a guess. Relative links then always resolve.
+ */
+function lcp_base(): string
+{
+    $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+    $dir = rtrim(str_replace('\\', '/', dirname((string) ($_SERVER['SCRIPT_NAME'] ?? '/'))), '/');
+    return ($https ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . $dir;
+}
+
+/** Link to a course page from inside the public website (works with or without short links). */
+function lcp_course_href(mysqli $conn, string $code): string
+{
+    $c = rawurlencode(strtolower($code));
+    return lc_setting($conn, 'pretty_urls') === '1' ? 'courses/' . $c : 'course.php?code=' . $c;
+}
+
 function lcp_csrf(): string { if (empty($_SESSION['lcp_csrf'])) { $_SESSION['lcp_csrf'] = bin2hex(random_bytes(16)); } return $_SESSION['lcp_csrf']; }
 function lcp_csrf_ok(): bool { return isset($_POST['csrf'], $_SESSION['lcp_csrf']) && hash_equals($_SESSION['lcp_csrf'], (string) $_POST['csrf']); }
 
@@ -49,7 +67,7 @@ function lcp_track_source(): void
  */
 function lcp_header(mysqli $conn, array $meta = []): void
 {
-    $base = lc_public_base($conn);
+    $base = lcp_base();
     $site = lc_setting($conn, 'title');
     $title = ($meta['title'] ?? '') !== '' ? $meta['title'] . ' · ' . $site : $site . ' — ' . lc_setting($conn, 'tagline');
     $desc = mb_substr($meta['description'] ?? lc_setting($conn, 'intro'), 0, 300);
@@ -125,7 +143,7 @@ function lcp_course_card(mysqli $conn, array $c): void
     $next = $int ? reset($int) : null;
     $img = $c['image_ref'] ? 'image.php?c=' . rawurlencode(strtolower($c['code'])) : '';
     ?>
-    <div class="col-sm-6 col-lg-4"><a href="courses/<?= lc_e(strtolower($c['code'])); ?>" class="text-decoration-none text-reset"><div class="card h-100 lc-course-card">
+    <div class="col-sm-6 col-lg-4"><a href="<?= lc_e(lcp_course_href($conn, $c['code'])); ?>" class="text-decoration-none text-reset"><div class="card h-100 lc-course-card">
         <div class="thumb" style="<?= $img ? "background-image:url('" . lc_e($img) . "')" : ''; ?>"><?= $img ? '' : '<i class="bi bi-mortarboard"></i>'; ?></div>
         <div class="card-body">
             <div class="d-flex justify-content-between align-items-start gap-2"><span class="small text-muted"><?= lc_e($c['category']); ?> · <?= lc_e($c['code']); ?></span><span class="badge bg-<?= $av[1]; ?>"><?= lc_e($av[0]); ?></span></div>

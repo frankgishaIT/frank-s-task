@@ -38,7 +38,7 @@ if ($done !== '' && empty($_SESSION['lcp_tracked'][$done])) { $done = ''; } // o
 lcp_header($conn, ['title' => 'Apply — ' . $c['title'], 'description' => 'Apply online for ' . $c['title'] . ' at ' . lc_setting($conn, 'title') . '.', 'url' => lc_course_url($conn, $c)]);
 ?>
 <div class="container py-4" style="max-width:900px;">
-    <div class="small mb-1"><a href="courses/<?= lc_e(strtolower($c['code'])); ?>"><i class="bi bi-arrow-left"></i> <?= lc_e($c['title']); ?></a></div>
+    <div class="small mb-1"><a href="<?= lc_e(lcp_course_href($conn, $c['code'])); ?>"><i class="bi bi-arrow-left"></i> <?= lc_e($c['title']); ?></a></div>
 <?php if ($done !== '') { ?>
     <div class="card"><div class="card-body p-4 text-center">
         <div class="display-6 text-success"><i class="bi bi-check-circle-fill"></i></div>

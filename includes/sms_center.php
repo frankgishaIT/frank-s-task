@@ -189,7 +189,7 @@ function sms_center_ensure(mysqli $conn): void
         try { mysqli_query($conn, 'ALTER TABLE sms_log ADD KEY status_created (status, created_at)'); } catch (Throwable $e) { }
         mysqli_query($conn, "DELETE FROM sms_settings WHERE name = 'schema'");
         mysqli_query($conn, "INSERT INTO sms_settings (name, value) VALUES ('schema', '1')");
-    } catch (Throwable $e) { error_log('sms_center_ensure: ' . $e->getMessage()); }
+    } catch (Throwable $e) { $GLOBALS['__sms_ensure_error'] = $e->getMessage(); error_log('sms_center_ensure: ' . $e->getMessage()); }
 }
 
 const SMS_SETTING_DEFAULTS = ['duplicate_minutes' => '10', 'daily_cap' => '0', 'cost_per_segment' => '0', 'window_start' => '07:00', 'window_end' => '20:00'];

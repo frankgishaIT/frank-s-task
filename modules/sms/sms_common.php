@@ -1,10 +1,23 @@
 <?php
 /** NEW FILE: modules/sms/sms_common.php — shared parts of SMS Management (tabs, helpers). */
+// If something fails on the server, show the reason to an Administrator instead of a blank "HTTP ERROR 500".
+register_shutdown_function(function () {
+    $e = error_get_last();
+    if (!$e || !in_array($e['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_RECOVERABLE_ERROR], true)) { return; }
+    if (!function_exists('current_user_role') || current_user_role() !== 'Admin') { return; }
+    echo '<div style="margin:20px;padding:14px;border:1px solid #E24B4A;border-radius:10px;background:#FFF4F4;font:14px Arial;color:#7A1C1C;"><strong>SMS Management could not open.</strong><br>Please send this message to the developer:<br><code style="white-space:pre-wrap;">'
+        . htmlspecialchars(mb_substr(preg_replace('/Stack trace:.*/s', '', (string) $e['message']), 0, 600) . ' — ' . basename((string) $e['file']) . ':' . $e['line'], ENT_QUOTES, 'UTF-8') . '</code></div>';
+});
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../includes/sms_messages.php';
 require_once __DIR__ . '/../../includes/sms_center.php';
 if (is_file(__DIR__ . '/../../includes/lc_helpers.php')) { require_once __DIR__ . '/../../includes/lc_helpers.php'; }
 sms_center_ensure($conn);
+if (!sms_center_ready($conn)) {
+    http_response_code(500);
+    exit('<div style="margin:20px;padding:14px;border:1px solid #E24B4A;border-radius:10px;background:#FFF4F4;font:14px Arial;color:#7A1C1C;"><strong>SMS Management could not create its tables.</strong><br>Database message: <code>'
+        . htmlspecialchars((string) ($GLOBALS['__sms_ensure_error'] ?? 'unknown'), ENT_QUOTES, 'UTF-8') . '</code><br>Please send this message to the developer. SMS keep being sent with their standard wording.</div>');
+}
 
 function smsm_e($v): string { return htmlspecialchars((string) ($v ?? ''), ENT_QUOTES, 'UTF-8'); }
 function smsm_can(string $p, mysqli $conn): bool { return access_can('sms.' . $p, $conn); }

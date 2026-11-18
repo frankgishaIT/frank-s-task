@@ -7,7 +7,8 @@ if ($type === 'certificate') {
     $k = $c ? lc_class($conn, (int) $c['class_id']) : null;
     if (!$c || !$k || !in_array(lcs_class_role($conn, $k), ['manage', 'view'], true)) { lcs_deny(); }
     lc_audit($conn, 'certificate_open', 'certificate', (int) $c['id'], null, (int) $c['customer_id']);
-    lc_pdf_output(lc_certificate_html($conn, $c), 'certificate-' . $c['number'] . '.pdf', true);
+    require_once __DIR__ . '/../../includes/lc_docs.php';
+    lc_doc_certificate_output($conn, $c, 'staff', !empty($_GET['dl'])); // CHANGED: the certificate's own approved template version
     exit;
 }
 if ($type === 'transcript') {
@@ -18,7 +19,8 @@ if ($type === 'transcript') {
     $ok = $k ? lcs_class_role($conn, $k) !== null : (lcs_can($conn, 'view') && lcs_branch_ok($conn, $e['branch_id'] ? (int) $e['branch_id'] : null));
     if (!$ok) { lcs_deny(); }
     lc_audit($conn, 'transcript_open', 'enrollment', $eid, null, (int) $e['customer_id']);
-    lc_pdf_output(lc_transcript_html($conn, $eid), 'transcript-' . lc_customer_id_label($conn, (int) $e['customer_id']) . '.pdf');
+    require_once __DIR__ . '/../../includes/lc_docs.php';
+    lc_doc_transcript_output($conn, $eid, 'staff', !empty($_GET['dl'])); // CHANGED: active transcript template
     exit;
 }
 if ($type === 'admission') {

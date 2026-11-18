@@ -349,6 +349,10 @@ function lc_issue_certificate(mysqli $conn, array $class, int $customerId, ?arra
     mysqli_stmt_bind_param($s, 'ssiiiisssssii', $no, $tok, $customerId, $eid, $cid, $course, $name, $title, $grade, $done, $now, $uid, $rep);
     mysqli_stmt_execute($s);
     $id = (int) mysqli_insert_id($conn);
+    // NEW: the certificate keeps the APPROVED template version used today; later template edits never change it.
+    require_once __DIR__ . '/lc_docs.php';
+    $tpl = lc_doc_pick($conn, 'certificate', $course);
+    if ($tpl) { mysqli_query($conn, 'UPDATE lc_certificates SET template_id = ' . $tpl['id'] . ', template_version = ' . $tpl['version'] . ' WHERE id = ' . $id); }
     if ($replaces) {
         mysqli_query($conn, "UPDATE lc_certificates SET status = 'Replaced', replaced_by_id = $id WHERE id = " . (int) $replaces['id']);
     }

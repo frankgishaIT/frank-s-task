@@ -35,7 +35,8 @@ if ($type === 'transcript') {
     $isFinal = $eRow && $eRow['class_id'] && lc_published_result($conn, (int) $eRow['class_id'], $cid);
     if ($isFinal && !lc_clearance_ok($conn, $cid, 'documents')) { header('Location: learning.php?tab=learning&error=' . urlencode('Your final transcript is available once the overdue fees are paid.')); exit; }
     lc_audit($conn, 'transcript_download', 'enrollment', $eid, ['portal' => true], $cid);
-    lc_pdf_output(lc_transcript_html($conn, $eid), 'transcript-' . lc_customer_id_label($conn, $cid) . '.pdf');
+    require_once __DIR__ . '/../includes/lc_docs.php';
+    lc_doc_transcript_output($conn, $eid, 'portal'); // CHANGED: active transcript template
     exit;
 }
 if ($type === 'certificate') {
@@ -43,7 +44,8 @@ if ($type === 'certificate') {
     if (!$c) { header('Location: learning.php?tab=learning'); exit; }
     if (!lc_clearance_ok($conn, $cid, 'documents')) { header('Location: learning.php?tab=learning&error=' . urlencode('Your certificate is available once the overdue fees are paid.')); exit; }
     lc_audit($conn, 'certificate_download', 'certificate', (int) $c['id'], ['portal' => true], $cid);
-    lc_pdf_output(lc_certificate_html($conn, $c), 'certificate-' . $c['number'] . '.pdf', true);
+    require_once __DIR__ . '/../includes/lc_docs.php';
+    lc_doc_certificate_output($conn, $c, 'portal'); // CHANGED: the certificate's own approved template version
     exit;
 }
 header('Location: learning.php?tab=learning');

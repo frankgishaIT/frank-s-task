@@ -8,21 +8,25 @@
 require __DIR__ . '/common.php';
 require_once __DIR__ . '/../../includes/lc_accommodation.php';
 require_once __DIR__ . '/../../includes/lc_internship.php';
+require_once __DIR__ . '/../../includes/analytics_ui.php'; // NEW: charts, PDF preview / download
 lcs_require($conn, 'view');
 lc_acc_ensure($conn); lc_int_ensure($conn);
 $from = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['from'] ?? '') ? $_GET['from'] : date('Y-01-01');
 $to = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['to'] ?? '') ? $_GET['to'] : date('Y-m-d');
 $fb = isset($_GET['branch']) && $_GET['branch'] !== '' ? (int) $_GET['branch'] : null;
-$sec = in_array($_GET['s'] ?? '', ['marketing', 'academic', 'finance', 'accommodation', 'internships'], true) ? $_GET['s'] : 'marketing';
+$sec = in_array($_GET['s'] ?? '', ['overview', 'marketing', 'academic', 'finance', 'accommodation', 'internships'], true) ? $_GET['s'] : 'overview';
+$fc = (int) ($_GET['course'] ?? 0);   // NEW: course filter (overview)
 $canFin = lcs_can($conn, 'finance');
 if ($sec === 'finance' && !$canFin) { $sec = 'marketing'; }
 $bw = function (string $col) use ($conn, $fb) { return lcs_branch_sql($conn, $col) . ($fb !== null ? ' AND COALESCE(' . $col . ', ' . (br_enabled($conn) ? br_main_id($conn) : 0) . ') = ' . $fb : ''); };
 $F = "'" . $from . "'"; $T = "'" . $to . " 23:59:59'";
 $csv = [];   // [section, label, value]
+$pdfTables = [];   // NEW: the same tables for the PDF
 $rate = function ($num, $den) { return $den > 0 ? round($num / $den * 100, 1) : null; };
 $pct = function ($v, $n = null) { if ($v === null) { return '<span class="text-muted">—</span>'; } return number_format($v, 1) . '%' . ($n !== null && $n < 10 ? ' <span class="badge bg-light text-muted border" title="Fewer than 10: read with care">n=' . $n . '</span>' : ''); };
 $bar = function ($v, $max) { $w = $max > 0 ? max(2, round($v / $max * 120)) : 0; return '<div style="background:#E8ECF8;border-radius:4px;height:8px;width:120px;display:inline-block"><div style="background:#1E2FE0;height:8px;border-radius:4px;width:' . $w . 'px"></div></div>'; };
-$table = function (string $title, array $head, array $rows, string $key) use (&$csv) {
+$table = function (string $title, array $head, array $rows, string $key) use (&$csv, &$pdfTables) {
+    $pdfTables[] = ['title' => $title, 'columns' => $head, 'rows' => array_map(function ($r) { return array_map(function ($x) { return trim(strip_tags(html_entity_decode((string) $x))); }, array_values($r)); }, $rows)];
     echo '<div class="card border-0 shadow-sm mb-3"><div class="card-body p-0"><div class="p-2 fw-semibold">' . lc_e($title) . '</div><table class="table table-sm align-middle mb-0" style="font-size:12.5px;"><tr class="table-light">';
     foreach ($head as $i => $h) { echo '<th class="' . ($i ? 'text-end' : 'ps-3') . '">' . lc_e($h) . '</th>'; }
     echo '</tr>';
@@ -31,6 +35,78 @@ $table = function (string $title, array $head, array $rows, string $key) use (&$
     echo '</table></div></div>';
 };
 ob_start();
+/* =============================================================== OVERVIEW (charts) — NEW */
+if ($sec === 'overview') {
+    $cw = $fc ? ' AND e.course_id = ' . $fc : '';
+    $months = an_months($from, $to);
+    $mk = array_keys($months);
+    $series = function (array $rows) use ($mk) { $o = array_fill_keys($mk, 0); foreach ($rows as $r) { if (isset($o[$r['m']])) { $o[$r['m']] = (float) $r['v']; } } return array_values($o); };
+    $ew = $bw('e.branch_id') . $cw;
+    // 1. enrollment trend
+    $enr = $series(mysqli_fetch_all(mysqli_query($conn, "SELECT DATE_FORMAT(e.registered_at, '%Y-%m') m, COUNT(*) v FROM lc_enrollments e WHERE e.registered_at BETWEEN $F AND $T AND $ew GROUP BY m"), MYSQLI_ASSOC));
+    // 2. distribution by course · 3. completion per course
+    $byC = mysqli_fetch_all(mysqli_query($conn, "SELECT c.code, COUNT(*) n, SUM(e.status = 'Completed') comp, SUM(e.status = 'Failed') fail, SUM(e.status = 'Registered') cur FROM lc_enrollments e JOIN lc_courses c ON c.id = e.course_id
+        WHERE e.registered_at BETWEEN $F AND $T AND $ew GROUP BY c.code ORDER BY n DESC"), MYSQLI_ASSOC);
+    // 4. performance: grade distribution and average final per course (published results)
+    $rw = 'r.published_at BETWEEN ' . $F . ' AND ' . $T . ' AND ' . $bw('k.branch_id') . ($fc ? ' AND k.course_id = ' . $fc : '');
+    $grades = mysqli_fetch_all(mysqli_query($conn, "SELECT COALESCE(r.grade, '—') g, COUNT(*) n FROM lc_results r JOIN lc_classes k ON k.id = r.class_id WHERE $rw AND r.decision <> 'Incomplete' GROUP BY g ORDER BY g"), MYSQLI_ASSOC);
+    $avgC = mysqli_fetch_all(mysqli_query($conn, "SELECT c.code, AVG(r.final_pct) av, COUNT(*) n, SUM(r.decision = 'Pass') pass FROM lc_results r JOIN lc_classes k ON k.id = r.class_id JOIN lc_courses c ON c.id = k.course_id WHERE $rw AND r.final_pct IS NOT NULL GROUP BY c.code ORDER BY c.code"), MYSQLI_ASSOC);
+    // 5. certificates per month
+    $cz = 'z.issued_at BETWEEN ' . $F . ' AND ' . $T . ' AND ' . $bw('k.branch_id') . ($fc ? ' AND z.course_id = ' . $fc : '');
+    $certV = $series(mysqli_fetch_all(mysqli_query($conn, "SELECT DATE_FORMAT(z.issued_at, '%Y-%m') m, COUNT(*) v FROM lc_certificates z JOIN lc_classes k ON k.id = z.class_id WHERE $cz AND z.replaces_id IS NULL GROUP BY m"), MYSQLI_ASSOC));
+    $certSt = mysqli_fetch_all(mysqli_query($conn, "SELECT z.status, COUNT(*) n FROM lc_certificates z JOIN lc_classes k ON k.id = z.class_id WHERE $cz GROUP BY z.status"), MYSQLI_ASSOC);
+    // 6. active versus completed (classes and courses)
+    $kst = mysqli_fetch_all(mysqli_query($conn, 'SELECT k.status, COUNT(*) n FROM lc_classes k WHERE ' . $bw('k.branch_id') . ($fc ? ' AND k.course_id = ' . $fc : '') . ' GROUP BY k.status'), MYSQLI_ASSOC);
+    $cst = mysqli_fetch_all(mysqli_query($conn, "SELECT c.delivery_status s, COUNT(*) n FROM lc_courses c WHERE c.status <> 'Archived'" . ($fc ? ' AND c.id = ' . $fc : '') . ' GROUP BY c.delivery_status'), MYSQLI_ASSOC);
+    // 7. revenue: invoiced (Sales invoices of the Learning Centre) and collected (payments recorded in Sales)
+    $inv = $col = [];
+    if ($canFin) {
+        $iw = $bw('s.branch_id') . ($fc ? ' AND i.course_id = ' . $fc : '');
+        $inv = $series(mysqli_fetch_all(mysqli_query($conn, "SELECT DATE_FORMAT(s.sale_date, '%Y-%m') m, SUM(s.total_amount) v FROM lc_invoices i JOIN sales s ON s.id = i.sale_id WHERE s.sale_date BETWEEN $F AND '$to' AND s.status NOT IN ('Cancelled', 'Pending Discount Approval') AND $iw GROUP BY m"), MYSQLI_ASSOC));
+        try { $col = $series(mysqli_fetch_all(mysqli_query($conn, "SELECT DATE_FORMAT(l.created_at, '%Y-%m') m, SUM(l.amount) v FROM credit_ledger l JOIN lc_invoices i ON i.sale_id = l.sale_id JOIN sales s ON s.id = i.sale_id
+            WHERE l.entry_type IN ('PAYMENT_PRINCIPAL', 'PAYMENT_CHARGE') AND l.created_at BETWEEN $F AND $T AND s.status <> 'Cancelled' AND $iw GROUP BY m"), MYSQLI_ASSOC)); } catch (Throwable $e2) { $col = []; }
+    }
+    $tot = array_sum(array_column($byC, 'n')); $comp = array_sum(array_column($byC, 'comp')); $fail = array_sum(array_column($byC, 'fail'));
+    $nCert = array_sum($certV); $passN = array_sum(array_column($avgC, 'pass')); $resN = array_sum(array_column($avgC, 'n'));
+    $k = ['Enrollments' => $tot, 'Completed' => $comp, 'Completion rate' => ($comp + $fail) ? round($comp / ($comp + $fail) * 100, 1) . '%' : '—', 'Pass rate' => $resN ? round($passN / $resN * 100, 1) . '%' : '—', 'Certificates issued' => $nCert]
+        + ($canFin ? ['Invoiced' => lc_money(array_sum($inv)), 'Collected' => lc_money(array_sum($col))] : []);
+    echo '<div class="row g-2 mb-3">'; foreach ($k as $l => $v) { echo '<div class="col-6 col-md"><div class="card border-0 shadow-sm lc-k"><div class="card-body py-2"><div class="lbl">' . $l . '</div><div class="val text-nowrap" style="font-size:1rem">' . lc_e($v) . '</div></div></div></div>'; $csv[] = ['summary', $l, $v]; } echo '</div>';
+    echo '<div class="row g-3 mb-3">';
+    $cards = [['lcEnr', 'Student enrollment trend', 'Registrations per month', 'col-lg-6'], ['lcDist', 'Enrollment by course', 'Share of enrollments', 'col-lg-6'],
+              ['lcComp', 'Completion by course', 'Completed · not passed · still studying', 'col-lg-6'], ['lcGrades', 'Student performance', 'Grades in published results', 'col-lg-6'],
+              ['lcAvg', 'Average final mark by course', 'Published results; pass rate in the table below', 'col-lg-6'], ['lcCert', 'Certificates issued', 'Per month (re-issues not counted again)', 'col-lg-6'],
+              ['lcActive', 'Active versus completed', 'Classes by status · courses by delivery status', 'col-lg-6']];
+    if ($canFin) { $cards[] = ['lcRev', 'Course fee revenue', 'Invoiced and collected per month (from Sales)', 'col-lg-6']; }
+    foreach ($cards as [$id, $t, $sub, $cls]) { echo '<div class="' . $cls . '">'; an_chart_card($id, $t, $sub, 230); echo '</div>'; }
+    echo '</div>';
+    $table('Enrollment and completion by course', ['Course', 'Enrollments', 'Completed', 'Not passed', 'Studying', 'Completion rate'], array_map(function ($r) use ($pct, $rate) { return [lc_e($r['code']), (int) $r['n'], (int) $r['comp'], (int) $r['fail'], (int) $r['cur'], $pct($rate((int) $r['comp'], (int) $r['comp'] + (int) $r['fail']), (int) $r['comp'] + (int) $r['fail'])]; }, $byC), 'courses');
+    $table('Results by course (published)', ['Course', 'Results', 'Average final mark', 'Pass rate'], array_map(function ($r) use ($pct, $rate) { return [lc_e($r['code']), (int) $r['n'], number_format((float) $r['av'], 1) . '%', $pct($rate((int) $r['pass'], (int) $r['n']), (int) $r['n'])]; }, $avgC), 'results');
+    $table('Certificates by status', ['Status', 'Certificates'], array_map(function ($r) { return [lc_e($r['status']), (int) $r['n']]; }, $certSt), 'certificates');
+    if ($canFin) { $table('Course fee revenue by month', ['Month', 'Invoiced', 'Collected'], array_map(function ($m, $a, $b) { return [$m, lc_money($a), lc_money($b)]; }, array_values($months), $inv ?: array_fill(0, count($months), 0), $col ?: array_fill(0, count($months), 0)), 'revenue'); }
+    $J = function ($v) { return json_encode($v, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); };
+    ?>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    if (typeof Chart === 'undefined') { return; }
+    var P = window.rmPalette || ['#1E2FE0', '#0FA968', '#E68A1C', '#7C5CE0', '#159AA8', '#E24B4A'], months = <?= $J(array_values($months)); ?>;
+    var base = { maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } };
+    var empty = function (id, n) { if (!n) { var c = document.getElementById(id); c.parentNode.innerHTML = '<div class="text-muted small d-flex h-100 align-items-center justify-content-center">No data for these filters.</div>'; return true; } return false; };
+    var mk = function (id, cfg, n) { if (!empty(id, n)) { new Chart(document.getElementById(id), cfg); } };
+    var enr = <?= $J($enr); ?>; mk('lcEnr', { type: 'line', data: { labels: months, datasets: [{ label: 'Enrollments', data: enr, borderColor: P[0], backgroundColor: 'rgba(30,47,224,.12)', fill: true, tension: .3 }] }, options: Object.assign({}, base, { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }) }, enr.reduce(function (a, b) { return a + b; }, 0));
+    var byC = <?= $J($byC); ?>;
+    mk('lcDist', { type: 'doughnut', data: { labels: byC.map(function (r) { return r.code; }), datasets: [{ data: byC.map(function (r) { return +r.n; }), backgroundColor: P }] }, options: base }, byC.length);
+    mk('lcComp', { type: 'bar', data: { labels: byC.map(function (r) { return r.code; }), datasets: [{ label: 'Completed', data: byC.map(function (r) { return +r.comp; }), backgroundColor: P[1] }, { label: 'Not passed', data: byC.map(function (r) { return +r.fail; }), backgroundColor: P[5] }, { label: 'Studying', data: byC.map(function (r) { return +r.cur; }), backgroundColor: '#C9D1EA' }] }, options: Object.assign({}, base, { scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } } } }) }, byC.length);
+    var g = <?= $J($grades); ?>; mk('lcGrades', { type: 'bar', data: { labels: g.map(function (r) { return 'Grade ' + r.g; }), datasets: [{ label: 'Students', data: g.map(function (r) { return +r.n; }), backgroundColor: P[3] }] }, options: Object.assign({}, base, { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }) }, g.length);
+    var av = <?= $J($avgC); ?>; mk('lcAvg', { type: 'bar', data: { labels: av.map(function (r) { return r.code; }), datasets: [{ label: 'Average final mark (%)', data: av.map(function (r) { return Math.round(r.av * 10) / 10; }), backgroundColor: P[4] }] }, options: Object.assign({}, base, { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, max: 100 } } }) }, av.length);
+    var ce = <?= $J($certV); ?>; mk('lcCert', { type: 'bar', data: { labels: months, datasets: [{ label: 'Certificates', data: ce, backgroundColor: P[2] }] }, options: Object.assign({}, base, { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }) }, ce.reduce(function (a, b) { return a + b; }, 0));
+    var ks = <?= $J($kst); ?>, cs = <?= $J($cst); ?>;
+    mk('lcActive', { type: 'bar', data: { labels: ['Classes', 'Courses'], datasets: ['Planned', 'Running', 'Completed', 'Suspended', 'Cancelled'].map(function (st, i) { var f = function (a, key) { var x = a.filter(function (r) { return r[key] === st; })[0]; return x ? +x.n : 0; }; return { label: st, data: [f(ks, 'status'), f(cs, 's')], backgroundColor: [ '#C9D1EA', P[1], P[0], P[2], '#8A90A3'][i] }; }) }, options: Object.assign({}, base, { indexAxis: 'y', scales: { x: { stacked: true, beginAtZero: true, ticks: { precision: 0 } }, y: { stacked: true } } }) }, ks.length + cs.length);
+    <?php if ($canFin) { ?>var inv = <?= $J($inv); ?>, col = <?= $J($col); ?>;
+    mk('lcRev', { type: 'bar', data: { labels: months, datasets: [{ label: 'Invoiced', data: inv, backgroundColor: P[0] }, { label: 'Collected', data: col, backgroundColor: P[1] }] }, options: Object.assign({}, base, { scales: { y: { beginAtZero: true, ticks: { callback: function (v) { return 'RWF ' + Number(v).toLocaleString('en-US'); } } } } }) }, inv.concat(col).reduce(function (a, b) { return a + b; }, 0));<?php } ?>
+});
+</script>
+    <?php
+}
 /* =============================================================== MARKETING & APPLICATIONS */
 if ($sec === 'marketing') {
     $aw = "a.status <> 'Draft' AND COALESCE(a.submitted_at, a.created_at) BETWEEN $F AND $T AND " . $bw('a.branch_id');
@@ -139,6 +215,15 @@ if ($sec === 'internships') {
     $table('By opportunity', ['Opportunity', 'Applications', 'Placed', 'Places'], array_map(function ($r) { return [lc_e($r['title']), (int) $r['n'], (int) $r['placed'], $r['places'] ? (int) $r['places'] : '—']; }, $po), 'internship_posts');
 }
 $body = ob_get_clean();
+$secNames = ['overview' => 'Overview', 'marketing' => 'Marketing & applications', 'academic' => 'Academic performance', 'finance' => 'Finance', 'accommodation' => 'Accommodation', 'internships' => 'Internships'];
+// NEW: PDF (preview in the browser, or download with dl=1), with the charts drawn on the page.
+if (($_GET['export'] ?? '') === 'pdf' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $filters = [['Period', date('d M Y', strtotime($from)) . ' – ' . date('d M Y', strtotime($to))], ['Branch', $fb !== null ? lc_branch_name($conn, $fb) : 'All my branches'], ['Prepared by', $_SESSION['user_name'] ?? '']];
+    if ($fc) { $cc = lc_course($conn, $fc); $filters[] = ['Course', ($cc['code'] ?? '') . ' ' . ($cc['title'] ?? '')]; }
+    $summary = []; foreach ($csv as $r) { if ($r[0] === 'summary') { $summary[] = [(string) $r[1], (string) $r[2]]; } }
+    lc_audit($conn, 'report_pdf', 'report', null, ['section' => $sec, 'from' => $from, 'to' => $to]);
+    an_render_pdf('RM Learning Centre — ' . $secNames[$sec], $filters, $summary, an_posted_charts(), $pdfTables, 'learning-centre-' . $sec . '-' . $from . '-' . $to . '.pdf');
+}
 if (($_GET['export'] ?? '') === 'csv') {
     header('Content-Type: text/csv; charset=UTF-8'); header('Content-Disposition: attachment; filename="learning-centre-' . $sec . '-' . $from . '-' . $to . '.csv"');
     $o = fopen('php://output', 'w'); fputcsv($o, ['RM Learning Centre — ' . $sec, $from . ' to ' . $to]); foreach ($csv as $r) { fputcsv($o, $r); } fclose($o);
@@ -148,13 +233,15 @@ if (($_GET['export'] ?? '') === 'csv') {
 include __DIR__ . '/../../includes/header.php';
 include __DIR__ . '/../../includes/sidebar.php';
 lcs_tabs($conn, 'reports.php', 'Learning Centre Reports');
-$secs = ['marketing' => 'Marketing & applications', 'academic' => 'Academic performance'] + ($canFin ? ['finance' => 'Finance'] : []) + ['accommodation' => 'Accommodation', 'internships' => 'Internships'];
+$secs = ['overview' => 'Overview', 'marketing' => 'Marketing & applications', 'academic' => 'Academic performance'] + ($canFin ? ['finance' => 'Finance'] : []) + ['accommodation' => 'Accommodation', 'internships' => 'Internships'];
 ?>
 <form class="row g-2 mb-2 align-items-end"><input type="hidden" name="s" value="<?= lc_e($sec); ?>">
     <div class="col-auto"><label class="form-label small mb-0">From</label><input type="date" name="from" value="<?= $from; ?>" class="form-control form-control-sm"></div>
     <div class="col-auto"><label class="form-label small mb-0">To</label><input type="date" name="to" value="<?= $to; ?>" class="form-control form-control-sm"></div>
     <?php if (br_enabled($conn)) { ?><div class="col-auto"><label class="form-label small mb-0">Branch</label><select name="branch" class="form-select form-select-sm"><option value="">All my branches</option><?php foreach (br_all($conn) as $bid => $b) { if (lcs_branch_ok($conn, (int) $bid)) { ?><option value="<?= (int) $bid; ?>" <?= $fb === (int) $bid ? 'selected' : ''; ?>><?= lc_e($b['name']); ?></option><?php } } ?></select></div><?php } ?>
+    <?php if ($sec === 'overview') { ?><div class="col-auto"><label class="form-label small mb-0">Course</label><select name="course" class="form-select form-select-sm"><option value="0">All courses</option><?php foreach (mysqli_fetch_all(mysqli_query($conn, 'SELECT id, code FROM lc_courses ORDER BY code'), MYSQLI_ASSOC) as $c) { ?><option value="<?= (int) $c['id']; ?>" <?= $fc === (int) $c['id'] ? 'selected' : ''; ?>><?= lc_e($c['code']); ?></option><?php } ?></select></div><?php } ?>
     <div class="col-auto"><button class="btn btn-sm btn-primary">Show</button> <a class="btn btn-sm btn-light border" href="?<?= lc_e(http_build_query(array_merge($_GET, ['s' => $sec, 'export' => 'csv']))); ?>">CSV</a></div></form>
+<div class="mb-2 d-flex gap-1 justify-content-end"><?php $_GET['s'] = $sec; an_pdf_buttons(); ?></div>
 <ul class="nav nav-pills small mb-3"><?php foreach ($secs as $k => $l) { ?><li class="nav-item"><a class="nav-link py-1 <?= $sec === $k ? 'active' : ''; ?>" href="?<?= lc_e(http_build_query(['s' => $k, 'from' => $from, 'to' => $to, 'branch' => $fb ?? ''])); ?>"><?= $l; ?></a></li><?php } ?></ul>
 <?= $body; ?>
-<?php include __DIR__ . '/../../includes/footer.php'; ?>
+<?php an_js(); include __DIR__ . '/../../includes/footer.php'; ?>

@@ -302,7 +302,7 @@ function access_page_permission(string $script): ?string
     // NEW: Company Loans & Investment Intelligence. Proposal and audit pages check view / propose / approve inside.
     if ($module === 'loan_intel') { return in_array($f, ['proposals', 'proposal', 'proposal_edit', 'audit', 'common'], true) ? '*' : ($f === 'settings' ? 'loan_intel.configure' : 'loan_intel.view'); }
     // NEW: RM Learning Centre. Every page checks its own permission (view / courses / admissions / settings).
-    if ($module === 'learning') { return $f === 'settings' ? 'learning.settings' : '*'; }
+    if ($module === 'learning') { return in_array($f, ['settings', 'templates', 'template_edit'], true) ? 'learning.settings' : '*'; }
     if ($module === 'timetable') {
         return ['index' => '*', 'my' => '*', 'action' => '*', 'api' => '*', 'timetable_pdf' => '*', 'day' => '*', 'corrections' => '*', 'cron' => '*',
                 'board' => 'timetable.approve', 'approvals' => 'timetable.approve', 'reports' => 'timetable.reports'][$f] ?? 'timetable.manage';

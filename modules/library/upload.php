@@ -6,12 +6,15 @@
  */
 require '../../config/db.php';
 require_once '../../includes/library_helpers.php';
+require_once '../../includes/lib_access.php'; // NEW: customer / student access
 lib_ensure($conn);
+lib_access_ensure($conn);
 lib_guard($conn, 'library.create');
 
 $allowed = lib_allowed_folder_ids($conn);
 $folderId = (int) ($_POST['folder_id'] ?? ($_GET['f'] ?? 0));
 $canApprove = lib_can('approve');
+$canPublish = lib_can('publish'); // NEW: may give customers / students access
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $files = lib_files($_FILES['files'] ?? null);
@@ -27,6 +30,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     elseif (count($files) === 1 && $title === '') { $error = 'Give the document a title.'; }
     elseif (!$validDate($issue) || !$validDate($expiry) || ($issue !== '' && $expiry !== '' && $expiry < $issue)) { $error = 'Check the dates (the expiry date cannot be before the issue date).'; }
     else {
+        // NEW: who can open it (Staff only unless the uploader may publish to customers / students)
+        try { $acc = $canPublish ? lib_access_from_post($conn, $_POST) : null; } catch (RuntimeException $ae) { $acc = false; $error = $ae->getMessage(); }
+    }
+    if (!isset($error)) {
         $done = 0; $failed = []; $refs = [];
         foreach ($files as $file) {
             // Bulk: each file becomes a document titled after its file name (the shared details apply to all).
@@ -42,6 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $docId = (int) mysqli_insert_id($conn);
                 $refs[] = lib_assign_reference($conn, $docId); // CHANGED: automatic reference number
                 lib_add_version($conn, $docId, $file, 'Original');
+                if ($acc && $acc['audience'] !== 'staff') { lib_access_save($conn, $docId, $acc, $uid); } // NEW
                 lib_log($conn, $docId, $folderId, 'uploaded', $file['name'] . ' into ' . lib_folder_path($conn, $folderId) . ' (' . $status . ')');
                 mysqli_commit($conn);
                 $done++;
@@ -83,6 +91,7 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
             <div class="col-md-6"><label class="form-label small fw-semibold text-muted">Expiry date</label><input type="date" name="expiry_date" class="form-control rm-input" value="<?= $e($_POST['expiry_date'] ?? ''); ?>"></div>
         </div>
         <div class="form-text mb-3">The reference number (e.g. RM-DOC-<?= date('Y'); ?>-00042) is created automatically.</div>
+        <?php if ($canPublish) { echo lib_access_fields($conn, null, lib_course_options($conn)); ?><div class="form-text mb-3" style="margin-top:-8px">Customers and students see it as soon as it is Active (approved): no access requests.</div><?php } ?>
         <?php if ($canApprove) { ?>
         <div class="mb-3"><label class="form-label small fw-semibold text-muted">Status</label>
             <select name="status" class="form-select rm-input"><option value="Active">Active</option><option value="Pending Review">Pending review</option></select></div>

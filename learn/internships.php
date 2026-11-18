@@ -53,7 +53,7 @@ $v = function ($k) use ($old) { return lc_e($old[$k] ?? ''); };
     <?php } ?>
     <?php if ($post) { [$ok, $why] = lc_int_post_open($conn, $post); ?>
     <div class="card mb-3"><div class="card-body p-4">
-        <div class="small"><a href="internships.php"><i class="bi bi-arrow-left"></i> All internships</a></div>
+        <div class="small"><a href="internships.php"><?= lcp_i('arrow-left'); ?> All internships</a></div>
         <h2 class="h4 fw-bold mt-1"><?= lc_e($post['title']); ?></h2>
         <div class="small text-muted mb-2"><?= lc_e($post['department'] ?? ''); ?> · <?= lc_e(lc_branch_name($conn, (int) $post['branch_id'] ?: null)); ?><?= $post['start_date'] ? ' · ' . date('d M Y', strtotime($post['start_date'])) . ' → ' . ($post['end_date'] ? date('d M Y', strtotime($post['end_date'])) : '') : ''; ?></div>
         <div style="white-space:pre-line;"><?= lc_e($post['description']); ?></div>

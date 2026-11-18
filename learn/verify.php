@@ -27,7 +27,7 @@ lcp_header($conn, ['title' => 'Verify a certificate', 'url' => lc_public_base($c
     $ok = $cert['status'] === 'Valid';
     $new = $cert['replaced_by_id'] ? mysqli_fetch_assoc(mysqli_query($conn, 'SELECT number FROM lc_certificates WHERE id = ' . (int) $cert['replaced_by_id'])) : null; ?>
     <div class="card"><div class="card-body p-4">
-        <div class="text-center mb-3"><div class="display-6 <?= $ok ? 'text-success' : 'text-danger'; ?>"><i class="bi bi-<?= $ok ? 'patch-check-fill' : 'x-octagon-fill'; ?>"></i></div>
+        <div class="text-center mb-3"><div class="<?= $ok ? 'text-success' : 'text-danger'; ?> mb-1"><?= lcp_i($ok ? 'shield' : 'x-circle', 'lci-lg'); ?></div>
             <h1 class="h4 fw-bold mb-0 <?= $ok ? 'text-success' : 'text-danger'; ?>"><?= $ok ? 'Valid certificate' : ($cert['status'] === 'Revoked' ? 'This certificate was REVOKED' : 'This certificate was REPLACED and is no longer valid'); ?></h1>
             <div class="small text-muted">Issued by RISE MOTIVE Ltd · <?= lc_e(lc_setting($conn, 'title')); ?></div></div>
         <table class="table table-sm mb-0">

@@ -5,7 +5,9 @@
  */
 require '../../config/db.php';
 require_once '../../includes/library_helpers.php';
+require_once '../../includes/lib_access.php'; // NEW: customer / student access
 lib_ensure($conn);
+lib_access_ensure($conn);
 lib_guard($conn);
 lib_expiry_reminders($conn);
 
@@ -14,7 +16,7 @@ $folders = lib_folders($conn);
 $allowed = lib_allowed_folder_ids($conn);
 $view = $_GET['view'] ?? 'all';
 $views = ['all' => 'All documents', 'recent' => 'Recently uploaded', 'mine' => 'My documents', 'shared' => 'Shared with me',
-          'pending' => 'Pending review', 'expiring' => 'Expiring (60 days)', 'archived' => 'Archived'];
+          'pending' => 'Pending review', 'expiring' => 'Expiring (60 days)', 'archived' => 'Archived', 'customers' => 'Open to customers / students'];
 if (lib_can('delete')) { $views['trash'] = 'Trash'; }
 if (!isset($views[$view])) { $view = 'all'; }
 $folderId = (int) ($_GET['f'] ?? 0);
@@ -30,6 +32,7 @@ if ($view === 'archived') { $where[] = "d.status = 'Archived'"; }
 elseif ($view !== 'trash') { $where[] = "d.status <> 'Archived'"; }
 if ($view === 'mine') { $where[] = 'd.uploaded_by = ' . $uid; }
 if ($view === 'shared') { $where[] = "EXISTS (SELECT 1 FROM lib_shares s WHERE s.document_id = d.id AND s.user_id = $uid)"; }
+if ($view === 'customers') { $where[] = "d.audience <> 'staff'"; } // NEW
 if ($view === 'pending') { $where[] = "d.status = 'Pending Review'"; }
 if ($view === 'expiring') { $where[] = 'd.expiry_date IS NOT NULL AND d.expiry_date <= DATE_ADD(CURDATE(), INTERVAL 60 DAY)'; }
 if ($folderId && $view !== 'trash') { $where[] = 'd.folder_id IN (' . implode(',', array_map('intval', lib_descendants($conn, $folderId))) . ')'; }
@@ -83,7 +86,7 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
     <h2 class="mb-0">RM Digital Library</h2>
     <div class="d-flex flex-wrap gap-2">
-        <?php if (lib_can('manage')) { ?><a href="folders.php" class="rm-btn rm-btn-secondary rm-btn-sm"><i class="bi bi-folder-plus me-1"></i>Folders</a><?php } ?>
+        <?php if (lib_can('manage')) { ?><a href="folders.php" class="rm-btn rm-btn-secondary rm-btn-sm"><i class="bi bi-folder-plus me-1"></i>Folders</a><a href="access_settings.php" class="rm-btn rm-btn-secondary rm-btn-sm"><i class="bi bi-people me-1"></i>Customer access</a><?php } ?>
         <?php if (lib_can('create')) { ?><a href="upload.php<?= $folderId ? '?f=' . $folderId : ''; ?>" class="rm-btn rm-btn-primary rm-btn-sm"><i class="bi bi-upload me-1"></i>Upload</a><?php } ?>
     </div>
 </div>
@@ -126,7 +129,7 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
                     <div class="text-muted" style="font-size:11.5px;"><?= $e($d['file_name']); ?> · <?= $size($d['size_bytes']); ?> · v<?= (int) $d['current_version']; ?></div></td>
                 <td><?= $e($d['reference_no'] ?: '—'); ?></td>
                 <td class="small"><?= $e($d['folder_name']); ?></td>
-                <td><?= $view === 'trash' ? '<span class="badge bg-danger">In trash</span>' : $badge($d); ?></td>
+                <td><?= $view === 'trash' ? '<span class="badge bg-danger">In trash</span>' : $badge($d); ?><?= ($d['audience'] ?? 'staff') !== 'staff' ? '<div><span class="badge bg-info text-dark" title="' . $e(lib_access_label($conn, $d)) . '">' . $e(LIB_AUDIENCES[$d['audience']] ?? '') . '</span></div>' : ''; ?></td>
                 <td class="text-nowrap"><?= $d['expiry_date'] ? date('d M Y', strtotime($d['expiry_date'])) : '—'; ?></td>
                 <td class="small text-nowrap"><?= $e($d['uploader'] ?? '—'); ?><div class="text-muted"><?= date('d M Y', strtotime($d['created_at'])); ?></div></td>
                 <td><a href="document.php?id=<?= (int) $d['id']; ?>" class="rm-btn rm-btn-info rm-btn-sm">Open</a></td>

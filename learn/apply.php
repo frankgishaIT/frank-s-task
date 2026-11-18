@@ -38,10 +38,10 @@ if ($done !== '' && empty($_SESSION['lcp_tracked'][$done])) { $done = ''; } // o
 lcp_header($conn, ['title' => 'Apply — ' . $c['title'], 'description' => 'Apply online for ' . $c['title'] . ' at ' . lc_setting($conn, 'title') . '.', 'url' => lc_course_url($conn, $c)]);
 ?>
 <div class="container py-4" style="max-width:900px;">
-    <div class="small mb-1"><a href="<?= lc_e(lcp_course_href($conn, $c['code'])); ?>"><i class="bi bi-arrow-left"></i> <?= lc_e($c['title']); ?></a></div>
+    <div class="small mb-1"><a href="<?= lc_e(lcp_course_href($conn, $c['code'])); ?>"><?= lcp_i('arrow-left'); ?> <?= lc_e($c['title']); ?></a></div>
 <?php if ($done !== '') { ?>
     <div class="card"><div class="card-body p-4 text-center">
-        <div class="display-6 text-success"><i class="bi bi-check-circle-fill"></i></div>
+        <div class="text-success mb-2"><?= lcp_i('check-circle', 'lci-lg'); ?></div>
         <?php if (!empty($_GET['dup'])) { ?><h1 class="h4 fw-bold">You already applied for this intake</h1><p>We did not create a second application. Your reference is:</p>
         <?php } else { ?><h1 class="h4 fw-bold">Application received</h1><p>Thank you. Your application for <strong><?= lc_e($c['title']); ?></strong> was sent. Your reference is:</p><?php } ?>
         <div class="fs-2 fw-bold font-monospace my-2" style="color:var(--d)"><?= lc_e($done); ?></div>

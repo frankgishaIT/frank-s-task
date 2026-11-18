@@ -154,7 +154,7 @@ $csrf = '<input type="hidden" name="csrf" value="' . lc_e(lcp_csrf()) . '"><inpu
     ?>
     <div class="card mb-3"><div class="card-body p-4">
         <div class="d-flex flex-wrap justify-content-between gap-2"><div><div class="small text-muted">Application</div><div class="fs-4 fw-bold font-monospace" style="color:var(--d)"><?= lc_e($app['ref']); ?></div></div>
-            <form method="POST"><?= $csrf; ?><input type="hidden" name="do" value="signout"><button class="btn btn-sm btn-light border"><i class="bi bi-box-arrow-right"></i> Close</button></form></div>
+            <form method="POST"><?= $csrf; ?><input type="hidden" name="do" value="signout"><button class="btn btn-sm btn-light border"><?= lcp_i('logout'); ?> Close</button></form></div>
         <div class="mt-2"><span class="badge bg-<?= $app['registered_at'] ? 'success' : $color; ?> fs-6"><?= lc_e($app['registered_at'] ? 'Registered' : $app['status']); ?></span>
             <?php if ($app['status'] === 'Accepted') { ?><span class="badge bg-light text-dark border">Offer: <?= lc_e($app['offer_status'] ?: 'Pending'); ?></span><?php } ?></div>
         <p class="mt-2 mb-2"><?= $app['registered_at'] ? 'You are registered. Your Student ID is <strong>' . lc_e(lc_customer_id_label($conn, (int) $app['customer_id'])) . '</strong> (the same as your RISE MOTIVE Customer ID).' : lc_e(lc_status_help($app['status'], $app['offer_status'])); ?></p>
@@ -164,10 +164,10 @@ $csrf = '<input type="hidden" name="csrf" value="' . lc_e(lcp_csrf()) . '"><inpu
             <div class="col-md-6"><span class="text-muted">Applicant:</span> <?= lc_e($app['full_name']); ?></div>
             <div class="col-md-6"><span class="text-muted">Submitted:</span> <?= $app['submitted_at'] ? date('d M Y H:i', strtotime($app['submitted_at'])) : '—'; ?></div>
         </div>
-        <?php if ($app['status'] === 'Accepted') { ?><div class="mt-2"><a class="btn btn-sm btn-outline-primary" href="track.php?ref=<?= rawurlencode($app['ref']); ?>&letter=1" target="_blank"><i class="bi bi-file-earmark-pdf"></i> Admission letter</a></div><?php } ?>
+        <?php if ($app['status'] === 'Accepted') { ?><div class="mt-2"><a class="btn btn-sm btn-outline-primary" href="track.php?ref=<?= rawurlencode($app['ref']); ?>&letter=1" target="_blank"><?= lcp_i('file'); ?> Admission letter</a></div><?php } ?>
         <?php $tInv = array_filter(lc_invoices_for($conn, (int) $app['id']), function ($x) { return !$x['pending'] && !$x['cancelled']; }); if ($tInv) { ?><div class="small mt-2"><strong>Fees:</strong> <?php foreach ($tInv as $iv) { echo lc_e($iv['number']) . ' — ' . ($iv['balance'] <= 0.009 ? 'paid' : 'balance ' . lc_money($iv['balance']) . ($iv['next'] ? ', next ' . lc_money($iv['next']['due']) . ' by ' . date('d M Y', strtotime($iv['next']['due_date'])) : '')) . '. '; } ?></div><?php } ?>
         <?php if ($app['status'] === 'Accepted' && ($app['offer_status'] ?: 'Pending') === 'Pending') { ?>
-        <div class="border rounded p-3 mt-3 bg-light"><div class="fw-bold mb-1"><i class="bi bi-award text-success"></i> Admission offer</div>
+        <div class="border rounded p-3 mt-3 bg-light"><div class="fw-bold mb-1"><span class="text-success"><?= lcp_i('award'); ?></span> Admission offer</div>
             <?php if ($app['offer_note']) { ?><div class="small mb-2" style="white-space:pre-line;"><?= lc_e($app['offer_note']); ?></div><?php } ?>
             <form method="POST" class="d-inline"><?= $csrf; ?><input type="hidden" name="do" value="accept"><button class="btn btn-success">Accept the offer</button></form>
             <form method="POST" class="d-inline" onsubmit="return confirm('Decline the admission offer?');"><?= $csrf; ?><input type="hidden" name="do" value="decline"><button class="btn btn-outline-danger">Decline</button></form></div>
@@ -175,7 +175,7 @@ $csrf = '<input type="hidden" name="csrf" value="' . lc_e(lcp_csrf()) . '"><inpu
     </div></div>
     <?php if ($open) { ?>
     <div class="card mb-3 <?= $app['status'] === 'Additional Information Required' ? 'border border-warning' : ''; ?>"><div class="card-body">
-        <div class="fw-bold mb-1"><?= $app['status'] === 'Additional Information Required' ? '<i class="bi bi-exclamation-circle text-warning"></i> Information requested' : 'Send a message or a document'; ?></div>
+        <div class="fw-bold mb-1"><?= $app['status'] === 'Additional Information Required' ? '<span class="text-warning">' . lcp_i('alert') . '</span> Information requested' : 'Send a message or a document'; ?></div>
         <?php if ($req && $app['status'] === 'Additional Information Required') { ?><div class="alert alert-warning small py-2"><?= lc_e($req['note']); ?> <span class="text-muted">(<?= date('d M Y', strtotime($req['created_at'])); ?>)</span></div><?php } ?>
         <form method="POST" enctype="multipart/form-data"><?= $csrf; ?><input type="hidden" name="do" value="reply">
             <textarea name="note" class="form-control mb-2" rows="2" maxlength="2000" placeholder="Your message"></textarea>
@@ -190,7 +190,7 @@ $csrf = '<input type="hidden" name="csrf" value="' . lc_e(lcp_csrf()) . '"><inpu
             <?php foreach (array_reverse($hist) as $h) { ?><div class="border-start border-3 ps-2 mb-2 small"><div class="text-muted"><?= date('d M Y H:i', strtotime($h['created_at'])); ?></div>
                 <?= $h['to_status'] ? '<strong>' . lc_e($h['to_status']) . '</strong>' : ''; ?><?php if ($h['note']) { ?><div><?= lc_e($h['note']); ?></div><?php } ?></div><?php } ?></div></div></div>
         <div class="col-md-5"><div class="card h-100"><div class="card-body"><div class="fw-bold mb-2">Documents received</div>
-            <?php foreach ($docs as $d) { ?><div class="small mb-1"><i class="bi bi-paperclip"></i> <?= lc_e($d['label']); ?> <span class="text-muted">(<?= lc_e($d['original_name']); ?>)</span></div><?php } ?>
+            <?php foreach ($docs as $d) { ?><div class="small mb-1"><?= lcp_i('clip'); ?> <?= lc_e($d['label']); ?> <span class="text-muted">(<?= lc_e($d['original_name']); ?>)</span></div><?php } ?>
             <?php if (!$docs) { ?><div class="small text-muted">None.</div><?php } ?></div></div></div>
     </div>
     <?php if ($open) { ?>

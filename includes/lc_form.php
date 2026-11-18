@@ -72,7 +72,7 @@ function lc_form_render(mysqli $conn, array $course, array $old, ?array $custome
     <?php } ?>
 
     <div class="form-check mt-3"><input class="form-check-input" type="checkbox" name="consent" value="1" id="lcCons" required><label class="form-check-label small" for="lcCons">I confirm the information is correct and I agree that RISE MOTIVE Ltd uses it to process my application and contact me about it.</label></div>
-    <button class="btn btn-primary btn-lg mt-3" <?= $intakes ? '' : 'disabled'; ?> id="lcSubmit"><i class="bi bi-send"></i> Submit application</button>
+    <button class="btn btn-primary btn-lg mt-3" <?= $intakes ? '' : 'disabled'; ?> id="lcSubmit">Submit application</button>
 </form>
 <script>
 (function () {

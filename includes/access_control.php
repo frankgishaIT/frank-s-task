@@ -55,7 +55,7 @@ function access_catalog(): array
         'marketing'         => ['Marketing & Growth', ['view', 'create', 'leads', 'approve', 'finance', 'reports', 'manage']],
         'rm_invest'         => ['RMC - Investors Hub', ['view', 'create', 'edit', 'approve', 'reports', 'manage']],
         'kpi'               => ['Performance & KPI Management', ['view', 'create', 'edit', 'approve', 'reports', 'manage']],
-        'library'           => ['RM Digital Library', ['view', 'create', 'edit', 'replace', 'download', 'share', 'approve', 'archive', 'delete', 'manage']],
+        'library'           => ['RM Digital Library', ['view', 'create', 'edit', 'replace', 'download', 'share', 'publish', 'approve', 'archive', 'delete', 'manage']],
         'tools'             => ['Tools (database migrations)', ['manage']],
         'access'            => ['Roles & Permissions', ['manage']],
     ];
@@ -64,7 +64,7 @@ function access_catalog(): array
 const ACCESS_ACTION_LABELS = [
     'view' => 'View', 'create' => 'Create', 'edit' => 'Edit', 'approve' => 'Approve / reject', 'delete' => 'Delete / cancel',
     'reports' => 'Reports', 'manage' => 'Manage', 'executive_delete' => 'Executive delete (fully paid / processed)',
-    'replace' => 'Replace (new version)', 'download' => 'Download', 'share' => 'Share',
+    'replace' => 'Replace (new version)', 'download' => 'Download', 'share' => 'Share', 'publish' => 'Publish to customers / students',
     'archive' => 'Archive',
 ];
 /**
@@ -81,7 +81,7 @@ const ACCESS_ONE_TIME_GRANTS = [
 const ACCESS_NEW_DEFAULTS = [
     'library.view' => ['admin', 'manager', 'employee'], 'library.download' => ['admin', 'manager', 'employee'],
     'library.create' => ['admin', 'manager'], 'library.edit' => ['admin', 'manager'], 'library.replace' => ['admin', 'manager'],
-    'library.share' => ['admin', 'manager'], 'library.approve' => ['admin', 'manager'], 'library.archive' => ['admin'],
+    'library.share' => ['admin', 'manager'], 'library.publish' => ['admin', 'manager'], 'library.approve' => ['admin', 'manager'], 'library.archive' => ['admin'],
     'library.delete' => ['admin'], 'library.manage' => ['admin'],
     'portal.view' => ['admin', 'manager'], 'portal.edit' => ['admin', 'manager'], 'portal.manage' => ['admin'],
     'forecasting.view' => ['admin', 'manager'], 'forecasting.reports' => ['admin', 'manager'], 'forecasting.manage' => ['admin'],
@@ -272,7 +272,7 @@ function access_page_permission(string $script): ?string
     // Pages anyone signed in may open (they show only the person's own data, or are general).
     $open = ['dashboard/index', 'search/index', 'search/live', 'users/profile', 'payroll/my', 'payroll/payslip',
              'notifications/index', 'notifications/view', 'notifications/open', 'notifications/action', 'notifications/mark_read', 'notifications/delete',
-             'leave/index', 'leave/create', 'leave/view', 'company/profile'];
+             'leave/index', 'leave/create', 'leave/view', 'company/profile', 'tools/images'];
     if (in_array($module . '/' . $f, $open, true) || $module === 'search') { return '*'; }
 
     // Pages with their own permission.
@@ -310,7 +310,7 @@ function access_page_permission(string $script): ?string
     if ($module === 'kpi') { return ['my' => '*', 'kpi' => '*', 'reviews' => '*', 'settings' => 'kpi.manage', 'teams' => 'kpi.create'][$f] ?? 'kpi.view'; }
     if ($module === 'forecasting') { return 'forecasting.view'; } // finer checks inside (export, scenario settings)
     if ($module === 'portal') { return in_array($f, ['accounts', 'settings'], true) ? 'portal.manage' : (in_array($f, ['documents', 'records'], true) ? 'portal.edit' : 'portal.view'); }
-    if ($module === 'library') { return ['upload' => 'library.create', 'folders' => 'library.manage'][$f] ?? 'library.view'; }
+    if ($module === 'library') { return ['upload' => 'library.create', 'folders' => 'library.manage', 'access_settings' => 'library.manage', 'customer_lookup' => 'library.publish'][$f] ?? 'library.view'; }
     if (($module === 'loans' || $module === 'asset_management') && strpos($f, 'executive') !== false) { return $module . '.executive_delete'; }
     if ($module === 'asset_management' && in_array($f, ['valuation', 'valuation_evidence', 'refund_receive', 'sync_capital_fund'], true)) { return 'asset_management.edit'; }
     if ($module === 'sales' && in_array($f, ['ledger', 'invoice', 'receipt'], true)) { return 'sales.view'; }

@@ -1,5 +1,6 @@
 <?php
 // Shared profile-photo helpers (used by modules/users/edit.php and profile.php).
+require_once __DIR__ . '/image_kit.php'; // NEW: square crop, resize to 600 x 600, compression
 
 // Checks an uploaded profile photo WITHOUT saving it. Returns:
 //   ['none' => true]                 no file was chosen
@@ -14,6 +15,13 @@ function validate_user_photo($file) {
     if ($file['error'] !== UPLOAD_ERR_OK) {
         return ['error' => 'The photo could not be uploaded. Please try again.'];
     }
+    // NEW: profile pictures are square (the crop chosen in the browser, otherwise the centre), at most 600 x 600 px.
+    $imgError = img_optimize_upload($file, 'profile');
+    if ($imgError !== null) {
+        return ['error' => $imgError];
+    }
+    clearstatcache(true, $file['tmp_name']);
+    $file['size'] = (int) filesize($file['tmp_name']);
     if ($file['size'] > 2 * 1024 * 1024) {
         return ['error' => 'The photo is too large. Maximum size is 2 MB.'];
     }

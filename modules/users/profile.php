@@ -129,9 +129,8 @@ include '../../includes/sidebar.php';
                             <?php } ?>
                         </div>
                         <div class="flex-grow-1">
-                            <input type="file" name="photo" id="photoInput" class="form-control" accept="image/jpeg,image/png,image/webp">
-                            <div class="form-text">JPG, PNG or WEBP, up to 2 MB.</div>
-                            <?php if ($currentPhoto) { ?>
+                            <input type="file" name="photo" id="photoInput" class="form-control" accept="image/jpeg,image/png,image/webp"<?= img_input('profile'); ?>>
+                                                        <?php if ($currentPhoto) { ?>
                             <div class="form-check mt-1">
                                 <input class="form-check-input" type="checkbox" name="remove_photo" id="removePhoto" value="1">
                                 <label class="form-check-label small" for="removePhoto">Remove current photo</label>
@@ -213,4 +212,5 @@ include '../../includes/sidebar.php';
 })();
 </script>
 
+<?= img_kit_js(); // NEW: photo preview, square crop and checks ?>
 <?php include '../../includes/footer.php'; ?>

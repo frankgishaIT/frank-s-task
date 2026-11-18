@@ -6,6 +6,7 @@
 require __DIR__ . '/common.php';
 lcs_require($conn, 'courses');
 require_once __DIR__ . '/../../includes/evidence_store.php';
+require_once __DIR__ . '/../../includes/image_kit.php'; // NEW: 16:9 crop, resize, compression
 $id = (int) ($_GET['id'] ?? $_POST['id'] ?? 0);
 $c = $id ? lc_course($conn, $id) : null;
 if ($id && !$c) { lcs_go('courses.php', 'error', 'Course not found.'); }
@@ -41,7 +42,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         elseif (!$in['modes']) { $error = 'Choose at least one training mode.'; }
         elseif ($in['pass_mark'] > 100 || $in['attendance_min'] > 100) { $error = 'Pass mark and attendance are percentages (0-100).'; }
         else {
-            try { $img = evidence_save($conn, $_FILES['image'] ?? null, (int) current_user_id(), ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'], 3 * 1048576); }
+            $imgErr = img_prepare_upload('image', 'course'); // NEW: always 16:9, at most 1600 x 900, compressed
+            if ($imgErr !== null) { $error = $imgErr; }
+            try { $img = $error ? null : evidence_save($conn, $_FILES['image'] ?? null, (int) current_user_id(), ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'], 3 * 1048576); }
             catch (RuntimeException $e) { $error = $e->getMessage(); $img = null; }
             if (!$error) {
                 if ($img) { $in['image_ref'] = $img; }
@@ -128,9 +131,10 @@ $sel = function ($a, $b) { return (string) $a === (string) $b ? 'selected' : '';
     <h6 class="mb-0">Delivery</h6>
     <div class="col-6"><label class="form-label small">Default capacity per intake</label><input name="capacity" type="number" min="0" class="form-control form-control-sm" value="<?= lc_e($v['capacity']); ?>"></div>
     <div class="col-12"><label class="form-label small">Instructors (employees)</label><select name="instructors[]" class="form-select form-select-sm" multiple size="5"><?php foreach ($users as $uid => $n) { ?><option value="<?= $uid; ?>" <?= in_array((string) $uid, explode(',', (string) $v['instructors']), true) ? 'selected' : ''; ?>><?= lc_e($n); ?></option><?php } ?></select><div class="form-text">Ctrl/Cmd + click for several. External instructors come in the academic stage.</div></div>
-    <div class="col-12"><label class="form-label small">Course image (JPG/PNG/WebP, max 3 MB, used on the public page and in shared previews)</label><input type="file" name="image" accept="image/jpeg,image/png,image/webp" class="form-control form-control-sm"><?= $v['image_ref'] ? '<div class="form-text">An image is saved; choose a file to replace it.</div>' : ''; ?></div>
+    <div class="col-12"><label class="form-label small">Course image (16:9 — used on course cards, the course page and in shared previews · <a href="../tools/images.php" target="_blank">image guidelines</a>)</label><input type="file" name="image" accept="image/jpeg,image/png,image/webp" class="form-control form-control-sm"<?= img_input('course'); ?>><?= $v['image_ref'] ? '<div class="form-text">An image is saved; choose a file to replace it.</div>' : ''; ?></div>
 </div></div>
 <button class="btn btn-primary w-100"><?= $c ? 'Save course' : 'Create course (Draft)'; ?></button>
 </div>
 </form>
+<?= img_kit_js(); ?>
 <?php include __DIR__ . '/../../includes/footer.php'; ?>

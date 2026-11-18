@@ -5,7 +5,9 @@
  */
 require '../../config/db.php';
 require_once '../../includes/library_helpers.php';
+require_once '../../includes/lib_access.php'; // NEW: customer / student access
 lib_ensure($conn);
+lib_access_ensure($conn);
 lib_guard($conn);
 
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT) ?: filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
@@ -18,7 +20,7 @@ $allowed = lib_allowed_folder_ids($conn);
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = (string) ($_POST['action'] ?? '');
     $need = ['edit' => 'edit', 'move' => 'edit', 'replace' => 'replace', 'share' => 'share', 'approve' => 'approve',
-             'archive' => 'archive', 'unarchive' => 'archive', 'trash' => 'delete', 'restore' => 'delete', 'purge' => 'delete'][$action] ?? null;
+             'archive' => 'archive', 'unarchive' => 'archive', 'trash' => 'delete', 'restore' => 'delete', 'purge' => 'delete', 'access' => 'publish'][$action] ?? null;
     try {
         if (!$need || !lib_can($need)) { throw new RuntimeException('You are not allowed to do that.'); }
         if ($doc['deleted_at'] && !in_array($action, ['restore', 'purge'], true)) { throw new RuntimeException('Restore the document from the Trash first.'); }
@@ -68,6 +70,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 lib_log($conn, $id, (int) $doc['folder_id'], 'shared', 'Shared with ' . count($ids) . ' employee(s)');
                 $msg = $ids ? 'Shared with ' . count($ids) . ' employee(s).' : 'No longer shared.';
                 break;
+            case 'access': // NEW: who can open it (customers / students); logged in the activity log
+                $label = lib_access_save($conn, $id, lib_access_from_post($conn, $_POST), $uid);
+                $msg = 'Access saved: ' . $label . ($doc['status'] !== 'Active' ? ' (customers see it once it is Active).' : '.');
+                break;
             case 'approve':
                 mysqli_query($conn, "UPDATE lib_documents SET status = 'Active', reviewed_by = $uid, reviewed_at = NOW() WHERE id = $id AND status = 'Pending Review'");
                 lib_log($conn, $id, (int) $doc['folder_id'], 'approved', 'Review approved');
@@ -116,7 +122,7 @@ $ext = $current ? strtolower(pathinfo($current['original_name'], PATHINFO_EXTENS
 $previewable = in_array($ext, ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'txt'], true);
 $officeView = in_array($ext, ['docx', 'xlsx', 'xls', 'csv', 'doc', 'ppt', 'pptx', 'pub'], true); // NEW: Word / Excel preview, or a clear message + Download
 $showLog = lib_can('manage') || lib_can('edit');
-$activity = $showLog ? mysqli_fetch_all(mysqli_query($conn, "SELECT a.*, u.names FROM lib_activity a LEFT JOIN users u ON u.id = a.user_id WHERE a.document_id = $id ORDER BY a.id DESC LIMIT 100"), MYSQLI_ASSOC) : [];
+$activity = $showLog ? mysqli_fetch_all(mysqli_query($conn, "SELECT a.*, u.names, cu.name AS customer_name FROM lib_activity a LEFT JOIN users u ON u.id = a.user_id LEFT JOIN customers cu ON cu.id = a.customer_id WHERE a.document_id = $id ORDER BY a.id DESC LIMIT 100"), MYSQLI_ASSOC) : [];
 $people = lib_can('share') ? mysqli_fetch_all(mysqli_query($conn, "SELECT id, names FROM users WHERE is_active = 1 AND id <> $uid ORDER BY names"), MYSQLI_ASSOC) : [];
 $sharedWith = array_map('intval', array_column(mysqli_fetch_all(mysqli_query($conn, "SELECT user_id FROM lib_shares WHERE document_id = $id"), MYSQLI_ASSOC), 'user_id'));
 if (!$_POST && $current && !isset($_GET['success'])) { lib_log($conn, $id, (int) $doc['folder_id'], 'opened', ''); }
@@ -162,7 +168,7 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
     <?php if ($showLog) { ?>
     <details class="card border-0 shadow-sm"><summary class="card-body py-2 small fw-semibold">Activity log (<?= count($activity); ?>)</summary>
         <div class="px-3 pb-3 small" style="max-height:300px; overflow-y:auto;">
-        <?php foreach ($activity as $a) { ?><div class="border-bottom py-1"><span class="text-muted"><?= date('d M Y, H:i', strtotime($a['created_at'])); ?></span> · <strong><?= $e($a['names'] ?? '—'); ?></strong> <?= $e($a['action']); ?> <?= $e($a['details']); ?></div><?php } ?>
+        <?php foreach ($activity as $a) { ?><div class="border-bottom py-1"><span class="text-muted"><?= date('d M Y, H:i', strtotime($a['created_at'])); ?></span> · <strong><?= $e($a['names'] ?? (!empty($a['customer_name']) ? 'Customer ' . $a['customer_name'] : '—')); ?></strong> <?= $e($a['action']); ?> <?= $e($a['details']); ?></div><?php } ?>
         </div></details>
     <?php } ?>
 </div>
@@ -172,6 +178,8 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
         <div><strong>Issue date:</strong> <?= $doc['issue_date'] ? date('d M Y', strtotime($doc['issue_date'])) : '—'; ?></div>
         <div><strong>Expiry date:</strong> <?= $doc['expiry_date'] ? date('d M Y', strtotime($doc['expiry_date'])) . ($doc['expiry_date'] < date('Y-m-d') ? ' <span class="badge bg-danger">Expired</span>' : '') : '—'; ?></div>
         <div class="mt-2"><?= nl2br($e($doc['description'] ?: 'No description.')); ?></div>
+        <div class="mt-2"><strong>Who can open it:</strong> <?= $e(lib_access_label($conn, $doc)); ?><?= ($doc['audience'] ?? 'staff') !== 'staff' && $doc['kind'] ? ' · ' . $e(LIB_KINDS[$doc['kind']] ?? '') : ''; ?><?= $doc['due_date'] ? ' · due ' . date('d M Y', strtotime($doc['due_date'])) : ''; ?></div>
+        <?php if (($doc['audience'] ?? 'staff') !== 'staff') { $cs = mysqli_fetch_row(mysqli_query($conn, "SELECT COUNT(DISTINCT customer_id), SUM(action = 'portal_downloaded') FROM lib_activity WHERE document_id = $id AND customer_id IS NOT NULL")); ?><div class="text-muted">Opened by <?= (int) $cs[0]; ?> customer(s) · <?= (int) $cs[1]; ?> download(s)</div><?php } ?>
         <?php if ($current && lib_can('download') && !$doc['deleted_at']) { ?><a href="file.php?v=<?= (int) $current['id']; ?>&mode=download" class="btn btn-primary btn-sm mt-3"><i class="bi bi-download me-1"></i>Download</a><?php } ?>
     </div></div>
 
@@ -208,6 +216,11 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
                 <input type="file" name="file" class="form-control form-control-sm mb-2" accept="<?= LIB_ACCEPT; ?>" required>
                 <input name="note" class="form-control form-control-sm mb-2" maxlength="255" placeholder="What changed? e.g. Final signed agreement">
                 <button class="btn btn-primary btn-sm">Save as version <?= (int) $doc['current_version'] + 1; ?></button></form></div></details>
+        <?php } ?>
+        <?php if (lib_can('publish')) { ?>
+        <details class="card border-0 shadow-sm mb-2" <?= isset($error) && ($_POST['action'] ?? '') === 'access' ? 'open' : ''; ?>><summary class="card-body py-2 small fw-semibold">Customer &amp; student access</summary><div class="card-body pt-0">
+            <form method="POST"><input type="hidden" name="id" value="<?= $id; ?>"><input type="hidden" name="action" value="access">
+                <?= lib_access_fields($conn, $doc, lib_course_options($conn)); ?><button class="btn btn-primary btn-sm">Save access</button></form></div></details>
         <?php } ?>
         <?php if (lib_can('share')) { ?>
         <details class="card border-0 shadow-sm mb-2"><summary class="card-body py-2 small fw-semibold">Share (<?= count($sharedWith); ?>)</summary><div class="card-body pt-0">

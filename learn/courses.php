@@ -20,20 +20,24 @@ $rows = array_filter($all, function ($c) use ($conn, $q, $cat, $mode, $br, $dur,
 });
 $months = array_unique(array_map(function ($r) { return substr($r[0], 0, 7); }, mysqli_fetch_all(mysqli_query($conn, "SELECT start_date FROM lc_intakes WHERE status = 'Open' AND start_date >= '" . date('Y-m-d') . "' ORDER BY start_date"))));
 lcp_header($conn, ['title' => 'Courses', 'description' => 'All RM Learning Centre courses: requirements, fees, intakes and online application.', 'url' => lc_public_base($conn) . '/courses.php']);
+$nFilters = ($cat !== '') + ($mode !== '') + ($br > 0) + ($dur !== '') + ($month !== '') + $open;
 ?>
-<div class="container py-4">
-    <h1 class="h3 fw-bold" style="color:var(--d)">Courses</h1>
-    <form class="card mb-3"><div class="card-body row g-2">
-        <div class="col-md-4"><input name="q" value="<?= lc_e($q); ?>" class="form-control" placeholder="Search a course"></div>
-        <div class="col-6 col-md-2"><select name="category" class="form-select"><option value="">All categories</option><?php foreach (lc_categories($conn) as $x) { ?><option <?= $cat === $x ? 'selected' : ''; ?>><?= lc_e($x); ?></option><?php } ?></select></div>
-        <div class="col-6 col-md-2"><select name="duration" class="form-select"><option value="">Any duration</option><option value="short" <?= $dur === 'short' ? 'selected' : ''; ?>>Up to 1 month</option><option value="medium" <?= $dur === 'medium' ? 'selected' : ''; ?>>1 to 3 months</option><option value="long" <?= $dur === 'long' ? 'selected' : ''; ?>>More than 3 months</option></select></div>
-        <div class="col-6 col-md-2"><select name="branch" class="form-select"><option value="0">All branches</option><?php foreach ($branches as $b) { ?><option value="<?= (int) $b['id']; ?>" <?= $br === (int) $b['id'] ? 'selected' : ''; ?>><?= lc_e($b['name']); ?></option><?php } ?></select></div>
-        <div class="col-6 col-md-2"><select name="mode" class="form-select"><option value="">Any mode</option><?php foreach (LC_MODES as $x) { ?><option <?= $mode === $x ? 'selected' : ''; ?>><?= $x; ?></option><?php } ?></select></div>
-        <div class="col-6 col-md-3"><select name="intake" class="form-select"><option value="">Any intake</option><?php foreach ($months as $m) { ?><option value="<?= $m; ?>" <?= $month === $m ? 'selected' : ''; ?>>Starting <?= date('F Y', strtotime($m . '-01')); ?></option><?php } ?></select></div>
-        <div class="col-6 col-md-3 pt-2"><div class="form-check"><input class="form-check-input" type="checkbox" name="open" value="1" id="op" <?= $open ? 'checked' : ''; ?>><label class="form-check-label" for="op">Open for applications only</label></div></div>
-        <div class="col-md-2"><button class="btn btn-primary w-100">Search</button></div><div class="col-md-2"><a href="courses.php" class="btn btn-light border w-100">Reset</a></div>
+<div class="container py-3 py-md-4">
+    <h1 class="mb-1" style="color:var(--d)">Courses</h1><p class="text-muted small mb-3">Requirements, fees, intakes and online application.</p>
+    <form class="card mb-3"><div class="card-body">
+        <div class="d-flex gap-2"><input name="q" value="<?= lc_e($q); ?>" class="form-control" placeholder="Search a course" aria-label="Search a course"><button class="btn btn-primary px-3" aria-label="Search"><?= lcp_i('search'); ?><span class="d-none d-sm-inline">Search</span></button></div>
+        <details class="mt-2" <?= $nFilters ? 'open' : ''; ?>><summary class="small fw-semibold text-primary" style="cursor:pointer">Filters<?= $nFilters ? ' (' . $nFilters . ')' : ''; ?></summary>
+        <div class="row g-2 mt-1">
+            <div class="col-6 col-md-3"><select name="category" class="form-select" aria-label="Category"><option value="">All categories</option><?php foreach (lc_categories($conn) as $x) { ?><option <?= $cat === $x ? 'selected' : ''; ?>><?= lc_e($x); ?></option><?php } ?></select></div>
+            <div class="col-6 col-md-3"><select name="duration" class="form-select" aria-label="Duration"><option value="">Any duration</option><option value="short" <?= $dur === 'short' ? 'selected' : ''; ?>>Up to 1 month</option><option value="medium" <?= $dur === 'medium' ? 'selected' : ''; ?>>1 to 3 months</option><option value="long" <?= $dur === 'long' ? 'selected' : ''; ?>>More than 3 months</option></select></div>
+            <div class="col-6 col-md-3"><select name="branch" class="form-select" aria-label="Branch"><option value="0">All branches</option><?php foreach ($branches as $b) { ?><option value="<?= (int) $b['id']; ?>" <?= $br === (int) $b['id'] ? 'selected' : ''; ?>><?= lc_e($b['name']); ?></option><?php } ?></select></div>
+            <div class="col-6 col-md-3"><select name="mode" class="form-select" aria-label="Training mode"><option value="">Any mode</option><?php foreach (LC_MODES as $x) { ?><option <?= $mode === $x ? 'selected' : ''; ?>><?= $x; ?></option><?php } ?></select></div>
+            <div class="col-12 col-md-4"><select name="intake" class="form-select" aria-label="Intake"><option value="">Any intake</option><?php foreach ($months as $m) { ?><option value="<?= $m; ?>" <?= $month === $m ? 'selected' : ''; ?>>Starting <?= date('F Y', strtotime($m . '-01')); ?></option><?php } ?></select></div>
+            <div class="col-12 col-md-4 d-flex align-items-center"><div class="form-check mb-0"><input class="form-check-input" type="checkbox" name="open" value="1" id="op" <?= $open ? 'checked' : ''; ?>><label class="form-check-label small" for="op">Open for applications only</label></div></div>
+            <div class="col-12 col-md-4 d-flex gap-2"><button class="btn btn-primary flex-fill">Apply filters</button><a href="courses.php" class="btn btn-light border flex-fill">Reset</a></div>
+        </div></details>
     </div></form>
-    <div class="small text-muted mb-2"><?= count($rows); ?> course(s)</div>
+    <div class="small text-muted mb-2"><?= count($rows); ?> course<?= count($rows) === 1 ? '' : 's'; ?></div>
     <div class="row g-3"><?php foreach ($rows as $c) { lcp_course_card($conn, $c); } ?><?php if (!$rows) { ?><div class="col-12"><div class="card"><div class="card-body text-muted">No course matches. <a href="courses.php">See all courses</a>.</div></div></div><?php } ?></div>
 </div>
 <?php lcp_footer($conn); ?>

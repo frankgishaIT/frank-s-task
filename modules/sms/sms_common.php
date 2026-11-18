@@ -9,9 +9,15 @@ register_shutdown_function(function () {
         . htmlspecialchars(mb_substr(preg_replace('/Stack trace:.*/s', '', (string) $e['message']), 0, 600) . ' — ' . basename((string) $e['file']) . ':' . $e['line'], ENT_QUOTES, 'UTF-8') . '</code></div>';
 });
 require_once __DIR__ . '/../../config/db.php';
+require_once __DIR__ . '/../../includes/access_control.php'; // FIXED: access_can() is not loaded by config/db.php on the server
 require_once __DIR__ . '/../../includes/sms_messages.php';
 require_once __DIR__ . '/../../includes/sms_center.php';
 if (is_file(__DIR__ . '/../../includes/lc_helpers.php')) { require_once __DIR__ . '/../../includes/lc_helpers.php'; }
+// Every SMS Management page needs SMS "View" (the edit, essential and test rights are checked on each action).
+if (basename((string) ($_SERVER['SCRIPT_NAME'] ?? '')) !== 'sms_cron.php' && !access_can('sms.view', $conn)) {
+    http_response_code(403);
+    exit('<div style="margin:20px;font:14px Arial;">You do not have access to SMS Management. <a href="../dashboard/index.php">Back</a></div>');
+}
 sms_center_ensure($conn);
 if (!sms_center_ready($conn)) {
     http_response_code(500);

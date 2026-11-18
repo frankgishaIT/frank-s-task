@@ -646,8 +646,10 @@ function tt_deliver(mysqli $conn, string $kind, int $ref, string $workDate, int 
                     if (!send_email($recipient['email'], $recipient['names'], $title, $html)) { $status = 'failed'; $detail = 'Mail server refused'; }
                 }
             } elseif ($channel === 'sms') {
-                require_once __DIR__ . '/sms_helpers.php';
-                $ok = sms_send($conn, $recipient['phone'] ?? null, 'MY MOTIVE: ' . $message, 'TIMETABLE_' . strtoupper($kind), 'tt_notification', $logId, $recipientId);
+                require_once __DIR__ . '/sms_center.php'; // CHANGED (Task 10): wording "MY MOTIVE: {message}" and switch in SMS Management (TIMETABLE)
+                $ok = sms_notify($conn, 'TIMETABLE', $recipient['phone'] ?? null, ['message' => $message, 'title' => $title, 'employee_name' => strtok((string) ($recipient['names'] ?? ''), ' ')],
+                    ['to' => (TT_NOTIFY_KINDS[$kind][1] ?? 'Employee') === 'Supervisor' ? 'supervisor' : 'employee', 'ref_type' => 'tt_notification', 'ref_id' => $logId, 'log_event' => 'TIMETABLE_' . strtoupper($kind),
+                     'recipient_user' => $recipientId, 'branch_id' => isset($recipient['branch_id']) ? (int) $recipient['branch_id'] : null, 'role' => $recipient['role'] ?? null]);
                 if (!$ok) { $status = 'failed'; $detail = 'See SMS log'; }
             }
         } catch (Throwable $e) {

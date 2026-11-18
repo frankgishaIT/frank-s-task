@@ -38,7 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 mysqli_stmt_bind_param($s, 'iss', $aid, $h, $exp);
                 mysqli_stmt_execute($s);
                 $sent = false;
-                try { require_once __DIR__ . '/../includes/sms_helpers.php'; if (function_exists('sms_send')) { $r = sms_send($conn, $app['phone'], 'RM Learning Centre code: ' . $code . ' (valid 10 minutes). Do not share it.', 'learning_otp', 'lc_application', $aid, null); $sent = $r !== false; } } catch (Throwable $e) { error_log('lc otp: ' . $e->getMessage()); }
+                try { require_once __DIR__ . '/../includes/sms_center.php'; $sent = sms_notify($conn, 'LC_TRACK_OTP', $app['phone'], ['code' => $code], ['to' => 'applicant', 'ref_type' => 'lc_application', 'ref_id' => $aid]); } catch (Throwable $e) { error_log('lc otp: ' . $e->getMessage()); } // CHANGED (Task 10): security notification in SMS Management
                 if (!$sent && !empty($app['email']) && is_file(__DIR__ . '/../includes/mailer.php')) {
                     try { require_once __DIR__ . '/../includes/mailer.php'; send_email($app['email'], $app['full_name'], 'Your RM Learning Centre code', '<p>Your code is <strong>' . $code . '</strong> (valid 10 minutes).</p>'); $sent = true; } catch (Throwable $e) { }
                 }

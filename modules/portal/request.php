@@ -14,9 +14,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $m = mysqli_prepare($conn, 'INSERT INTO portal_request_messages (request_id, from_customer, user_id, body) VALUES (?, 0, ?, ?)');
         mysqli_stmt_bind_param($m, 'iis', $rid, $uid, $body);
         mysqli_stmt_execute($m);
-        if (portal_setting($conn, 'sms_on_reply', '1') === '1' && is_file(__DIR__ . '/../../includes/sms_helpers.php')) {
-            require_once __DIR__ . '/../../includes/sms_helpers.php';
-            try { sms_send($conn, (string) $req['phone'], 'RISE MOTIVE answered your request ' . portal_request_number($rid) . '. Sign in to the customer portal to read it.', 'portal_reply', 'portal_request', $rid, $uid); } catch (Throwable $x) {}
+        if (portal_setting($conn, 'sms_on_reply', '1') === '1' && is_file(__DIR__ . '/../../includes/sms_center.php')) {
+            require_once __DIR__ . '/../../includes/sms_center.php'; // CHANGED (Task 10): notification PORTAL_REPLY in SMS Management
+            try { sms_notify($conn, 'PORTAL_REPLY', (string) $req['phone'], ['request_number' => portal_request_number($rid), 'customer_name' => mb_convert_case(strtok((string) $req['name'], ' ') ?: '', MB_CASE_TITLE, 'UTF-8')],
+                ['to' => 'customer', 'ref_type' => 'portal_request', 'ref_id' => $rid, 'user' => $uid, 'customer_id' => (int) $req['customer_id']]); } catch (Throwable $x) {}
         }
     }
     $s = mysqli_prepare($conn, 'UPDATE portal_requests SET status = ?, updated_at = NOW() WHERE id = ?');

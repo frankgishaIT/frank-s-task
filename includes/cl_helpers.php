@@ -231,11 +231,13 @@ function portal_notify_customer(mysqli $conn, int $customerId, string $title, st
     $s = mysqli_prepare($conn, 'INSERT INTO portal_notifications (customer_id, title, body, link) VALUES (?, ?, ?, ?)');
     $b = mb_substr($body, 0, 500);
     mysqli_stmt_bind_param($s, 'isss', $customerId, $title, $b, $link); mysqli_stmt_execute($s);
-    if ($sms && is_file(__DIR__ . '/sms_helpers.php')) {
-        require_once __DIR__ . '/sms_helpers.php';
-        $phone = (string) (mysqli_fetch_row(mysqli_query($conn, 'SELECT phone FROM customers WHERE id = ' . $customerId))[0] ?? '');
-        if ($phone !== '' && function_exists('sms_send')) {
-            try { sms_send($conn, $phone, 'RISE MOTIVE: ' . mb_substr($title, 0, 120) . '. Details in your customer portal.', 'portal_notice', 'customer', $customerId, null); } catch (Throwable $e) { error_log('portal sms: ' . $e->getMessage()); }
+    if ($sms && is_file(__DIR__ . '/sms_center.php')) {
+        // CHANGED (Task 10): wording, switch and rules in SMS Management (notification PORTAL_NOTICE).
+        require_once __DIR__ . '/sms_center.php';
+        $c = mysqli_fetch_assoc(mysqli_query($conn, 'SELECT name, phone, created_branch_id FROM customers WHERE id = ' . $customerId));
+        if ($c && (string) $c['phone'] !== '') {
+            try { sms_notify($conn, 'PORTAL_NOTICE', (string) $c['phone'], ['title' => mb_substr($title, 0, 120), 'customer_name' => mb_convert_case(strtok((string) $c['name'], ' ') ?: '', MB_CASE_TITLE, 'UTF-8'), 'customer_id' => 'RMC' . str_pad((string) $customerId, 6, '0', STR_PAD_LEFT)],
+                ['to' => 'customer', 'ref_type' => 'customer', 'ref_id' => $customerId, 'customer_id' => $customerId, 'branch_id' => $c['created_branch_id'] !== null ? (int) $c['created_branch_id'] : null, 'dedupe_phone' => null]); } catch (Throwable $e) { error_log('portal sms: ' . $e->getMessage()); }
         }
     }
 }

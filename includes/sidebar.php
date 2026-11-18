@@ -92,6 +92,10 @@ if ($rmCompactUi) { ?>
         <i class="bi bi-journal-bookmark-fill"></i> RM Digital Library
     </a>
     <?php } ?>
+    <!-- NEW (Task 10): SMS Management (templates, rules, delivery log, usage and costs) -->
+    <a href="../sms/index.php" class="<?= navActive('/sms/', $currentPath) ?>">
+        <i class="bi bi-chat-square-text"></i> SMS Management
+    </a>
     <a href="../messages/index.php" class="<?= navActive('/messages/', $currentPath) ?>">
         <i class="bi bi-chat-dots-fill"></i> Messages
         <?php if ($commUnread > 0) { ?><span class="badge rounded-pill ms-1" style="background:#E24B4A;"><?= $commUnread > 99 ? '99+' : $commUnread; ?></span><?php } ?>

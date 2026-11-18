@@ -137,8 +137,10 @@ function lc_int_notify(mysqli $conn, int $appId, string $message = ''): void
 {
     $a = lc_int_app($conn, $appId);
     if (!$a) { return; }
-    $text = strtr(lc_setting($conn, 'tpl_internship'), ['{ref}' => $a['ref'], '{post}' => $a['post_title'], '{status}' => $a['status'], '{message}' => $message, '{name}' => strtok($a['full_name'], ' ')]);
-    try { if (lc_setting($conn, 'notify_sms') === '1' && is_file(__DIR__ . '/sms_helpers.php')) { require_once __DIR__ . '/sms_helpers.php'; if (function_exists('sms_send')) { sms_send($conn, $a['phone'], trim($text), 'learning_internship', 'lc_internship', $appId, null); } } } catch (Throwable $e) { error_log('lc int sms: ' . $e->getMessage()); }
+    $iv = ['{ref}' => $a['ref'], '{post}' => $a['post_title'], '{status}' => $a['status'], '{message}' => $message, '{name}' => strtok($a['full_name'], ' ')];
+    $text = strtr(lc_msg($conn, 'tpl_internship'), $iv);
+    // CHANGED (Task 10): through SMS Management (notification learning_internship).
+    try { lc_sms($conn, 'tpl_internship', $a['phone'], $iv, ['to' => 'applicant', 'ref_type' => 'lc_internship', 'ref_id' => $appId, 'status' => $a['status'], 'customer_id' => $a['customer_id'] ? (int) $a['customer_id'] : null]); } catch (Throwable $e) { error_log('lc int sms: ' . $e->getMessage()); }
     try {
         if ($a['customer_id'] && lc_setting($conn, 'notify_portal') === '1') {
             $t = 'Internship ' . $a['ref']; $b = mb_substr(trim($text), 0, 500); $l = 'learning.php?tab=internships'; $c = (int) $a['customer_id'];

@@ -47,13 +47,30 @@ function sms_normalize_phone(?string $raw): ?string {
 }
 
 // Writes one row in sms_log. Never throws.
+// CHANGED (Task 10): also writes the SMS Management columns (segments, template version, recipient category, module,
+// branch) given by sms_notify() in $GLOBALS['__sms_meta']; works the same when those columns do not exist yet.
 function sms_log(mysqli $conn, ?string $phone, string $text, string $event, ?string $refType, ?int $refId,
         string $status, ?string $response, ?string $error, ?int $userId): void {
+    $response = $response !== null ? mb_substr($response, 0, 2000) : null;
+    $error = $error !== null ? mb_substr($error, 0, 500) : null;
+    $m = $GLOBALS['__sms_meta'] ?? null;
+    if (!$m && function_exists('sms_segments')) { $m = ['segments' => sms_segments($text)[1], 'template_version' => null, 'recipient_type' => null, 'module' => function_exists('sms_event_module') ? sms_event_module($event) : null, 'branch_id' => null]; }
+    if ($m) {
+        try {
+            $s = mysqli_prepare($conn, 'INSERT INTO sms_log (phone, message, event, ref_type, ref_id, status, response, error, created_by, segments, template_version, recipient_type, module, branch_id, sent_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+            $seg = (int) $m['segments']; $ver = $m['template_version']; $rt = $m['recipient_type']; $mod = $m['module']; $br = $m['branch_id'];
+            $at = $status === 'sent' ? date('Y-m-d H:i:s') : null;
+            mysqli_stmt_bind_param($s, 'ssssisssiiissis', $phone, $text, $event, $refType, $refId, $status, $response, $error, $userId, $seg, $ver, $rt, $mod, $br, $at);
+            mysqli_stmt_execute($s);
+            return;
+        } catch (Throwable $e) {
+            // columns not created yet: fall back to the original row
+        }
+    }
     try {
         $s = mysqli_prepare($conn, 'INSERT INTO sms_log (phone, message, event, ref_type, ref_id, status, response, error, created_by)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
-        $response = $response !== null ? mb_substr($response, 0, 2000) : null;
-        $error = $error !== null ? mb_substr($error, 0, 500) : null;
         mysqli_stmt_bind_param($s, 'ssssisssi', $phone, $text, $event, $refType, $refId, $status, $response, $error, $userId);
         mysqli_stmt_execute($s);
     } catch (Throwable $e) {
@@ -62,34 +79,13 @@ function sms_log(mysqli $conn, ?string $phone, string $text, string $event, ?str
 }
 
 /**
- * Sends one SMS. Returns true when Pindo accepted it.
- * $event names what triggered it (e.g. 'SALE_RECEIPT'), $refType/$refId link it to the record.
+ * NEW (Task 10): sends one text through Pindo (the existing provider and sender ID RISEMOTIVE), without logging.
+ * Returns [status 'sent'|'failed'|'skipped', provider reply, error].
  */
-function sms_send(mysqli $conn, ?string $to, string $text, string $event, ?string $refType = null,
-        ?int $refId = null, ?int $userId = null): bool {
-    $text = trim($text);
-    if (mb_strlen($text) > SMS_MAX_LENGTH) {
-        $text = mb_substr($text, 0, SMS_MAX_LENGTH - 3) . '...';
-    }
-
-    $phone = sms_normalize_phone($to);
-    if ($phone === null) {
-        sms_log($conn, $to, $text, $event, $refType, $refId, 'skipped', null, 'Invalid or missing phone number', $userId);
-        return false;
-    }
-    if (!SMS_ENABLED) {
-        sms_log($conn, $phone, $text, $event, $refType, $refId, 'skipped', null, 'SMS is switched off (SMS_ENABLED)', $userId);
-        return false;
-    }
-    if (PINDO_API_TOKEN === '' || PINDO_API_TOKEN === 'PASTE_YOUR_PINDO_TOKEN_HERE') {
-        sms_log($conn, $phone, $text, $event, $refType, $refId, 'skipped', null, 'Pindo API token is not set in config/sms.php', $userId);
-        return false;
-    }
-    if (!function_exists('curl_init')) {
-        sms_log($conn, $phone, $text, $event, $refType, $refId, 'failed', null, 'PHP cURL extension is not enabled', $userId);
-        return false;
-    }
-
+function sms_transport(string $phone, string $text): array {
+    if (!SMS_ENABLED) { return ['skipped', null, 'SMS is switched off (SMS_ENABLED)']; }
+    if (PINDO_API_TOKEN === '' || PINDO_API_TOKEN === 'PASTE_YOUR_PINDO_TOKEN_HERE') { return ['skipped', null, 'Pindo API token is not set in config/sms.php']; }
+    if (!function_exists('curl_init')) { return ['failed', null, 'PHP cURL extension is not enabled']; }
     try {
         $ch = curl_init(PINDO_API_URL);
         curl_setopt_array($ch, [
@@ -108,22 +104,63 @@ function sms_send(mysqli $conn, ?string $to, string $text, string $event, ?strin
         $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $curlError = curl_error($ch);
         curl_close($ch);
-
-        if ($body === false) {
-            sms_log($conn, $phone, $text, $event, $refType, $refId, 'failed', null, 'Connection error: ' . $curlError, $userId);
-            return false;
-        }
+        if ($body === false) { return ['failed', null, 'Connection error: ' . $curlError]; }
         if ($httpCode < 200 || $httpCode >= 300) {
             $decoded = json_decode((string) $body, true);
-            $message = is_array($decoded) && !empty($decoded['message']) ? $decoded['message'] : ('HTTP ' . $httpCode);
-            sms_log($conn, $phone, $text, $event, $refType, $refId, 'failed', (string) $body, $message, $userId);
-            return false;
+            return ['failed', (string) $body, is_array($decoded) && !empty($decoded['message']) ? $decoded['message'] : ('HTTP ' . $httpCode)];
         }
-
-        sms_log($conn, $phone, $text, $event, $refType, $refId, 'sent', (string) $body, null, $userId);
-        return true;
+        return ['sent', (string) $body, null];
     } catch (Throwable $e) {
-        sms_log($conn, $phone, $text, $event, $refType, $refId, 'failed', null, $e->getMessage(), $userId);
+        return ['failed', null, $e->getMessage()];
+    }
+}
+
+/**
+ * Sends one SMS. Returns true when Pindo accepted it.
+ * $event names what triggered it (e.g. 'SALE_RECEIPT'), $refType/$refId link it to the record.
+ * CHANGED (Task 10): automatic messages go through sms_notify() (SMS Management). Safeguards here for every SMS:
+ * the same text to the same number within a few minutes is blocked as a duplicate, and an optional daily maximum
+ * per number (SMS Management → Settings). Security codes and tests are never blocked.
+ */
+function sms_send(mysqli $conn, ?string $to, string $text, string $event, ?string $refType = null,
+        ?int $refId = null, ?int $userId = null): bool {
+    $text = trim($text);
+    if (mb_strlen($text) > SMS_MAX_LENGTH) {
+        $text = mb_substr($text, 0, SMS_MAX_LENGTH - 3) . '...';
+    }
+
+    $phone = sms_normalize_phone($to);
+    if ($phone === null) {
+        sms_log($conn, $to, $text, $event, $refType, $refId, 'skipped', null, 'Invalid or missing phone number', $userId);
         return false;
     }
+    $free = !empty($GLOBALS['__sms_security']) || strpos($event, 'TEST') === 0;
+    if (!$free && function_exists('sms_center_ready') && sms_center_ready($conn)) {
+        try {
+            $mins = (int) sms_setting($conn, 'duplicate_minutes');
+            if ($mins > 0) {
+                $s = mysqli_prepare($conn, "SELECT id FROM sms_log WHERE phone = ? AND message = ? AND status IN ('sent', 'queued') AND created_at >= ? LIMIT 1");
+                $since = date('Y-m-d H:i:s', time() - 60 * $mins);
+                mysqli_stmt_bind_param($s, 'sss', $phone, $text, $since); mysqli_stmt_execute($s);
+                if (mysqli_fetch_assoc(mysqli_stmt_get_result($s))) {
+                    sms_log($conn, $phone, $text, $event, $refType, $refId, 'duplicate', null, 'The same message went to this number less than ' . $mins . ' minute(s) ago', $userId);
+                    return false;
+                }
+            }
+            $cap = (int) sms_setting($conn, 'daily_cap');
+            if ($cap > 0 && $event !== 'MANUAL') {
+                $s = mysqli_prepare($conn, "SELECT COUNT(*) FROM sms_log WHERE phone = ? AND status = 'sent' AND created_at >= ?");
+                $day = date('Y-m-d 00:00:00');
+                mysqli_stmt_bind_param($s, 'ss', $phone, $day); mysqli_stmt_execute($s);
+                if ((int) mysqli_fetch_row(mysqli_stmt_get_result($s))[0] >= $cap) {
+                    sms_log($conn, $phone, $text, $event, $refType, $refId, 'filtered', null, 'Daily maximum of ' . $cap . ' SMS for this number reached', $userId);
+                    return false;
+                }
+            }
+        } catch (Throwable $e) { /* never stop a sale because of a safeguard */ }
+    }
+
+    [$status, $body, $error] = sms_transport($phone, $text);
+    sms_log($conn, $phone, $text, $event, $refType, $refId, $status, $body, $error, $userId);
+    return $status === 'sent';
 }

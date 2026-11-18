@@ -29,6 +29,9 @@ $labels = ['public_enabled' => 'Public website open', 'pretty_urls' => 'Short co
            'notify_sms' => 'Send notifications by SMS', 'notify_email' => 'Send notifications by email (when an email is known)', 'notify_portal' => 'Show notifications in the Customer Portal',
            'tpl_accommodation' => 'Message: accommodation ({status} {facility} {room} {bed} {from} {to})', 'tpl_internship' => 'Message: internship application ({ref} {post} {status} {message})',
            'internship_ref_format' => 'Internship reference format ({YYYY}, {NNNN})', 'internship_intro' => 'Internships page: introduction', 'internship_letter' => 'Internship completion letter: main text'];
+// CHANGED (Task 10): the SMS / email / portal message wording is edited in SMS Management (one place for every SMS).
+foreach (['tpl_submitted', 'tpl_status', 'tpl_info', 'tpl_admitted', 'tpl_registered', 'tpl_timetable', 'tpl_exam', 'tpl_attendance', 'tpl_results', 'tpl_certificate', 'tpl_fee_reminder', 'tpl_accommodation', 'tpl_internship'] as $k) { unset($fields[$k]); }
+$smsLink = access_can('sms.templates', $conn) ? '../sms/index.php?module=' . rawurlencode('Learning Centre') : null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!lcs_csrf_ok()) { lcs_go('settings.php', 'error', 'The page had expired.'); }
     $chg = []; $vals = [];
@@ -51,6 +54,7 @@ include __DIR__ . '/../../includes/header.php';
 include __DIR__ . '/../../includes/sidebar.php';
 lcs_tabs($conn, 'settings.php', 'Learning Centre Settings');
 ?>
+<div class="alert alert-light border small" style="max-width:900px;"><strong>Message wording</strong> (application received, admitted, results, certificate, fee reminder, accommodation, internships …) is now managed in <strong>SMS Management</strong>, with preview, on/off switch, targeting and version history. <?= $smsLink ? '<a href="' . lc_e($smsLink) . '">Open the Learning Centre messages</a>' : 'Ask an administrator with the SMS template permission.'; ?></div>
 <form method="POST" class="card border-0 shadow-sm" style="max-width:900px;"><div class="card-body row g-2"><?= lcs_csrf_field(); ?>
     <?php foreach ($fields as $k => $t) { $v = trim(lc_setting($conn, $k)); ?>
     <div class="<?= $t === 'area' ? 'col-12' : 'col-md-6'; ?>">

@@ -10,6 +10,7 @@
 $isCli = PHP_SAPI === 'cli';
 require __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../includes/sms_messages.php';
+sms_center_ensure($conn); // NEW (Task 10): SMS Management tables (created once; safe here, outside any transaction)
 require_once __DIR__ . '/../../includes/credit_charge_helpers.php'; // NEW: daily overdue charges
 
 // CHANGED: besides an Admin in the browser, an online scheduler (e.g. cron-job.org) can run this
@@ -34,6 +35,10 @@ if ($task === 'all' || $task === 'reminders') {
 }
 if ($task === 'all' || $task === 'loyalty') {
     $results['Loyalty messages sent'] = sms_send_loyalty_weekly($conn);
+}
+// NEW (Task 10): messages queued for the sending hours (SMS Management) whose time has come.
+if ($task === 'all' || $task === 'queue') {
+    $results['Queued messages sent'] = sms_queue_run($conn, 500);
 }
 
 if ($isCli || $keyOk) {

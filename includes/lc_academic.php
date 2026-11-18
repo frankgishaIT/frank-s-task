@@ -380,9 +380,11 @@ function lc_notify_student(mysqli $conn, int $customerId, string $tpl, array $va
 {
     $c = mysqli_fetch_assoc(mysqli_query($conn, "SELECT id, name, phone FROM customers WHERE id = $customerId"));
     if (!$c) { return; }
-    $text = strtr(lc_setting($conn, $tpl), $vars + ['{name}' => strtok((string) $c['name'], ' ')]);
+    $text = strtr(lc_msg($conn, $tpl), $vars + ['{name}' => strtok((string) $c['name'], ' ')]);
     try {
-        if (is_file(__DIR__ . '/sms_helpers.php')) { require_once __DIR__ . '/sms_helpers.php'; if (function_exists('sms_send') && $c['phone'] && lc_setting($conn, 'notify_sms') === '1') { sms_send($conn, $c['phone'], $text, 'learning_' . $tpl, 'lc_student', $customerId, null); } }
+        // CHANGED (Task 10): through SMS Management. Course targeting uses the student's enrollment(s).
+        $course = isset($vars['{course_id}']) ? (int) $vars['{course_id}'] : (int) (mysqli_fetch_row(mysqli_query($conn, "SELECT course_id FROM lc_enrollments WHERE customer_id = $customerId ORDER BY id DESC LIMIT 1"))[0] ?? 0);
+        if ($c['phone']) { lc_sms($conn, $tpl, $c['phone'], $vars + ['{name}' => strtok((string) $c['name'], ' ')], ['to' => 'student', 'ref_type' => 'lc_student', 'ref_id' => $customerId, 'customer_id' => $customerId, 'course_id' => $course ?: null]); }
     } catch (Throwable $e) { error_log('lc student sms: ' . $e->getMessage()); }
     if (lc_setting($conn, 'notify_portal') !== '1') { return; }
     try {

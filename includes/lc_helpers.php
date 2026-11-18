@@ -495,7 +495,28 @@ function lc_template(mysqli $conn, string $tpl, array $app, array $extra = []): 
 {
     $vars = ['{name}' => strtok((string) $app['full_name'], ' '), '{ref}' => $app['ref'], '{course}' => $app['course_title'] ?? '', '{intake}' => $app['intake_name'] ?? '',
              '{status}' => $app['status'], '{track_url}' => lc_track_url($conn, $app['ref'])] + $extra;
-    return strtr(lc_setting($conn, $tpl), $vars);
+    return strtr(lc_msg($conn, $tpl), $vars);
+}
+
+/**
+ * NEW (Task 10): the wording of a Learning Centre message. SMS Management is the single place where it is edited
+ * (notification learning_<tpl>); the same text is used for the SMS, the email and the Customer Portal notification.
+ */
+function lc_msg(mysqli $conn, string $tpl): string
+{
+    $ev = $tpl === 'tpl_internship' ? 'learning_internship' : 'learning_' . $tpl;
+    if (is_file(__DIR__ . '/sms_center.php')) { require_once __DIR__ . '/sms_center.php'; if (isset(sms_catalog()[$ev])) { $b = sms_tpl_body($conn, $ev); if ($b !== null) { return $b; } } }
+    return lc_setting($conn, $tpl);
+}
+
+/** NEW (Task 10): sends a Learning Centre SMS through SMS Management (switch, targeting, duplicates, log). */
+function lc_sms(mysqli $conn, string $tpl, ?string $phone, array $vars, array $ctx): void
+{
+    if (lc_setting($conn, 'notify_sms') !== '1' || !is_file(__DIR__ . '/sms_center.php')) { return; }
+    require_once __DIR__ . '/sms_center.php';
+    $ev = $tpl === 'tpl_internship' ? 'learning_internship' : 'learning_' . $tpl;
+    if (!isset(sms_catalog()[$ev])) { return; }
+    sms_notify($conn, $ev, $phone, $vars, $ctx);
 }
 
 /** SMS (when SMS is set up), email (when given) and the Customer Portal notification (when linked). */
@@ -503,10 +524,11 @@ function lc_notify_applicant(mysqli $conn, array $app, string $tpl, array $extra
 {
     $text = lc_template($conn, $tpl, $app, $extra);
     try {
-        if (is_file(__DIR__ . '/sms_helpers.php')) {
-            require_once __DIR__ . '/sms_helpers.php';
-            if (function_exists('sms_send') && lc_setting($conn, 'notify_sms') === '1') { sms_send($conn, $app['phone'], $text, 'learning_' . $tpl, 'lc_application', (int) $app['id'], null); }
-        }
+        // CHANGED (Task 10): through SMS Management (wording, switch, targeting by course / branch / status, log).
+        $vars = ['{name}' => strtok((string) $app['full_name'], ' '), '{ref}' => $app['ref'], '{course}' => $app['course_title'] ?? '', '{intake}' => $app['intake_name'] ?? '',
+                 '{status}' => $app['status'], '{track_url}' => lc_track_url($conn, $app['ref'])] + $extra;
+        lc_sms($conn, $tpl, $app['phone'], $vars, ['to' => 'applicant', 'ref_type' => 'lc_application', 'ref_id' => (int) $app['id'], 'course_id' => isset($app['course_id']) ? (int) $app['course_id'] : null,
+            'branch_id' => isset($app['branch_id']) ? (int) $app['branch_id'] : null, 'status' => $app['status'], 'customer_id' => !empty($app['customer_id']) ? (int) $app['customer_id'] : null]);
     } catch (Throwable $e) { error_log('lc sms: ' . $e->getMessage()); }
     try {
         if (!empty($app['email']) && is_file(__DIR__ . '/mailer.php') && lc_setting($conn, 'notify_email') === '1') {

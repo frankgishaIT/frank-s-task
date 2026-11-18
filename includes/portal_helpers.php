@@ -200,11 +200,10 @@ function portal_send_otp(mysqli $conn, array $customer, string $purpose): void
     mysqli_stmt_bind_param($s, 'isss', $cid, $purpose, $hash, $exp);
     mysqli_stmt_execute($s);
     $sent = false;
-    if (is_file(__DIR__ . '/sms_helpers.php')) {
-        require_once __DIR__ . '/sms_helpers.php';
-        if (function_exists('sms_send')) {
-            $sent = sms_send($conn, (string) $customer['phone'], 'RISE MOTIVE: your customer portal code is ' . $code . '. It expires in ' . PORTAL_OTP_MINUTES . ' minutes. Do not share it with anyone.', 'portal_otp', 'customer', $cid, null);
-        }
+    if (is_file(__DIR__ . '/sms_center.php')) {
+        // CHANGED (Task 10): security notification PORTAL_OTP (wording in SMS Management; it can never be switched off).
+        require_once __DIR__ . '/sms_center.php';
+        $sent = sms_notify($conn, 'PORTAL_OTP', (string) $customer['phone'], ['code' => $code, 'minutes' => (string) PORTAL_OTP_MINUTES], ['to' => 'customer', 'ref_type' => 'customer', 'ref_id' => $cid, 'customer_id' => $cid]);
     }
     portal_log($conn, $cid, 'otp_sent', $purpose . ($sent ? '' : ' (SMS NOT delivered)'));
     if (!$sent) { throw new RuntimeException('The SMS could not be sent right now. Please try again later, or contact RISE MOTIVE.'); }

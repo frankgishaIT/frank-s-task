@@ -133,6 +133,7 @@ $h = function ($v) { return htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8'); 
         .help { text-align: center; font-size: 14px; color: var(--muted); margin: 22px 0 22px; }
         hr { border: 0; border-top: 1px solid #E3E6EF; margin: 0 0 26px; }
         .cust { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; font-weight: 700; color: var(--deep); text-decoration: none; }
+        .sheet-foot { display: none; }
         .cust:hover { color: var(--blue); } .cust svg { width: 18px; height: 18px; stroke-width: 2.2; color: var(--blue); }
 
         /* Laptops with a short screen (or a zoomed browser): everything fits without scrolling */
@@ -169,10 +170,16 @@ $h = function ($v) { return htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8'); 
             .field input, .btn { height: 54px; }
             .help { margin: 18px 0; } hr { margin-bottom: 18px; }
             .cust { font-size: 13.5px; }
+            /* the form sits in the middle of the white sheet, with the company line at the bottom */
+            .side { flex-direction: column; align-items: stretch; justify-content: flex-start; }
+            .box { flex: 0 0 auto; width: 100%; margin: auto; padding-top: 58px; animation-name: rmFade; } /* centred between the photo and the bottom line */
+            .logo { position: absolute; top: 0; left: 50%; margin: 0; transform: translate(-50%, -50%); }
+            @keyframes rmFade { from { opacity: 0; } to { opacity: 1; } }
+            .sheet-foot { display: block; text-align: center; font-size: 12px; color: #8A90A2; padding-top: 22px; margin-top: auto; }
         }
         @media (max-width: 900px) and (max-height: 700px) {
             .photo { height: 30vh; min-height: 180px; }
-            .logo { width: 72px; height: 72px; margin-top: -36px; } h1 { font-size: 25px; margin-bottom: 14px; }
+            .logo { width: 72px; height: 72px; } .box { padding-top: 48px; } h1 { font-size: 25px; margin-bottom: 14px; }
             .field input, .btn { height: 50px; } .field { margin-bottom: 12px; }
         }
     </style>
@@ -225,6 +232,7 @@ $h = function ($v) { return htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8'); 
             <hr>
             <a class="cust" href="portal/">Customer? Go to the RM Customer Portal <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
         </div>
+        <div class="sheet-foot">&copy; <?= date('Y'); ?> RISE MOTIVE Ltd &middot; RM Staff Portal</div>
     </main>
 </div>
 <script>

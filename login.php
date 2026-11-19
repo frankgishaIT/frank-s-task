@@ -153,14 +153,27 @@ $h = function ($v) { return htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8'); 
 
         /* Tablets and phones: the photo becomes a band at the top */
         @media (max-width: 900px) {
-            .page { flex-direction: column; }
-            .photo { flex: 0 0 auto; min-height: 170px; padding: 26px 24px; }
-            .photo .eyebrow { font-size: 12px; } .photo .eyebrow::before { width: 28px; }
+            /* Phones and tablets: the photo is a moving banner and the sign-in is a white sheet that slides over it */
+            .page { flex-direction: column; min-height: 100svh; }
+            .photo { flex: 0 0 auto; height: 36vh; min-height: 230px; max-height: 330px; padding: 22px 22px 60px; justify-content: flex-start; }
+            .photo::before { background: linear-gradient(180deg, rgba(4,10,50,.6) 0%, rgba(4,10,50,.05) 40%, rgba(4,10,50,.15) 70%, rgba(4,10,50,.55) 100%); }
+            .photo .eyebrow { font-size: 11.5px; letter-spacing: .12em; } .photo .eyebrow::before { width: 26px; height: 3px; }
             .photo .foot { display: none; }
-            .photo > .deco.bottom { display: none; } .photo > .deco.top { width: 26%; }
-            .side { padding: 32px 22px 40px; align-items: flex-start; }
-            .logo { width: 72px; height: 72px; margin-bottom: 14px; }
-            h1 { font-size: 30px; }
+            .photo > .deco.bottom { display: none; } .photo > .deco.top { width: 34%; }
+            .side { position: relative; z-index: 3; flex: 1; margin-top: -34px; background: #fff; border-radius: 28px 28px 0 0; box-shadow: 0 -10px 30px rgba(4,10,50,.22);
+                padding: 0 22px calc(32px + env(safe-area-inset-bottom)); align-items: flex-start; }
+            .box { max-width: 460px; margin: 0 auto; }
+            .logo { width: 88px; height: 88px; padding: 9px; background: #fff; border-radius: 50%; box-shadow: 0 10px 26px rgba(11,26,140,.20); margin: -44px auto 14px; }
+            .kicker { text-align: center; font-size: 12px; }
+            h1 { font-size: 28px; text-align: center; margin-bottom: 20px; }
+            .field input, .btn { height: 54px; }
+            .help { margin: 18px 0; } hr { margin-bottom: 18px; }
+            .cust { font-size: 13.5px; }
+        }
+        @media (max-width: 900px) and (max-height: 700px) {
+            .photo { height: 30vh; min-height: 180px; }
+            .logo { width: 72px; height: 72px; margin-top: -36px; } h1 { font-size: 25px; margin-bottom: 14px; }
+            .field input, .btn { height: 50px; } .field { margin-bottom: 12px; }
         }
     </style>
 </head>

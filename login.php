@@ -156,13 +156,14 @@ $h = function ($v) { return htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8'); 
         @media (max-width: 900px) {
             /* Phones and tablets: the photo is a moving banner and the sign-in is a white sheet that slides over it */
             .page { flex-direction: column; min-height: 100svh; }
-            .photo { flex: 0 0 auto; height: 36vh; min-height: 230px; max-height: 330px; padding: 22px 22px 60px; justify-content: flex-start; }
-            .photo::before { background: linear-gradient(180deg, rgba(4,10,50,.6) 0%, rgba(4,10,50,.05) 40%, rgba(4,10,50,.15) 70%, rgba(4,10,50,.55) 100%); }
+            /* the moving photo fills the whole screen behind a white card rounded on all four corners */
+            .photo { position: fixed; inset: 0; height: auto; padding: 22px; justify-content: flex-start; }
+            .photo::before { background: linear-gradient(180deg, rgba(4,10,50,.6) 0%, rgba(4,10,50,.05) 30%, rgba(4,10,50,.25) 70%, rgba(4,10,50,.6) 100%); }
             .photo .eyebrow { font-size: 11.5px; letter-spacing: .12em; } .photo .eyebrow::before { width: 26px; height: 3px; }
             .photo .foot { display: none; }
             .photo > .deco.bottom { display: none; } .photo > .deco.top { width: 34%; }
-            .side { position: relative; z-index: 3; flex: 1; margin-top: -34px; background: #fff; border-radius: 28px 28px 0 0; box-shadow: 0 -10px 30px rgba(4,10,50,.22);
-                padding: 0 22px calc(32px + env(safe-area-inset-bottom)); align-items: flex-start; }
+            .side { position: relative; z-index: 3; flex: 1 0 auto; margin: max(150px, 25vh) 14px calc(14px + env(safe-area-inset-bottom)); background: #fff; border-radius: 28px;
+                box-shadow: 0 18px 44px rgba(4,10,50,.38); padding: 0 20px 18px; align-items: flex-start; }
             .box { max-width: 460px; margin: 0 auto; }
             .logo { width: 88px; height: 88px; padding: 9px; background: #fff; border-radius: 50%; box-shadow: 0 10px 26px rgba(11,26,140,.20); margin: -44px auto 14px; }
             .kicker { text-align: center; font-size: 12px; }
@@ -175,10 +176,11 @@ $h = function ($v) { return htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8'); 
             .box { flex: 0 0 auto; width: 100%; margin: auto; padding-top: 58px; animation-name: rmFade; } /* centred between the photo and the bottom line */
             .logo { position: absolute; top: 0; left: 50%; margin: 0; transform: translate(-50%, -50%); }
             @keyframes rmFade { from { opacity: 0; } to { opacity: 1; } }
-            .sheet-foot { display: block; text-align: center; font-size: 12px; color: #8A90A2; padding-top: 22px; margin-top: auto; }
+            .sheet-foot { display: block; text-align: center; font-size: 12px; color: #8A90A2; padding-top: 20px; margin-top: auto; }
         }
+        @media (max-width: 380px) { .cust { font-size: 12.5px; gap: 6px; } .side { padding: 0 16px 16px; } }
         @media (max-width: 900px) and (max-height: 700px) {
-            .photo { height: 30vh; min-height: 180px; }
+            .side { margin-top: max(118px, 20vh); }
             .logo { width: 72px; height: 72px; } .box { padding-top: 48px; } h1 { font-size: 25px; margin-bottom: 14px; }
             .field input, .btn { height: 50px; } .field { margin-bottom: 12px; }
         }

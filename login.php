@@ -3,6 +3,7 @@
  * login.php — RM STAFF PORTAL sign-in (RISE MOTIVE staff only).
  * CHANGED: RM Staff Portal branding and welcome text; the same session rules as the rest of the portal
  * (30 minutes of inactivity end the session, with the explanation shown here); clean re-login after expiry.
+ * The photo address carries the file date (?v=…), so a new photo shows at once (no old copy from the browser cache).
  * CHANGED (new design): full-screen split page — Kigali photo on the left (assets/images/login-bg.jpg),
  * sign-in on the right. The sign-in rules above are unchanged.
  */
@@ -79,7 +80,7 @@ $h = function ($v) { return htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8'); 
         .photo > * { position: relative; z-index: 2; }
         .photo::before { z-index: 1; }
         /* the photo moves slowly (zoom and drift), like a film */
-        .photo > .bg { position: absolute; inset: -3%; z-index: 0; background: url('assets/images/login-bg.jpg') center / cover no-repeat; will-change: transform; animation: rmDrift 26s ease-in-out infinite alternate; }
+        .photo > .bg { position: absolute; inset: -3%; z-index: 0; background: url('assets/images/login-bg.jpg?v=<?= (int) @filemtime(__DIR__ . '/assets/images/login-bg.jpg'); ?>') center / cover no-repeat; will-change: transform; animation: rmDrift 26s ease-in-out infinite alternate; }
         @keyframes rmDrift { 0% { transform: scale(1) translate(0, 0); } 50% { transform: scale(1.08) translate(-1.5%, -1%); } 100% { transform: scale(1.14) translate(1.2%, -2%); } }
         /* the blue and gold bands sway gently */
         .deco path { will-change: transform; }
@@ -206,7 +207,7 @@ $h = function ($v) { return htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8'); 
 
     <main class="side">
         <div class="box">
-            <img class="logo" src="assets/images/rise.jpg" alt="RISE MOTIVE">
+            <img class="logo" src="assets/images/rise.jpg?v=<?= (int) @filemtime(__DIR__ . '/assets/images/rise.jpg'); ?>" alt="RISE MOTIVE">
             <div class="kicker">RM Staff Portal</div>
             <h1>Staff sign in</h1>
 

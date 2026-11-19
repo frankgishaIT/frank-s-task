@@ -72,11 +72,34 @@ $h = function ($v) { return htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8'); 
         .page { display: flex; min-height: 100vh; }
 
         /* Left: photo of Kigali with the RISE MOTIVE blue */
-        .photo { flex: 0 0 54%; position: relative; color: #fff; background: #2A43C9 url('assets/images/login-bg.jpg') center / cover no-repeat;
+        .photo { flex: 0 0 54%; position: relative; color: #fff; background: #2A43C9;
             display: flex; flex-direction: column; justify-content: space-between; padding: 52px 64px 52px; overflow: hidden; }
         /* soft shade at the top and bottom so the white text stays readable on any photo */
         .photo::before { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(4,10,50,.55) 0%, rgba(4,10,50,0) 26%, rgba(4,10,50,0) 72%, rgba(4,10,50,.6) 100%); pointer-events: none; }
         .photo > * { position: relative; z-index: 2; }
+        .photo::before { z-index: 1; }
+        /* the photo moves slowly (zoom and drift), like a film */
+        .photo > .bg { position: absolute; inset: -3%; z-index: 0; background: url('assets/images/login-bg.jpg') center / cover no-repeat; will-change: transform; animation: rmDrift 26s ease-in-out infinite alternate; }
+        @keyframes rmDrift { 0% { transform: scale(1) translate(0, 0); } 50% { transform: scale(1.08) translate(-1.5%, -1%); } 100% { transform: scale(1.14) translate(1.2%, -2%); } }
+        /* the blue and gold bands sway gently */
+        .deco path { will-change: transform; }
+        .deco.top path { transform-origin: 0 0; animation: rmSway 9s ease-in-out infinite; }
+        .deco.top path:nth-child(2) { animation-duration: 11s; animation-delay: -3s; }
+        .deco.top path:nth-child(3) { animation-duration: 13s; animation-delay: -6s; }
+        @keyframes rmSway { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.09, 1.05); } } /* grows from the corner: never leaves a gap */
+        .deco.bottom path { animation: rmWave 8s ease-in-out infinite; }
+        .deco.bottom path:nth-child(2) { animation-duration: 9s; animation-delay: -2s; }
+        .deco.bottom path:nth-child(3) { animation-duration: 10s; animation-delay: -4s; }
+        @keyframes rmWave { 0%, 100% { transform: translateY(0) skewY(0deg); } 50% { transform: translateY(9px) skewY(-1deg); } }
+        /* gentle entrance */
+        .photo .eyebrow { animation: rmIn .8s ease-out both .2s; } .photo .foot { animation: rmIn .8s ease-out both .4s; }
+        .box { animation: rmUp .7s ease-out both; }
+        @keyframes rmIn { from { opacity: 0; transform: translateX(-14px); } to { opacity: 1; transform: none; } }
+        @keyframes rmUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+        @keyframes rmGrow { from { width: 0; } }
+        .photo .eyebrow::before { animation: rmGrow .9s ease-out both .5s; }
+        /* people who ask their device for less motion get a still page */
+        @media (prefers-reduced-motion: reduce) { .photo > .bg, .deco path, .photo .eyebrow, .photo .foot, .box, .photo .eyebrow::before { animation: none !important; } }
         /* the curved RISE MOTIVE bands in the top-left and bottom-left corners (drawn over any photo) */
         .photo > .deco { position: absolute; z-index: 1; pointer-events: none; }
         .photo > .deco.top { top: 0; left: 0; width: 46%; height: auto; }
@@ -131,7 +154,7 @@ $h = function ($v) { return htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8'); 
         /* Tablets and phones: the photo becomes a band at the top */
         @media (max-width: 900px) {
             .page { flex-direction: column; }
-            .photo { flex: 0 0 auto; min-height: 170px; padding: 26px 24px; background-position: center 40%; }
+            .photo { flex: 0 0 auto; min-height: 170px; padding: 26px 24px; }
             .photo .eyebrow { font-size: 12px; } .photo .eyebrow::before { width: 28px; }
             .photo .foot { display: none; }
             .photo > .deco.bottom { display: none; } .photo > .deco.top { width: 26%; }
@@ -144,15 +167,16 @@ $h = function ($v) { return htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8'); 
 <body>
 <div class="page">
     <section class="photo" aria-label="RM Staff Portal">
+        <div class="bg" aria-hidden="true"></div>
         <svg class="deco top" viewBox="0 0 360 640" aria-hidden="true" focusable="false">
             <path d="M0 0H360C200 70 70 260 0 640Z" fill="#2F55F0" fill-opacity=".38" stroke="none"/>
             <path d="M0 0H255C135 80 45 250 0 470Z" fill="#1A3FE6" fill-opacity=".72" stroke="none"/>
             <path d="M0 0H150C80 60 25 160 0 300Z" fill="#0B2BD8" fill-opacity=".85" stroke="none"/>
         </svg>
-        <svg class="deco bottom" viewBox="0 0 780 300" preserveAspectRatio="xMinYMax meet" aria-hidden="true" focusable="false">
-            <path d="M0 8C250 55 520 140 780 250V300H735C495 186 235 112 0 66Z" fill="#FFFFFF" fill-opacity=".16" stroke="none"/>
+        <svg class="deco bottom" viewBox="0 0 780 300" overflow="visible" preserveAspectRatio="xMinYMax meet" aria-hidden="true" focusable="false">
+            <path d="M0 8C250 55 520 140 780 250V330H735C495 186 235 112 0 66Z" fill="#FFFFFF" fill-opacity=".16" stroke="none"/>
             <path d="M0 66C235 112 495 186 735 300H700C478 208 222 138 0 92Z" fill="#C99A2E" fill-opacity=".85" stroke="none"/>
-            <path d="M0 92C222 138 478 208 700 300H0Z" fill="#0A1A8C" stroke="none"/>
+            <path d="M0 92C222 138 478 208 700 300L760 330H0Z" fill="#0A1A8C" stroke="none"/>
         </svg>
         <div class="eyebrow">Welcome to RM Staff Portal</div>
         <div class="foot">&copy; <?= date('Y'); ?> RISE MOTIVE Ltd</div>

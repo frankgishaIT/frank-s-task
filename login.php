@@ -3,6 +3,8 @@
  * login.php — RM STAFF PORTAL sign-in (RISE MOTIVE staff only).
  * CHANGED: RM Staff Portal branding and welcome text; the same session rules as the rest of the portal
  * (30 minutes of inactivity end the session, with the explanation shown here); clean re-login after expiry.
+ * CHANGED (new design): full-screen split page — Kigali photo on the left (assets/images/login-bg.jpg),
+ * sign-in on the right. The sign-in rules above are unchanged.
  */
 define('RM_OS_ALLOW_GUEST', true);
 require 'config/db.php';
@@ -58,123 +60,142 @@ $h = function ($v) { return htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8'); 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sign in - RM STAFF PORTAL · RISE MOTIVE</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <title>Staff sign in · RM STAFF PORTAL · RISE MOTIVE</title>
+    <meta name="robots" content="noindex">
+    <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        :root{
-            --rm-blue:#1E2FE0;
-            --rm-deep:#0B1A8C;
-            --ink:#1E2333;
-            --muted:#6B7287;
-            --border-soft:#E4E7F0;
+        :root { --blue: #1430E0; --deep: #0A1A6E; --ink: #1E2333; --muted: #5B6275; --field: #F0F3FC; --line: #C9D2EE; }
+        *, *::before, *::after { box-sizing: border-box; }
+        html, body { height: 100%; margin: 0; }
+        body { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; color: var(--ink); background: #fff; -webkit-font-smoothing: antialiased; }
+        .page { display: flex; min-height: 100vh; }
+
+        /* Left: photo of Kigali with the RISE MOTIVE blue */
+        .photo { flex: 0 0 54%; position: relative; color: #fff; background: #2A43C9 url('assets/images/login-bg.jpg') center / cover no-repeat;
+            display: flex; flex-direction: column; justify-content: space-between; padding: 52px 64px 52px; overflow: hidden; }
+        /* soft shade at the top and bottom so the white text stays readable on any photo */
+        .photo::before { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(4,10,50,.55) 0%, rgba(4,10,50,0) 26%, rgba(4,10,50,0) 72%, rgba(4,10,50,.6) 100%); pointer-events: none; }
+        .photo > * { position: relative; z-index: 2; }
+        /* the curved RISE MOTIVE bands in the top-left and bottom-left corners (drawn over any photo) */
+        .photo > .deco { position: absolute; z-index: 1; pointer-events: none; }
+        .photo > .deco.top { top: 0; left: 0; width: 46%; height: auto; }
+        .photo > .deco.bottom { bottom: 0; left: 0; width: 100%; height: auto; }
+        .photo .eyebrow { display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; text-shadow: 0 1px 2px rgba(0,0,0,.15); }
+        .photo .eyebrow::before { content: ''; width: 40px; height: 4px; border-radius: 4px; background: #F2B312; }
+        .photo .foot { font-size: 14px; font-weight: 500; opacity: .95; }
+
+        /* Right: sign in */
+        .side { flex: 1; display: flex; align-items: center; justify-content: center; padding: 48px 32px; }
+        .box { width: 100%; max-width: 400px; }
+        .logo { width: 92px; height: 92px; object-fit: contain; display: block; margin: 0 0 18px; }
+        .kicker { font-size: 13px; font-weight: 700; letter-spacing: .16em; color: var(--blue); text-transform: uppercase; margin-bottom: 4px; }
+        h1 { font-size: 36px; line-height: 1.15; font-weight: 800; color: var(--deep); letter-spacing: -.02em; margin: 0 0 22px; }
+        .alert { display: flex; gap: 10px; align-items: center; border-radius: 10px; padding: 12px 14px; font-size: 14px; font-weight: 500; margin-bottom: 22px; line-height: 1.4; }
+        .alert.info { background: #FEF6D6; border: 1px solid #F1D98A; color: #4A3A00; }
+        .alert.error { background: #FDECEC; border: 1px solid #F3B9B9; color: #9B1C1C; }
+        .alert svg { width: 20px; height: 20px; flex-shrink: 0; }
+        label { display: block; font-size: 14px; font-weight: 600; color: var(--deep); margin: 0 0 8px; }
+        .field { position: relative; margin-bottom: 18px; }
+        .field > svg { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); width: 19px; height: 19px; color: #3C4560; pointer-events: none; }
+        .field input { width: 100%; height: 56px; border: 1px solid var(--line); border-radius: 12px; background: var(--field); padding: 0 50px 0 47px; font: inherit; font-size: 16px; color: var(--ink); transition: border-color .15s, box-shadow .15s, background .15s; }
+        .field input::placeholder { color: #6B7287; }
+        .field input:focus { outline: none; border-color: var(--blue); background: #fff; box-shadow: 0 0 0 4px rgba(20,48,224,.12); }
+        .eye { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); width: 40px; height: 40px; border: 0; background: transparent; border-radius: 8px; color: #3C4560; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        .eye:hover { background: rgba(20,48,224,.08); } .eye svg { width: 21px; height: 21px; }
+        svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+        .btn { width: 100%; height: 56px; margin-top: 4px; border: 0; border-radius: 12px; background: var(--blue); color: #fff; font: inherit; font-size: 17px; font-weight: 700;
+            display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; box-shadow: 0 12px 26px -8px rgba(20,48,224,.55); transition: background .15s, transform .05s; }
+        .btn:hover, .btn:focus-visible { background: #0E25B8; } .btn:active { transform: translateY(1px); } .btn svg { width: 20px; height: 20px; stroke-width: 2.2; }
+        .help { text-align: center; font-size: 14px; color: var(--muted); margin: 22px 0 22px; }
+        hr { border: 0; border-top: 1px solid #E3E6EF; margin: 0 0 26px; }
+        .cust { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; font-weight: 700; color: var(--deep); text-decoration: none; }
+        .cust:hover { color: var(--blue); } .cust svg { width: 18px; height: 18px; stroke-width: 2.2; color: var(--blue); }
+
+        /* Laptops with a short screen (or a zoomed browser): everything fits without scrolling */
+        @media (min-width: 901px) and (max-height: 820px) {
+            .side { padding: 24px 32px; }
+            .logo { width: 70px; height: 70px; margin-bottom: 10px; }
+            h1 { font-size: 30px; margin-bottom: 16px; }
+            .alert { margin-bottom: 16px; padding: 10px 12px; }
+            label { margin-bottom: 6px; } .field { margin-bottom: 14px; }
+            .field input, .btn { height: 50px; }
+            .help { margin: 16px 0; } hr { margin-bottom: 16px; }
+            .photo { padding: 36px 48px; }
         }
-        *, *::before, *::after{ box-sizing:border-box; font-family:'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
-        body{ min-height:100vh; margin:0; background:#F4F6FB; display:flex; align-items:center; justify-content:center; padding:24px; }
-        .login-shell{ width:100%; max-width:980px; min-height:600px; background:#fff; border-radius:24px; overflow:hidden; box-shadow:0 20px 60px rgba(11,26,140,.10); display:flex; }
+        @media (min-width: 901px) and (max-height: 660px) {
+            .logo { width: 56px; height: 56px; } h1 { font-size: 26px; margin-bottom: 12px; }
+            .field input, .btn { height: 46px; } .kicker { font-size: 12px; }
+        }
 
-        /* Left: RM Staff Portal identity */
-        .brand-panel{ flex:1.05; background:linear-gradient(160deg, var(--rm-deep) 0%, var(--rm-blue) 60%, #3D5BFF 100%); color:#fff; padding:52px 48px;
-            display:flex; flex-direction:column; justify-content:space-between; position:relative; overflow:hidden; }
-        .brand-panel::before{ content:''; position:absolute; width:420px; height:420px; border-radius:50%; background:rgba(255,255,255,.06); top:-140px; right:-140px; }
-        .brand-panel::after{ content:''; position:absolute; width:280px; height:280px; border-radius:50%; background:rgba(255,255,255,.05); bottom:-100px; left:-80px; }
-        .brand-logo{ display:flex; align-items:center; gap:14px; position:relative; } /* no z-index: the logo blends with the panel's blue */
-        .brand-logo img{ width:52px; height:52px; object-fit:contain; filter:grayscale(1) contrast(4); mix-blend-mode:screen; }
-        .brand-logo .name{ font-weight:800; font-size:17px; letter-spacing:.06em; line-height:1.15; }
-        .brand-logo .name small{ display:block; font-weight:500; font-size:12px; letter-spacing:.02em; opacity:.75; }
-        .brand-copy{ position:relative; z-index:1; }
-        .staff-badge{ display:inline-flex; align-items:center; gap:6px; background:rgba(255,255,255,.14); border:1px solid rgba(255,255,255,.25); border-radius:999px; padding:5px 12px; font-size:12px; font-weight:600; margin-bottom:18px; }
-        .brand-copy h1{ font-size:30px; font-weight:800; line-height:1.25; margin-bottom:14px; }
-        .brand-copy p{ font-size:15px; color:rgba(255,255,255,.85); line-height:1.6; max-width:360px; margin:0; }
-        .brand-copy .motto{ display:block; margin-top:14px; font-weight:700; color:#fff; letter-spacing:.01em; }
-        .brand-foot{ position:relative; z-index:1; font-size:12px; color:rgba(255,255,255,.6); }
-
-        /* Right: staff sign-in */
-        .form-panel{ flex:1; padding:52px 56px; display:flex; flex-direction:column; justify-content:center; }
-        .form-panel .mobile-brand{ display:none; align-items:center; gap:10px; margin-bottom:22px; }
-        .form-panel .mobile-brand img{ width:42px; height:42px; object-fit:contain; border-radius:10px; }
-        .form-panel .mobile-brand span{ font-weight:800; color:var(--rm-deep); letter-spacing:.05em; }
-        .form-panel h2{ font-size:24px; font-weight:800; color:var(--rm-deep); margin-bottom:6px; }
-        .form-panel .subtitle{ font-size:14px; color:var(--muted); margin-bottom:28px; }
-        .form-label{ font-size:13px; font-weight:600; color:var(--ink); margin-bottom:6px; }
-        .input-group-rm{ position:relative; }
-        .input-group-rm > i{ position:absolute; left:16px; top:50%; transform:translateY(-50%); color:var(--muted); font-size:15px; }
-        .input-group-rm input{ width:100%; padding:12px 44px 12px 44px; border:1px solid var(--border-soft); border-radius:12px; font-size:14px; background:#FAFBFE; transition:.15s; }
-        .input-group-rm input:focus{ outline:none; border-color:var(--rm-blue); background:#fff; box-shadow:0 0 0 3px rgba(30,47,224,.12); }
-        .toggle-pw{ position:absolute; right:10px; top:50%; transform:translateY(-50%); border:0; background:transparent; color:var(--muted); padding:6px; }
-        .btn-signin{ width:100%; padding:13px; border:none; border-radius:12px; background:var(--rm-blue); color:#fff; font-weight:700; font-size:14px; transition:.15s; }
-        .btn-signin:hover, .btn-signin:focus{ background:var(--rm-deep); }
-        .alert-rm{ display:flex; align-items:flex-start; gap:10px; border-radius:10px; font-size:13px; padding:12px 14px; margin-bottom:20px; line-height:1.45; }
-        .alert-rm.error{ background:#FCEAEA; color:#B42318; }
-        .alert-rm.info{ background:#EEF3FF; color:var(--rm-deep); border:1px solid #C9D3FF; }
-        .alert-rm i{ font-size:16px; margin-top:1px; }
-        .help{ margin-top:22px; font-size:12.5px; color:var(--muted); text-align:center; line-height:1.6; }
-        .help a{ color:var(--rm-blue); font-weight:600; text-decoration:none; }
-        @media (max-width: 860px){
-            .brand-panel{ display:none; }
-            .login-shell{ max-width:440px; min-height:auto; }
-            .form-panel{ padding:40px 28px; }
-            .form-panel .mobile-brand{ display:flex; }
+        /* Tablets and phones: the photo becomes a band at the top */
+        @media (max-width: 900px) {
+            .page { flex-direction: column; }
+            .photo { flex: 0 0 auto; min-height: 170px; padding: 26px 24px; background-position: center 40%; }
+            .photo .eyebrow { font-size: 12px; } .photo .eyebrow::before { width: 28px; }
+            .photo .foot { display: none; }
+            .photo > .deco.bottom { display: none; } .photo > .deco.top { width: 26%; }
+            .side { padding: 32px 22px 40px; align-items: flex-start; }
+            .logo { width: 72px; height: 72px; margin-bottom: 14px; }
+            h1 { font-size: 30px; }
         }
     </style>
 </head>
 <body>
-    <main class="login-shell">
-        <section class="brand-panel" aria-label="RM Staff Portal">
-            <div class="brand-logo">
-                <img src="assets/images/logo.jpg" alt="RISE MOTIVE">
-                <div class="name">RM STAFF PORTAL<small>RISE MOTIVE Ltd</small></div>
-            </div>
-            <div class="brand-copy">
-                <div class="staff-badge"><i class="bi bi-shield-lock-fill"></i> RISE MOTIVE staff only</div>
-                <h1>Welcome to Your RISE MOTIVE Workspace.</h1>
-                <p>Your dedicated workspace as a member of the RISE MOTIVE staff.</p>
-            </div>
-            <div class="brand-foot">&copy; <?= date('Y'); ?> RISE MOTIVE Ltd</div>
-        </section>
+<div class="page">
+    <section class="photo" aria-label="RM Staff Portal">
+        <svg class="deco top" viewBox="0 0 360 640" aria-hidden="true" focusable="false">
+            <path d="M0 0H360C200 70 70 260 0 640Z" fill="#2F55F0" fill-opacity=".38" stroke="none"/>
+            <path d="M0 0H255C135 80 45 250 0 470Z" fill="#1A3FE6" fill-opacity=".72" stroke="none"/>
+            <path d="M0 0H150C80 60 25 160 0 300Z" fill="#0B2BD8" fill-opacity=".85" stroke="none"/>
+        </svg>
+        <svg class="deco bottom" viewBox="0 0 780 300" preserveAspectRatio="xMinYMax meet" aria-hidden="true" focusable="false">
+            <path d="M0 8C250 55 520 140 780 250V300H735C495 186 235 112 0 66Z" fill="#FFFFFF" fill-opacity=".16" stroke="none"/>
+            <path d="M0 66C235 112 495 186 735 300H700C478 208 222 138 0 92Z" fill="#C99A2E" fill-opacity=".85" stroke="none"/>
+            <path d="M0 92C222 138 478 208 700 300H0Z" fill="#0A1A8C" stroke="none"/>
+        </svg>
+        <div class="eyebrow">Welcome to RM Staff Portal</div>
+        <div class="foot">&copy; <?= date('Y'); ?> RISE MOTIVE Ltd</div>
+    </section>
 
-        <section class="form-panel">
-            <div class="mobile-brand"><img src="assets/images/logo.jpg" alt="RISE MOTIVE"><span>RM STAFF PORTAL</span></div>
-            <h2>Staff sign in</h2>
-            <p class="subtitle">Use your RISE MOTIVE staff email and password.</p>
+    <main class="side">
+        <div class="box">
+            <img class="logo" src="assets/images/rise.jpg" alt="RISE MOTIVE">
+            <div class="kicker">RM Staff Portal</div>
+            <h1>Staff sign in</h1>
 
             <?php if ($expired && !isset($error)) { ?>
-            <div class="alert-rm info" role="status">
-                <i class="bi bi-clock-history"></i>
-                <span>Your session has expired due to 30 minutes of inactivity. Please log in again to continue.</span>
-            </div>
+            <div class="alert info" role="status"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>Session expired. Please sign in again.</span></div>
             <?php } ?>
             <?php if (isset($error)) { ?>
-            <div class="alert-rm error" role="alert">
-                <i class="bi bi-exclamation-circle-fill"></i>
-                <span><?= $h($error); ?></span>
-            </div>
+            <div class="alert error" role="alert"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg><span><?= $h($error); ?></span></div>
             <?php } ?>
 
             <form method="POST" action="login.php" autocomplete="on">
-                <div class="mb-3">
-                    <label class="form-label" for="email">Staff email address</label>
-                    <div class="input-group-rm">
-                        <i class="bi bi-envelope"></i>
-                        <input type="email" id="email" name="email" placeholder="you@risemotive.rw" value="<?= $h($_POST['email'] ?? ''); ?>" autocomplete="username" required autofocus>
-                    </div>
+                <label for="email">Email</label>
+                <div class="field"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
+                    <input type="email" id="email" name="email" placeholder="name@risemotive.com" value="<?= $h($_POST['email'] ?? ''); ?>" autocomplete="username" required autofocus>
                 </div>
-                <div class="mb-4">
-                    <label class="form-label" for="password">Password</label>
-                    <div class="input-group-rm">
-                        <i class="bi bi-lock"></i>
-                        <input type="password" id="password" name="password" placeholder="••••••••" autocomplete="current-password" required>
-                        <button type="button" class="toggle-pw" aria-label="Show password" onclick="var p = document.getElementById('password'); var show = p.type === 'password'; p.type = show ? 'text' : 'password'; this.setAttribute('aria-label', show ? 'Hide password' : 'Show password'); this.firstElementChild.className = show ? 'bi bi-eye-slash' : 'bi bi-eye';"><i class="bi bi-eye"></i></button>
-                    </div>
+                <label for="password">Password</label>
+                <div class="field"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+                    <input type="password" id="password" name="password" placeholder="Password" autocomplete="current-password" required>
+                    <button type="button" class="eye" id="eye" aria-label="Show password"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
                 </div>
-                <button type="submit" name="login" class="btn-signin">Sign in to RM Staff Portal</button>
+                <button type="submit" name="login" class="btn">Sign in <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
             </form>
 
-            <div class="help">Forgot your password? Ask an Administrator.<br>
-                Are you a customer? <a href="portal/">Go to the RM Customer Portal</a></div>
-        </section>
+            <div class="help">Forgot password? Ask an Administrator.</div>
+            <hr>
+            <a class="cust" href="portal/">Customer? Go to the RM Customer Portal <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+        </div>
     </main>
+</div>
+<script>
+    (function () {
+        var b = document.getElementById('eye'), p = document.getElementById('password');
+        var open = b.innerHTML, shut = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 6.1A10 10 0 0 1 12 6c6.4 0 10 6 10 6a17 17 0 0 1-3.2 3.8M6.6 7.6A17 17 0 0 0 2 12s3.6 6 10 6a9.6 9.6 0 0 0 4.2-.9"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
+        b.addEventListener('click', function () { var show = p.type === 'password'; p.type = show ? 'text' : 'password'; b.innerHTML = show ? shut : open; b.setAttribute('aria-label', show ? 'Hide password' : 'Show password'); p.focus(); });
+    })();
+</script>
 </body>
 </html>

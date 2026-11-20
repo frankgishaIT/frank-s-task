@@ -3,7 +3,6 @@
  * login.php — RM STAFF PORTAL sign-in (RISE MOTIVE staff only).
  * CHANGED: RM Staff Portal branding and welcome text; the same session rules as the rest of the portal
  * (30 minutes of inactivity end the session, with the explanation shown here); clean re-login after expiry.
- * The photo address carries the file date (?v=…), so a new photo shows at once (no old copy from the browser cache).
  * CHANGED (new design): full-screen split page — Kigali photo on the left (assets/images/login-bg.jpg),
  * sign-in on the right. The sign-in rules above are unchanged.
  */
@@ -11,13 +10,9 @@ define('RM_OS_ALLOW_GUEST', true);
 require 'config/db.php';
 
 const RM_LOGIN_IDLE_LIMIT = 1800; // same rule as includes/auth.php (30 minutes)
-if (session_status() === PHP_SESSION_NONE) {
-    @ini_set('session.gc_maxlifetime', '7200');
-    @ini_set('session.use_strict_mode', '1');
-    $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
-    @session_set_cookie_params(['lifetime' => 0, 'path' => '/', 'httponly' => true, 'samesite' => 'Lax', 'secure' => $https]);
-    session_start();
-}
+require_once __DIR__ . '/includes/session_boot.php'; // CHANGED: the staff portal's own session cookie (RMSTAFF), the same on every page
+rm_session_start();
+rm_forget_old_cookie();
 header('Cache-Control: no-store, no-cache, must-revalidate, private');
 
 $expired = isset($_GET['expired']);

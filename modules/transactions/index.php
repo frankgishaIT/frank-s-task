@@ -1,6 +1,6 @@
 <?php
 if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+    require_once __DIR__ . '/../../includes/session_boot.php'; rm_session_start(); /* CHANGED: one staff session (RMSTAFF) */
 }
 require '../../config/db.php';
 require '../../includes/profit_rules.php'; // shared profit rules (same as the Sales reports)

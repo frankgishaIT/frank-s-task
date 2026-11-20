@@ -12,13 +12,8 @@ date_default_timezone_set('Africa/Kigali');
  *  - An expired session is destroyed completely, so the next login starts clean.
  */
 const RM_IDLE_LIMIT = 1800; // seconds (30 minutes)
-if (session_status() === PHP_SESSION_NONE) {
-    @ini_set('session.gc_maxlifetime', '7200');
-    @ini_set('session.use_strict_mode', '1');
-    $rmHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
-    @session_set_cookie_params(['lifetime' => 0, 'path' => '/', 'httponly' => true, 'samesite' => 'Lax', 'secure' => $rmHttps]);
-    session_start();
-}
+require_once __DIR__ . '/session_boot.php'; // CHANGED: the staff portal's own session cookie and settings, the same on every page
+rm_session_start();
 if (!headers_sent()) {
     header('Cache-Control: no-store, no-cache, must-revalidate, private');
     header('Pragma: no-cache');

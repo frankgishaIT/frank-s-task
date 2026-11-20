@@ -4,7 +4,7 @@
  * Spec section 3. Asks for confirmation, then posts a linked REVERSAL (the original stays in the history).
  */
 if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+    require_once __DIR__ . '/../../includes/session_boot.php'; rm_session_start(); /* CHANGED: one staff session (RMSTAFF) */
 }
 require '../../config/db.php';
 require_once '../../includes/capital_entry_helpers.php';

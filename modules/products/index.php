@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once __DIR__ . '/../../includes/session_boot.php'; rm_session_start(); /* CHANGED: one staff session (RMSTAFF) */
 require '../../config/db.php';
 require '../../includes/stock_rules.php'; // one shared low-stock rule (per-product reorder level, else the default)
 $pageSearchScope = 'products'; // tells the topbar search what module we're in

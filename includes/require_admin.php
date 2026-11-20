@@ -1,7 +1,7 @@
 <?php
 // Ensures a session is active (safe to include even if session_start() was already called elsewhere)
 if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+    require_once __DIR__ . '/session_boot.php'; rm_session_start(); /* CHANGED: one staff session (RMSTAFF) */
 }
 
 $base = defined('BASE_URL') ? BASE_URL : '';

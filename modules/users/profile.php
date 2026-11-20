@@ -3,7 +3,7 @@ require '../../config/db.php';
 require '../../includes/user_photo_helpers.php';
 
 if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+    require_once __DIR__ . '/../../includes/session_boot.php'; rm_session_start(); /* CHANGED: one staff session (RMSTAFF) */
 }
 
 // NOTE: header.php / sidebar.php are included further down, AFTER the form

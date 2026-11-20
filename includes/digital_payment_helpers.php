@@ -31,7 +31,7 @@ const DP_START_LIMIT_PER_MINUTE = 6;      // requests one user may start per min
 function dp_csrf_token(): string
 {
     if (session_status() === PHP_SESSION_NONE) {
-        session_start();
+        require_once __DIR__ . '/session_boot.php'; rm_session_start(); /* CHANGED: one staff session (RMSTAFF) */
     }
     if (empty($_SESSION['dp_csrf'])) {
         $_SESSION['dp_csrf'] = bin2hex(random_bytes(24));

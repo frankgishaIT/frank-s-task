@@ -3,7 +3,7 @@
  * NEW FILE: modules/session/expired.php — ends the session after 30 minutes of inactivity and opens the login page
  * with the explanation. Safe to open at any time (also when the session is already gone).
  */
-if (session_status() === PHP_SESSION_NONE) { session_start(); }
+if (session_status() === PHP_SESSION_NONE) { require_once __DIR__ . '/../../includes/session_boot.php'; rm_session_start(); /* CHANGED: one staff session (RMSTAFF) */ }
 $_SESSION = [];
 if (ini_get('session.use_cookies')) {
     $p = session_get_cookie_params();

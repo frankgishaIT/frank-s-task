@@ -10,6 +10,8 @@ $F = [
     'High demand' => ['high_customers' => 'Different customers (at least)', 'high_requests' => 'Requests (at least)', 'high_quantity' => '… or total quantity (at least)'],
     'Moderate demand' => ['moderate_customers' => 'Different customers (at least)', 'moderate_requests' => '… or requests (at least)'],
     'Growing demand' => ['growth_days' => 'Compare the last … days with the … days before', 'growth_min' => 'Requests in the recent period (at least)', 'growth_factor' => 'Times more than the period before (e.g. 1.5)'],
+    'Feasibility and recommendations' => ['target_margin' => 'Target gross margin % (suggested selling price)', 'min_margin' => 'Minimum gross margin % to recommend a product', 'conversion_pct' => '% of requested quantity expected to be bought (requests are not sales)',
+        'sales_period_days' => 'Stock should sell within … days', 'busy_tasks' => 'An employee is busy from … open tasks', 'occasional_days' => 'A service is "occasional" when rarely requested in the last … days'],
     'Market analysis and alerts' => ['analysis_min_requests' => 'A product qualifies for market analysis after … requests', 'alert_repeat_count' => 'Alert when requested … times', 'alert_repeat_days' => '… within … days'],
 ];
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {

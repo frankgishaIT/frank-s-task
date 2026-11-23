@@ -30,6 +30,8 @@ const MI_SETTING_DEFAULTS = [
     'growth_days' => '30', 'growth_min' => '3', 'growth_factor' => '1.5',         // Growing: recent period vs the period before
     'analysis_min_requests' => '3',                                                // a product qualifies for market analysis
     'alert_repeat_count' => '3', 'alert_repeat_days' => '14',                     // alert: requested N times within D days
+    'target_margin' => '25', 'min_margin' => '15', 'conversion_pct' => '60',       // feasibility: suggested price, minimum margin, share of requests expected to buy
+    'sales_period_days' => '60', 'busy_tasks' => '8', 'occasional_days' => '90',  // stock period; employee busy from N open tasks; window for "occasional" services
 ];
 
 function mi_ensure(mysqli $conn): void

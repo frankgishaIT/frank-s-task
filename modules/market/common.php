@@ -13,8 +13,10 @@
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../includes/access_control.php';
 require_once __DIR__ . '/../../includes/market_helpers.php';
+require_once __DIR__ . '/../../includes/market_eval.php';
 require_once __DIR__ . '/../../includes/branch_helpers.php';
 mi_ensure($conn);
+mi_eval_ensure($conn);
 
 function mic(mysqli $conn, string $a): bool { return access_can('market.' . $a, $conn); }
 function mi_require(mysqli $conn, string $a): void { if (!mic($conn, $a)) { http_response_code(403); include __DIR__ . '/../../includes/access_denied.php'; exit; } }
@@ -61,7 +63,8 @@ function mi_period_form(array $per, array $extra = []): string
 function mi_tabs(mysqli $conn, string $active, string $title, string $right = ''): void
 {
     $tabs = [['index.php', 'Dashboard', 'view'], ['request.php', 'Record a request', 'request'], ['requests.php', 'Requests', 'view'], ['opportunities.php', 'Demand analysis', 'view'],
-             ['discover.php', 'New product discovery', 'request'], ['settings.php', 'Settings', 'settings']];
+             ['recommendations.php', 'Recommendations', 'research'], ['gaps.php', 'Capability gaps', 'research'], ['discover.php', 'New product discovery', 'request'],
+             ['skills.php', 'Employee skills', 'research'], ['settings.php', 'Settings', 'settings']];
     echo '<style>.mi-tabs{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:2px;border-bottom:1px solid #E4E7EF;margin-bottom:14px;scrollbar-width:none}.mi-tabs::-webkit-scrollbar{display:none}.mi-tabs a{padding:7px 12px;font-size:13.5px;color:#5B6275;text-decoration:none;border-bottom:2px solid transparent;white-space:nowrap}
         .mi-tabs a.on{color:#1E2FE0;border-bottom-color:#1E2FE0;font-weight:600}.mi-k .lbl{font-size:12px;color:#6B7280}.mi-k .val{font-weight:700;font-size:1.3rem;color:#0B1A8C}.mi-k .sub{font-size:11.5px;color:#8A90A2}
         .mi-pill{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;white-space:nowrap}.mi-tbl td,.mi-tbl th{font-size:13px;vertical-align:middle}</style>';
@@ -85,4 +88,32 @@ function mi_status_badge(string $s): string
           'Approved' => '#0FA968;color:#fff', 'Rejected' => '#FDECEC;color:#9B1C1C', 'Deferred' => '#F1F2F6;color:#5B6275', 'In Implementation' => '#E6F0FF;color:#1E2FE0',
           'Launched/Active' => '#1E2FE0;color:#fff', 'Completed' => '#E9ECF3;color:#1E2333'][$s] ?? '#F1F2F6;color:#5B6275';
     return '<span class="mi-pill" style="background:' . $c . '">' . mi_e($s) . '</span>';
+}
+
+/** Sub-navigation of one opportunity: Demand · Suppliers (products) · Capability (services) · Feasibility · Decision. */
+function mi_opp_nav(mysqli $conn, array $o, string $active): void
+{
+    $id = (int) $o['id'];
+    $n = [['opportunity.php', 'Demand', 'view']];
+    if ($o['kind'] === 'product') { $n[] = ['quotes.php', 'Suppliers', 'research']; } else { $n[] = ['capability.php', 'Capability', 'research']; }
+    $n[] = ['feasibility.php', 'Feasibility & recommendation', 'research']; $n[] = ['decision.php', 'Decision', 'research'];
+    echo '<div class="d-flex flex-wrap gap-1 mb-3">';
+    foreach ($n as [$f, $l, $p]) {
+        if ($f !== 'opportunity.php' && !mic($conn, $p) && !($f === 'decision.php' && mic($conn, 'approve')) && !($f === 'feasibility.php' && mic($conn, 'finance'))) { continue; }
+        echo '<a href="' . $f . '?id=' . $id . '" class="btn btn-sm ' . ($f === $active ? 'btn-primary' : 'btn-light border') . '">' . $l . '</a>';
+    }
+    echo '</div>';
+}
+
+/** May this user open the evaluation pages (research, finance or approve)? */
+function mi_can_evaluate(mysqli $conn): bool { return mic($conn, 'research') || mic($conn, 'finance') || mic($conn, 'approve'); }
+
+/** Loads an opportunity for an evaluation page (follows merges). */
+function mi_load_opp(mysqli $conn, string $self): array
+{
+    $id = (int) ($_GET['id'] ?? $_POST['id'] ?? 0);
+    $o = mysqli_fetch_assoc(mysqli_query($conn, "SELECT * FROM mi_opportunities WHERE id = $id"));
+    if (!$o) { mi_go('opportunities.php', 'error', 'Not found.'); }
+    if ($o['merged_into']) { header('Location: ' . $self . '?id=' . (int) $o['merged_into']); exit; }
+    return $o;
 }

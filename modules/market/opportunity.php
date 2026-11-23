@@ -14,7 +14,7 @@ if (!$o) { mi_go('opportunities.php', 'error', 'Not found.'); }
 if ($o['merged_into']) { mi_go('opportunity.php?id=' . (int) $o['merged_into'], 'success', '"' . $o['name'] . '" was merged into this record.'); }
 $self = 'opportunity.php?id=' . $id;
 $canRes = mic($conn, 'research');
-$reviewStatuses = ['New', 'Under Review', 'More Information Required', 'Recommended'];
+$reviewStatuses = ['New', 'Under Review', 'More Information Required']; // Recommended / Approved / Rejected / Deferred: Decision page
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!mi_csrf_ok()) { mi_go($self, 'error', 'The page had expired.'); }
     if (!$canRes) { mi_go($self, 'error', 'You may not change this record.'); }
@@ -56,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         if ($do === 'status') {
             $stt = (string) ($_POST['status'] ?? ''); $note = mb_substr(trim((string) ($_POST['note'] ?? '')), 0, 500);
-            if (!in_array($stt, $reviewStatuses, true)) { throw new RuntimeException('Approval, rejection and deferral are management decisions (next update).'); }
+            if (!in_array($stt, $reviewStatuses, true)) { throw new RuntimeException('Recommendations and management decisions are made on the Decision page.'); }
             if (in_array($o['status'], ['Approved', 'Rejected', 'Deferred', 'In Implementation', 'Launched/Active', 'Completed'], true) && !mic($conn, 'approve')) { throw new RuntimeException('A management decision was already taken on this record.'); }
             $s = mysqli_prepare($conn, 'UPDATE mi_opportunities SET status = ?, updated_by = ?, updated_at = ? WHERE id = ?'); mysqli_stmt_bind_param($s, 'sisi', $stt, $uid, $now, $id); mysqli_stmt_execute($s);
             mi_audit($conn, $id, null, 'status', $o['status'] . ' → ' . $stt . ($note !== '' ? ': ' . $note : ''));
@@ -87,6 +87,7 @@ mi_tabs($conn, 'opportunities.php', $o['name'], mic($conn, 'request') ? '<a href
     <span class="badge bg-<?= $sit[2]; ?> <?= in_array($sit[2], ['warning', 'light'], true) ? 'text-dark' : ''; ?>"><?= mi_e($sit[1]); ?></span><?= mi_level_badge($lvl); ?><?= mi_status_badge($o['status']); ?>
     <span class="small text-muted"><?= $o['kind'] === 'service' ? 'Service' : 'Product'; ?><?= $o['category'] ? ' · ' . mi_e($o['category']) : ''; ?> · <?= mi_e(MI_ORIGINS[$o['origin']] ?? $o['origin']); ?> · #<?= $id; ?></span>
 </div>
+<?php mi_opp_nav($conn, $o, 'opportunity.php'); ?>
 <div class="row g-3">
 <div class="col-xl-8">
     <div class="row g-2 mb-3">
@@ -127,7 +128,7 @@ mi_tabs($conn, 'opportunities.php', $o['name'], mic($conn, 'request') ? '<a href
     <div class="card border-0 shadow-sm mb-3"><div class="card-body small">
         <form method="POST" class="mb-3"><?= mi_csrf_field(); ?><input type="hidden" name="id" value="<?= $id; ?>"><input type="hidden" name="do" value="status">
             <div class="fw-semibold mb-1">Review status</div><div class="d-flex gap-1"><select name="status" class="form-select form-select-sm"><?php foreach ($reviewStatuses as $x) { ?><option <?= $o['status'] === $x ? 'selected' : ''; ?>><?= $x; ?></option><?php } ?></select><button class="btn btn-sm btn-outline-primary">Set</button></div>
-            <input name="note" class="form-control form-control-sm mt-1" placeholder="Note (optional)"><div class="text-muted mt-1">Approve / reject / defer: management decision workflow (next update).</div></form>
+            <input name="note" class="form-control form-control-sm mt-1" placeholder="Note (optional)"><div class="text-muted mt-1">To recommend, approve, reject or defer, use the <a href="decision.php?id=<?= $id; ?>">Decision</a> page.</div></form>
         <details><summary class="fw-semibold text-primary">Correct the details</summary><form method="POST" class="mt-2"><?= mi_csrf_field(); ?><input type="hidden" name="id" value="<?= $id; ?>"><input type="hidden" name="do" value="edit">
             <input name="name" class="form-control form-control-sm mb-1" value="<?= mi_e($o['name']); ?>" maxlength="160" required>
             <select name="category" class="form-select form-select-sm mb-1"><option value="">No category</option><?php foreach (mi_categories($conn, $o['kind'], $o['category']) as $c) { ?><option <?= $o['category'] === $c ? 'selected' : ''; ?>><?= mi_e($c); ?></option><?php } ?></select>

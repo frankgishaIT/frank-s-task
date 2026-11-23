@@ -40,6 +40,20 @@ $fin = null;
 if (mic($conn, 'finance')) {
     try { require_once __DIR__ . '/../../includes/fund_helpers.php'; $cf = fund_by_code($conn, 'CAPITAL'); if ($cf) { $fin = ['capital' => fund_available($conn, (int) $cf['id']), 'name' => $cf['name'] ?? 'Capital Fund']; } } catch (Throwable $e) { $fin = null; }
 }
+$biz = null;
+if (mi_can_evaluate($conn)) { // C. business opportunities and B. capability gaps (stage 2)
+    $biz = ['pending' => 0, 'approved' => 0, 'recP' => 0, 'recS' => 0, 'inv' => 0.0, 'gp' => 0.0, 'train' => [], 'gapTypes' => [], 'recs' => []];
+    foreach (mysqli_fetch_all(mysqli_query($conn, "SELECT * FROM mi_opportunities WHERE merged_into IS NULL AND status NOT IN ('Rejected', 'Completed', 'Launched/Active') ORDER BY id DESC LIMIT 300"), MYSQLI_ASSOC) as $x) {
+        if ($x['status'] === 'Recommended') { $biz['pending']++; } if ($x['status'] === 'Approved') { $biz['approved']++; }
+        $R = mi_recommendation($conn, $x); $biz['recs'][$R['rec']] = ($biz['recs'][$R['rec']] ?? 0) + 1;
+        if (in_array($R['rec'], ['Recommended to Introduce', 'Increase Stock Quantity'], true)) { $biz['recP']++; $biz['inv'] += (float) $R['investment']; $biz['gp'] += (float) $R['gross_profit']; }
+        if ($R['rec'] === 'Introduce the service') { $biz['recS']++; $biz['inv'] += (float) $R['investment']; $biz['gp'] += 12 * (float) $R['gp_m']; }
+    }
+    foreach (mysqli_fetch_all(mysqli_query($conn, "SELECT g.gap_type, g.recommendation, ge.user_id FROM mi_gaps g LEFT JOIN mi_gap_employees ge ON ge.gap_id = g.id WHERE g.status = 'Open'"), MYSQLI_ASSOC) as $g) {
+        $biz['gapTypes'][$g['gap_type']] = true; if ($g['user_id'] && $g['recommendation'] === 'Train existing employees') { $biz['train'][(int) $g['user_id']] = true; }
+    }
+    $biz['gapsOpen'] = (int) mysqli_fetch_row(mysqli_query($conn, "SELECT COUNT(*) FROM mi_gaps WHERE status = 'Open'"))[0];
+}
 include __DIR__ . '/../../includes/header.php';
 include __DIR__ . '/../../includes/sidebar.php';
 mi_tabs($conn, 'index.php', 'RM Market Insights', mic($conn, 'request') ? '<div class="d-flex gap-1"><a href="request.php" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Record a request</a><a href="discover.php" class="btn btn-outline-primary btn-sm">New discovery</a></div>' : '');
@@ -76,6 +90,17 @@ $pq = 'period=' . urlencode($per[2]) . ($per[2] === 'custom' ? '&from=' . $per[0
         <div class="d-flex justify-content-between border-bottom py-1"><span>Estimated value of the demand</span><strong><?= mi_money($value); ?></strong></div>
         <div class="d-flex justify-content-between border-bottom py-1"><span><?= mi_e($fin['name']); ?> available</span><strong><?= mi_money($fin['capital']); ?></strong></div>
         <div class="text-muted mt-1">Estimate = quantity × the price customers would pay (or the selling price) for <?= $valueN; ?> item(s). Not sales: decisions follow supplier quotations and feasibility (next update).</div></div></div><?php } ?>
+    <?php if ($biz) { ?><div class="card border-0 shadow-sm mb-3"><div class="card-body small"><div class="d-flex justify-content-between"><span class="fw-semibold">Business opportunities</span><a href="recommendations.php">Recommendations</a></div>
+        <div class="d-flex justify-content-between border-bottom py-1"><span>Pending management decisions</span><a href="recommendations.php?status=Recommended" class="fw-bold"><?= (int) $biz['pending']; ?></a></div>
+        <div class="d-flex justify-content-between border-bottom py-1"><span>Products to introduce / restock</span><strong><?= (int) $biz['recP']; ?></strong></div>
+        <div class="d-flex justify-content-between border-bottom py-1"><span>New services to introduce</span><strong><?= (int) $biz['recS']; ?></strong></div>
+        <div class="d-flex justify-content-between border-bottom py-1"><span>Approved, not yet implemented</span><a href="recommendations.php?status=Approved" class="fw-bold"><?= (int) $biz['approved']; ?></a></div>
+        <?php if (mic($conn, 'finance') || mic($conn, 'research')) { ?><div class="d-flex justify-content-between border-bottom py-1"><span>Estimated investment</span><strong><?= mi_money($biz['inv']); ?></strong></div><div class="d-flex justify-content-between py-1"><span>Expected gross profit <span class="text-muted">(est.)</span></span><strong><?= mi_money($biz['gp']); ?></strong></div><?php } ?>
+        <div class="fw-semibold mt-2 d-flex justify-content-between"><span>Capability gaps</span><a href="gaps.php" class="fw-normal">Open</a></div>
+        <div class="d-flex justify-content-between py-1"><span>Open gaps</span><strong><?= (int) $biz['gapsOpen']; ?></strong></div>
+        <div class="d-flex justify-content-between py-1"><span>Employees needing training</span><strong><?= count($biz['train']); ?></strong></div>
+        <?php if ($biz['gapTypes']) { ?><div class="text-muted"><?= mi_e(implode(' · ', array_map(function ($t) { return MI_GAP_TYPES[$t] ?? $t; }, array_keys($biz['gapTypes'])))); ?></div><?php } ?>
+    </div></div><?php } ?>
     <div class="card border-0 shadow-sm mb-3"><div class="card-body small"><div class="fw-semibold mb-1">Demand levels</div>
         <?php foreach (MI_DEMAND_LEVELS as $l => $c) { ?><div class="d-flex justify-content-between py-1"><a href="opportunities.php?level=<?= urlencode($l); ?>&amp;<?= mi_e($pq); ?>" class="text-decoration-none"><?= mi_level_badge($l); ?></a><strong><?= (int) ($lvls[$l] ?? 0); ?></strong></div><?php } ?></div></div>
     <div class="card border-0 shadow-sm mb-3"><div class="card-body small"><div class="fw-semibold mb-1">What happened to the customers</div>

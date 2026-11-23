@@ -226,6 +226,12 @@ if ($rmCompactUi) { ?>
       <i class="bi bi-building-gear"></i> Assets
      </a>
    <?php } ?>
+    <!-- NEW: RM Market Insights (customer requests, demand analysis, new product discovery) -->
+    <?php require_once __DIR__ . '/access_control.php'; if (access_can('market.view', $conn)) { ?>
+    <a href="../market/index.php" class="<?= navActive('/market/', $currentPath) ?>">
+        <i class="bi bi-lightbulb"></i> RM Market Insights
+    </a>
+    <?php } ?>
     <!-- NEW: Marketing & Growth -->
     <a href="../marketing/index.php" class="<?= navActive('/marketing/', $currentPath) ?>">
         <i class="bi bi-megaphone"></i> Marketing &amp; Growth

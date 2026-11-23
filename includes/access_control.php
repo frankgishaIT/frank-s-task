@@ -46,6 +46,7 @@ function access_catalog(): array
         'notifications'     => ['Notifications', ['view']],
         'messages'          => ['Messages (internal communication)', ['view', 'create']],
         'sms'               => ['SMS', ['view', 'create', 'templates', 'essential', 'test']],
+        'market'            => ['RM Market Insights', ['view', 'request', 'research', 'finance', 'approve', 'reports', 'settings']],
         'portal'            => ['RM Customer Portal (staff side)', ['view', 'edit', 'manage']],
         'forecasting'       => ['RM Business Forecasting', ['view', 'reports', 'manage']],
         'rm_loans'          => ['RMC - Credit Hub (customer loans)', ['view', 'edit', 'approve', 'reports', 'manage']],
@@ -66,6 +67,7 @@ const ACCESS_ACTION_LABELS = [
     'reports' => 'Reports', 'manage' => 'Manage', 'executive_delete' => 'Executive delete (fully paid / processed)',
     'replace' => 'Replace (new version)', 'download' => 'Download', 'share' => 'Share', 'publish' => 'Publish to customers / students',
     'archive' => 'Archive', 'templates' => 'Manage SMS templates and rules', 'essential' => 'Switch off essential SMS', 'test' => 'Send test SMS',
+    'request' => 'Record customer requests and discoveries', 'research' => 'Review demand (research)', 'finance' => 'See costs, prices and funds', 'settings' => 'Settings',
 ];
 /**
  * Permissions added after Roles & Permissions was first set up, and which starting roles get them.
@@ -82,6 +84,9 @@ const ACCESS_NEW_DEFAULTS = [
     'library.view' => ['admin', 'manager', 'employee'], 'library.download' => ['admin', 'manager', 'employee'],
     'library.create' => ['admin', 'manager'], 'library.edit' => ['admin', 'manager'], 'library.replace' => ['admin', 'manager'],
     'sms.templates' => ['admin'], 'sms.essential' => ['admin'], 'sms.test' => ['admin'],
+    // NEW: RM Market Insights
+    'market.view' => ['admin', 'manager', 'employee'], 'market.request' => ['admin', 'manager', 'employee'], 'market.research' => ['admin', 'manager'],
+    'market.reports' => ['admin', 'manager'], 'market.finance' => ['admin'], 'market.approve' => ['admin'], 'market.settings' => ['admin'],
     'library.share' => ['admin', 'manager'], 'library.publish' => ['admin', 'manager'], 'library.approve' => ['admin', 'manager'], 'library.archive' => ['admin'],
     'library.delete' => ['admin'], 'library.manage' => ['admin'],
     'portal.view' => ['admin', 'manager'], 'portal.edit' => ['admin', 'manager'], 'portal.manage' => ['admin'],
@@ -313,6 +318,7 @@ function access_page_permission(string $script): ?string
     if ($module === 'portal') { return in_array($f, ['accounts', 'settings'], true) ? 'portal.manage' : (in_array($f, ['documents', 'records'], true) ? 'portal.edit' : 'portal.view'); }
     // NEW (Task 10): SMS Management. Template / log / usage pages need sms.view; each page checks sms.templates, sms.essential, sms.test itself.
     if ($module === 'sms' && in_array($f, ['index', 'template', 'log', 'usage', 'settings'], true)) { return $f === 'settings' ? 'sms.templates' : 'sms.view'; }
+    if ($module === 'market') { return $f === 'settings' ? 'market.settings' : '*'; } // NEW: every Market Insights page checks its own permission
     if ($module === 'library') { return ['upload' => 'library.create', 'folders' => 'library.manage', 'access_settings' => 'library.manage', 'customer_lookup' => 'library.publish'][$f] ?? 'library.view'; }
     if (($module === 'loans' || $module === 'asset_management') && strpos($f, 'executive') !== false) { return $module . '.executive_delete'; }
     if ($module === 'asset_management' && in_array($f, ['valuation', 'valuation_evidence', 'refund_receive', 'sync_capital_fund'], true)) { return 'asset_management.edit'; }

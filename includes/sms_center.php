@@ -93,7 +93,7 @@ function sms_catalog(): array
         'PORTAL_OTP' => ['name' => 'Customer Portal sign-in code', 'module' => 'Customer Portal', 'trigger' => 'A customer asks for a sign-in / verification code', 'to' => ['customer'], 'kind' => 'security', 'required' => ['code'],
             'vars' => ['code' => ['One-time code', '482913'], 'minutes' => ['Minutes valid', '10']], 'rules' => ['dedupe' => 'none', 'interval' => 0], 'targets' => [], 'legacy' => 'portal_otp',
             'default' => 'RISE MOTIVE: your customer portal code is {code}. It expires in {minutes} minutes. Do not share it with anyone.'],
-        'PORTAL_NOTICE' => ['name' => 'Customer Portal notice', 'module' => 'Customer Portal', 'trigger' => 'A notice is posted to a customer (RM Credit Hub, RM Investors Hub …)', 'to' => ['customer'], 'kind' => 'info',
+        'PORTAL_NOTICE' => ['name' => 'Customer Portal notice', 'module' => 'Customer Portal', 'trigger' => 'A notice is posted to a customer (RMC - Credit Hub, RMC - Investors Hub …)', 'to' => ['customer'], 'kind' => 'info',
             'vars' => $cust + ['title' => ['Notice title', 'Your application was approved']], 'rules' => ['dedupe' => 'none', 'interval' => 0], 'targets' => ['branch', 'customer_group'], 'legacy' => 'portal_notice',
             'default' => 'RISE MOTIVE: {title}. Details in your customer portal.'],
         'PORTAL_REPLY' => ['name' => 'Answer to a portal request', 'module' => 'Customer Portal', 'trigger' => 'Staff answer a customer request', 'to' => ['customer'], 'kind' => 'info',

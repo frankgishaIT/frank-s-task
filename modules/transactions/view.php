@@ -44,6 +44,8 @@ include '../../includes/sidebar.php';
             <tr><th>Expense Category</th><td><?= htmlspecialchars($transaction['expense_category'] ?: '—', ENT_QUOTES, 'UTF-8'); ?></td></tr>
             <?php } ?>
             <tr><th>Date</th><td><?= date('d M Y', strtotime($transaction['transaction_date'])); ?></td></tr>
+            <?php if (array_key_exists('account_id', $transaction)) { $faName = $transaction['account_id'] ? (mysqli_fetch_row(mysqli_query($conn, 'SELECT name FROM fa_accounts WHERE id = ' . (int) $transaction['account_id']))[0] ?? '') : ''; ?>
+            <tr><th>Financial account</th><td><?= $faName !== '' ? htmlspecialchars($faName, ENT_QUOTES, 'UTF-8') : '<span class="text-muted">—</span>'; ?><?= !empty($transaction['reference']) ? ' · Ref. ' . htmlspecialchars($transaction['reference'], ENT_QUOTES, 'UTF-8') : ''; ?></td></tr><?php } // NEW (Financial Accounts) ?>
             <tr><th>Status</th><td><span class="badge bg-<?= $statusBadge[$transaction['status']] ?? 'secondary'; ?>"><?= ucfirst(htmlspecialchars($transaction['status'], ENT_QUOTES, 'UTF-8')); ?></span>
                 <?php if ($transaction['status'] === 'rejected' && !empty($transaction['rejection_reason'])) { ?>
                     <span class="text-muted small ms-2"><?= htmlspecialchars($transaction['rejection_reason'], ENT_QUOTES, 'UTF-8'); ?></span>

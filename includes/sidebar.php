@@ -154,6 +154,13 @@ if ($rmCompactUi) { ?>
         <i class="bi bi-cash-stack"></i> Transactions
     </a>
 
+    <!-- NEW: Financial Accounts (where the money is held: banks, mobile money, cash) -->
+    <?php require_once __DIR__ . '/access_control.php'; if (access_can('fin_accounts.view', $conn)) { ?>
+    <a href="../fin_accounts/index.php" class="<?= navActive('/fin_accounts/', $currentPath) ?>">
+        <i class="bi bi-bank"></i> Financial Accounts
+    </a>
+    <?php } ?>
+
     <a href="../products/index.php" class="<?= navActive('products', $currentPath) ?>">
         <i class="bi bi-box-seam"></i> RM Offerings
     </a>

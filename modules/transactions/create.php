@@ -22,6 +22,10 @@ bdg_ensure($conn);
 $deptList = mysqli_fetch_all(mysqli_query($conn, 'SELECT id, name FROM departments ORDER BY name'), MYSQLI_ASSOC);
 $projectList = mysqli_fetch_all(mysqli_query($conn, 'SELECT id, ' . bdg_project_name_col($conn) . ' AS name FROM projects ORDER BY 2'), MYSQLI_ASSOC);
 $myDept = (int) (mysqli_fetch_row(mysqli_query($conn, 'SELECT department_id FROM users WHERE id = ' . (int) ($_SESSION['user_id'] ?? 0)))[0] ?? 0);
+// NEW (Financial Accounts): each income / expense identifies the account where the money was received or paid from.
+require_once '../../includes/fin_accounts.php';
+fa_ensure($conn);
+$faAccounts = fa_accounts($conn, true);
 
 if (isset($_POST['save'])) {
     $category = $_POST['category'] ?? '';
@@ -35,6 +39,8 @@ if (isset($_POST['save'])) {
     $deptId = filter_input(INPUT_POST, 'department_id', FILTER_VALIDATE_INT) ?: null;
     $projectId = filter_input(INPUT_POST, 'project_id', FILTER_VALIDATE_INT) ?: null;
     $recordedBy = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
+    $accountId = filter_input(INPUT_POST, 'account_id', FILTER_VALIDATE_INT) ?: null; // NEW (Financial Accounts)
+    $reference = mb_substr(trim((string) ($_POST['reference'] ?? '')), 0, 80); // NEW (Financial Accounts)
     $amount = ($amount === false || $amount === null) ? $amount : round($amount, 2); // NEW: no float leftovers in the fund
     $validDate = DateTime::createFromFormat('Y-m-d', $transactionDate);
 
@@ -51,6 +57,8 @@ if (isset($_POST['save'])) {
     } elseif ($transactionDate > date('Y-m-d')) {
         // NEW: a future date would take money out of a fund before it is spent.
         $error = 'The date cannot be in the future.';
+    } elseif ($faAccounts && (!$accountId || !in_array($accountId, array_map('intval', array_column($faAccounts, 'id')), true))) {
+        $error = 'Please choose the financial account ' . ($type === 'Expense' ? 'the money was paid from.' : 'where the money was received.'); // NEW (Financial Accounts)
     } elseif ($partyId && !in_array($partyId, $allowedParties, true)) {
         $error = 'Please select a valid party.';
     } elseif ($type === 'Expense' && (!$fundId || !fund_get($conn, $fundId))) {
@@ -90,6 +98,10 @@ if (isset($_POST['save'])) {
             mysqli_stmt_execute($statement);
             $newId = mysqli_insert_id($conn);
             br_stamp($conn, 'transactions', (int) $newId, $brBranch); // NEW (Multi-branch)
+            if ($accountId || $reference !== '') { // NEW (Financial Accounts): account + reference, before the fund entries so they are linked to the account
+                $fa = mysqli_prepare($conn, 'UPDATE transactions SET account_id = ?, reference = ? WHERE id = ?'); $refV = $reference !== '' ? $reference : null; $nid = (int) $newId;
+                mysqli_stmt_bind_param($fa, 'isi', $accountId, $refV, $nid); mysqli_stmt_execute($fa);
+            }
 
             // Approved expense = money leaves the fund now.
             // Pending expense = only reserved; the ledger entry is written on approval.
@@ -219,6 +231,15 @@ $modal_subtitle = $isAdmin ? 'Record a new income or expense entry.' : 'Submit a
                             <?php } ?>
                         </select>
                     </div>
+                </div>
+
+                <!-- NEW (Financial Accounts): where the money was received / paid from, and the reference -->
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6"><label class="form-label small fw-semibold text-muted">Financial account<?= $faAccounts ? ' <span class="text-danger">*</span>' : ''; ?></label>
+                        <select name="account_id" class="form-select rm-input" <?= $faAccounts ? 'required' : 'disabled'; ?>><option value=""><?= $faAccounts ? 'Where was the money received / paid from?' : 'No financial account yet'; ?></option>
+                        <?php foreach ($faAccounts as $fa) { ?><option value="<?= (int) $fa['id']; ?>" <?= (int) ($accountId ?? 0) === (int) $fa['id'] ? 'selected' : ''; ?>><?= htmlspecialchars($fa['name'] . ' (' . $fa['type'] . ')', ENT_QUOTES, 'UTF-8'); ?></option><?php } ?></select></div>
+                    <div class="col-md-6"><label class="form-label small fw-semibold text-muted">Reference (optional)</label>
+                        <input name="reference" maxlength="80" class="form-control rm-input" value="<?= htmlspecialchars($reference ?? '', ENT_QUOTES, 'UTF-8'); ?>" placeholder="Receipt no., bank slip, MoMo ID"></div>
                 </div>
 
                 <div class="row g-3 mb-3" id="budgetFields">

@@ -49,6 +49,10 @@ $isFundExpense = $transaction['transaction_type'] === 'Expense' && !empty($trans
 $fundRow = !empty($transaction['fund_id']) ? fund_get($conn, (int) $transaction['fund_id']) : null;
 // CHANGED (Task 3): managed by Admins. The record's own category stays available even if it was deactivated.
 $categoryList = categories_active($conn, 'expense', $transaction['expense_category'] ?? null);
+// NEW (Financial Accounts): the account and the reference can be corrected; the fund entries follow the account.
+require_once '../../includes/fin_accounts.php';
+fa_ensure($conn);
+$faAccounts = fa_accounts($conn, true);
 
 if (isset($_POST['update'])) {
     $category = $_POST['category'] ?? '';
@@ -104,6 +108,17 @@ if (isset($_POST['update'])) {
                 }
             }
 
+            // NEW (Financial Accounts): account + reference (the linked fund entries move to the new account, with an audit line)
+            $newAcc = filter_input(INPUT_POST, 'account_id', FILTER_VALIDATE_INT) ?: null; $newRef = mb_substr(trim((string) ($_POST['reference'] ?? '')), 0, 80); $newRef = $newRef !== '' ? $newRef : null;
+            if ($faAccounts && $newAcc && !in_array($newAcc, array_map('intval', array_column($faAccounts, 'id')), true)) { throw new RuntimeException('Choose an active financial account.'); }
+            if ((int) ($transaction['account_id'] ?? 0) !== (int) $newAcc || (string) ($transaction['reference'] ?? '') !== (string) $newRef) {
+                $fa = mysqli_prepare($conn, 'UPDATE transactions SET account_id = ?, reference = ? WHERE id = ?'); $tid = (int) $id; mysqli_stmt_bind_param($fa, 'isi', $newAcc, $newRef, $tid); mysqli_stmt_execute($fa);
+                if ((int) ($transaction['account_id'] ?? 0) !== (int) $newAcc) {
+                    if ($newAcc) { mysqli_query($conn, "UPDATE fa_movement_accounts SET account_id = " . (int) $newAcc . ", rule = 'transaction' WHERE movement_id IN (SELECT id FROM fund_movements WHERE transaction_id = $tid OR (ref_type = 'TX_INCOME' AND ref_id = $tid))"); }
+                    else { mysqli_query($conn, "DELETE FROM fa_movement_accounts WHERE movement_id IN (SELECT id FROM fund_movements WHERE transaction_id = $tid OR (ref_type = 'TX_INCOME' AND ref_id = $tid))"); }
+                    fa_audit($conn, 'transaction', $tid, 'account_changed', 'Transaction #' . $tid . ': account ' . ((fa_account($conn, (int) ($transaction['account_id'] ?? 0))['name'] ?? 'none')) . ' → ' . ($newAcc ? (fa_account($conn, (int) $newAcc)['name'] ?? '') : 'none'));
+                }
+            }
             $statement = mysqli_prepare($conn, 'UPDATE transactions SET category = ?, amount = ?, transaction_type = ?, description = ?, transaction_date = ?, recorded_by = ?, expense_category = ? WHERE id = ?');
             mysqli_stmt_bind_param($statement, 'sdsssisi', $category, $amount, $type, $description, $transactionDate, $recordedBy, $expenseCategory, $id);
             mysqli_stmt_execute($statement);
@@ -228,6 +243,13 @@ $modal_subtitle = 'Update this transaction\'s details.';
                     </div>
                 </div>
                 <?php } ?>
+
+                <!-- NEW (Financial Accounts) -->
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6"><label class="form-label small fw-semibold text-muted">Financial account</label>
+                        <select name="account_id" class="form-select rm-input"><option value="">—</option><?php foreach ($faAccounts as $fa) { ?><option value="<?= (int) $fa['id']; ?>" <?= (int) ($_POST['account_id'] ?? $transaction['account_id'] ?? 0) === (int) $fa['id'] ? 'selected' : ''; ?>><?= htmlspecialchars($fa['name'], ENT_QUOTES, 'UTF-8'); ?></option><?php } ?></select></div>
+                    <div class="col-md-6"><label class="form-label small fw-semibold text-muted">Reference</label><input name="reference" maxlength="80" class="form-control rm-input" value="<?= htmlspecialchars((string) ($_POST['reference'] ?? $transaction['reference'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>"></div>
+                </div>
 
                 <div class="mb-3">
                     <label class="form-label small fw-semibold text-muted">Transaction Date</label>

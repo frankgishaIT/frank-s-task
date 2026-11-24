@@ -15,6 +15,25 @@ $unitsMap = product_units_map($conn, array_map(function ($p) { return $p['id']; 
 $supplierList = business_parties_of_type($conn, 'Supplier');
 $lowStockList = po_low_stock_products($conn);
 $prefillLowStock = isset($_GET['from_low_stock']);
+// NEW (RM Market Insights): "Create purchase order" from an approved opportunity — supplier, product, approved
+// quantity and approved purchase price are filled in, and the order is linked back to the opportunity.
+$miOpp = null; $miPrefill = null; $miSupplier = 0;
+$miId = (int) ($_POST['mi_opportunity_id'] ?? $_GET['mi'] ?? 0);
+if ($miId) {
+    require_once __DIR__ . '/../../includes/market_ops.php';
+    mi_ops_ensure($conn);
+    $miOpp = mysqli_fetch_assoc(mysqli_query($conn, "SELECT * FROM mi_opportunities WHERE id = $miId AND kind = 'product' AND product_id IS NOT NULL AND status IN ('Approved', 'In Implementation')"));
+    if ($miOpp) {
+        $dec = mi_last_decision($conn, $miId, 'Approved');
+        $q = $dec && $dec['quote_id'] ? mysqli_fetch_assoc(mysqli_query($conn, 'SELECT * FROM mi_quotes WHERE id = ' . (int) $dec['quote_id'])) : null;
+        $miSupplier = $q && $q['supplier_party_id'] ? (int) $q['supplier_party_id'] : 0;
+        foreach ($catalogList as $p) { if ((int) $p['id'] === (int) $miOpp['product_id']) {
+            $miPrefill = ['id' => (int) $p['id'], 'name' => $p['product_name'], 'code' => $p['product_code'], 'stock' => (int) $p['quantity'],
+                          'cost' => $q ? (float) $q['unit_price'] : (float) $p['buying_price'], 'qty' => max(1, (int) round((float) ($dec['approved_qty'] ?? 1)))];
+        } }
+        $miNote = 'RM Market Insights: approved opportunity "' . $miOpp['name'] . '" (#' . $miId . ')' . ($q && !$miSupplier ? ' — quoted supplier: ' . $q['supplier_name'] . ' (not yet in RM Suppliers)' : '') . '.';
+    }
+}
 
 if (isset($_POST['save'])) {
     $supplierPartyId = filter_input(INPUT_POST, 'supplier_party_id', FILTER_VALIDATE_INT) ?: null;
@@ -137,6 +156,11 @@ if (isset($_POST['save'])) {
                 po_post_ordered_expense($conn, (int) $poId, (float) $total, (string) $supplier, $userId ? (int) $userId : null);
             }
 
+            if ($miOpp) { // NEW (RM Market Insights): link the order to the opportunity
+                mi_link_add($conn, (int) $miOpp['id'], 'po', (int) $poId);
+                mi_audit($conn, (int) $miOpp['id'], null, 'purchase_order', 'Purchase order #' . (int) $poId . ' (' . $status . ', ' . number_format($total, 2) . ')');
+                if ($miOpp['status'] === 'Approved') { mysqli_query($conn, "UPDATE mi_opportunities SET status = 'In Implementation' WHERE id = " . (int) $miOpp['id']); }
+            }
             mysqli_commit($conn);
             $saved = true;
         } catch (InsufficientFundException $e) {
@@ -186,13 +210,14 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
 <div class="card border-0 shadow-sm">
     <div class="card-body p-4">
         <form method="POST" id="poForm">
+            <?php if ($miOpp) { ?><input type="hidden" name="mi_opportunity_id" value="<?= (int) $miOpp['id']; ?>"><div class="alert alert-info small py-2" style="border-radius:10px"><?= htmlspecialchars($miNote, ENT_QUOTES, 'UTF-8'); ?> Check the details, then save.</div><?php } // NEW ?>
             <div class="row g-3 mb-3">
                 <div class="col-md-4">
                     <label class="form-label small fw-semibold text-muted">Supplier</label>
                     <select name="supplier_party_id" class="form-select rm-input" required>
                         <option value="">Select supplier</option>
                         <?php foreach ($supplierList as $s) { ?>
-                        <option value="<?= (int) $s['id']; ?>"><?= htmlspecialchars($s['business_name'], ENT_QUOTES, 'UTF-8'); ?></option>
+                        <option value="<?= (int) $s['id']; ?>" <?= (int) ($_POST['supplier_party_id'] ?? $miSupplier) === (int) $s['id'] ? 'selected' : ''; ?>><?= htmlspecialchars($s['business_name'], ENT_QUOTES, 'UTF-8'); ?></option>
                         <?php } ?>
                     </select>
                     <?php if (empty($supplierList)) { ?>
@@ -238,7 +263,7 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
 
             <div class="mb-3">
                 <label class="form-label small fw-semibold text-muted">Notes</label>
-                <textarea name="notes" class="form-control rm-input" rows="2" style="height:auto;"></textarea>
+                <textarea name="notes" class="form-control rm-input" rows="2" style="height:auto;"><?= htmlspecialchars((string) ($_POST['notes'] ?? ($miOpp ? $miNote : '')), ENT_QUOTES, 'UTF-8'); ?></textarea>
             </div>
 
             <div class="text-end mb-4" style="font-size:14px;">
@@ -272,6 +297,7 @@ const LOW_STOCK = <?= json_encode(array_map(function ($p) {
 }, $lowStockList), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 const UNITS_MAP = <?= json_encode($unitsMap, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>; // { productId: [ {unit_name, pack_size, is_base}, ... ] }
 const PREFILL_LOW_STOCK = <?= $prefillLowStock ? 'true' : 'false'; ?>;
+const MI_PREFILL = <?= json_encode($miPrefill, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>; // NEW (RM Market Insights)
 
 const itemsBody = document.querySelector('#itemsTable tbody');
 
@@ -466,7 +492,11 @@ if (lowStockBtn) {
 });
 
 // Start state
-if (PREFILL_LOW_STOCK && lowStockBtn) {
+if (MI_PREFILL) { // NEW (RM Market Insights): the approved product, quantity and price
+    const miRow = buildRow(MI_PREFILL);
+    itemsBody.appendChild(miRow);
+    bindRow(miRow, MI_PREFILL);
+} else if (PREFILL_LOW_STOCK && lowStockBtn) {
     lowStockBtn.click();
 } else {
     document.getElementById('addRow').click();

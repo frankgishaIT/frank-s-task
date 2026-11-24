@@ -131,10 +131,17 @@ function mi_eval_save(mysqli $conn, int $oppId, array $d): void
 /** Units sold of a catalogue item in the last $days days (cancelled sales excluded). */
 function mi_sold(mysqli $conn, int $productId, int $days): array
 {
+    return mi_sales_between($conn, $productId, date('Y-m-d', strtotime("-$days days")), date('Y-m-d'));
+}
+
+/** Recorded sales (Paid, Partially Paid, Credit) of a catalogue item between two dates, in BASE units (quantity × pack size). */
+function mi_sales_between(mysqli $conn, int $productId, string $from, string $to): array
+{
     try {
-        return mysqli_fetch_assoc(mysqli_query($conn, "SELECT COALESCE(SUM(si.quantity), 0) q, COALESCE(SUM(si.quantity * si.unit_price), 0) v, COUNT(DISTINCT s.id) n FROM sale_items si JOIN sales s ON s.id = si.sale_id
-            WHERE si.product_id = $productId AND s.status <> 'Cancelled' AND s.created_at >= '" . date('Y-m-d', strtotime("-$days days")) . "'")) ?: ['q' => 0, 'v' => 0, 'n' => 0];
-    } catch (Throwable $e) { return ['q' => 0, 'v' => 0, 'n' => 0]; }
+        $r = mysqli_fetch_assoc(mysqli_query($conn, "SELECT COALESCE(SUM(si.quantity * COALESCE(NULLIF(si.pack_size, 0), 1)), 0) q, COALESCE(SUM(si.line_total), 0) v, COUNT(DISTINCT s.id) n, MIN(s.sale_date) first, MAX(s.sale_date) last
+            FROM sale_items si JOIN sales s ON s.id = si.sale_id WHERE si.product_id = $productId AND s.status IN ('Paid', 'Partially Paid', 'Credit') AND s.sale_date BETWEEN '" . mysqli_real_escape_string($conn, substr($from, 0, 10)) . "' AND '" . mysqli_real_escape_string($conn, substr($to, 0, 10)) . " 23:59:59'"));
+        return $r ? ['q' => (float) $r['q'], 'v' => (float) $r['v'], 'n' => (int) $r['n'], 'first' => $r['first'], 'last' => $r['last']] : ['q' => 0, 'v' => 0, 'n' => 0, 'first' => null, 'last' => null];
+    } catch (Throwable $e) { return ['q' => 0, 'v' => 0, 'n' => 0, 'first' => null, 'last' => null]; }
 }
 
 /* ---------------------------------------------------------------- products ---------------------------------------------------------------- */

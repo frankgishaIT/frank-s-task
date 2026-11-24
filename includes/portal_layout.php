@@ -38,6 +38,7 @@ function portal_header(string $title, ?array $customer = null): void
     ];
     if (!empty($GLOBALS['PORTAL_LIBRARY_ON'])) { $menu[] = ['library.php', 'journal-bookmark', 'RM Digital Library']; } // NEW: documents opened to this customer / student
     if (!empty($GLOBALS['PORTAL_RECORDS_ON'])) { $menu[] = ['records.php', 'award', 'My Records']; }
+    $menu[] = ['suggest.php', 'lightbulb', 'Suggest a Product']; // NEW: RM Market Insights — customer product / service suggestions
     $menu[] = ['profile.php', 'person', 'My Profile'];
     $menu[] = ['requests.php', 'headset', 'Support'];
     ?><!doctype html>

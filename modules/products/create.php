@@ -37,6 +37,25 @@ function generate_product_code($conn, $itemType) {
 }
 
 $unitRows = [];
+// NEW (RM Market Insights): "Add to RM Offerings" from an approved opportunity — the form is filled in from the
+// opportunity and its approval, and the new item is linked back to it (no information typed twice).
+$miOpp = null; $miBuy = ''; $miSell = '';
+$miId = (int) ($_POST['mi_opportunity_id'] ?? $_GET['mi'] ?? 0);
+if ($miId) {
+    require_once __DIR__ . '/../../includes/market_ops.php';
+    mi_ops_ensure($conn);
+    $miOpp = mysqli_fetch_assoc(mysqli_query($conn, "SELECT * FROM mi_opportunities WHERE id = $miId AND product_id IS NULL AND status IN ('Approved', 'In Implementation')"));
+    if ($miOpp && !isset($_POST['save'])) {
+        $R = mi_recommendation($conn, $miOpp); $dec = mi_last_decision($conn, $miId, 'Approved');
+        $itemType = $miOpp['kind'] === 'service' ? 'Service' : 'Item';
+        $product_name = $miOpp['name']; $description = (string) $miOpp['description'];
+        $category = (string) $miOpp['category'];
+        if ($miOpp['unit'] && in_array($miOpp['unit'], $unitList, true)) { $unit = $miOpp['unit']; }
+        $q = null; if ($dec && $dec['quote_id']) { $q = mysqli_fetch_assoc(mysqli_query($conn, 'SELECT unit_price FROM mi_quotes WHERE id = ' . (int) $dec['quote_id'])); }
+        $miBuy = $q ? (string) (float) $q['unit_price'] : ($itemType === 'Item' && $R['unit_cost'] !== null ? (string) round($R['unit_cost'], 2) : '');
+        $miSell = $R['price'] !== null ? (string) round((float) $R['price'], 2) : '';
+    }
+}
 if (isset($_POST['save'])) {
     // The database value stays 'Item' for products (all existing records use it); on screen it is "Product".
     $itemType = in_array($_POST['item_type'] ?? '', ['Item', 'Service'], true) ? $_POST['item_type'] : 'Item';
@@ -113,6 +132,10 @@ if (isset($_POST['save'])) {
             mysqli_stmt_bind_param($statement, 'ssssddisis', $itemType, $product_name, $product_code, $description, $buying_price, $selling_price, $quantity, $unit, $reorderLevel, $category);
             mysqli_stmt_execute($statement);
             $newProductId = mysqli_insert_id($conn);
+            if ($miOpp) { // NEW (RM Market Insights): link the new item to the approved opportunity
+                mysqli_query($conn, 'UPDATE mi_opportunities SET product_id = ' . (int) $newProductId . ' WHERE id = ' . (int) $miOpp['id']);
+                mi_audit($conn, (int) $miOpp['id'], null, 'linked', 'Added to RM Offerings as ' . $product_code . ' (item #' . (int) $newProductId . ')');
+            }
 
             // Product Units: other ways this product is bought / sold (Carton, Box ...), each with a
             // fixed conversion to the base unit. Stock is always kept in the base unit.
@@ -128,6 +151,7 @@ if (isset($_POST['save'])) {
 
         if (!isset($error)) {
             notify($conn, ($itemType === 'Service' ? 'Service' : 'Product') . ' Added', '"' . $product_name . '" (' . $product_code . ') has been added.');
+            if ($miOpp) { header('Location: ../market/decision.php?id=' . (int) $miOpp['id'] . '&success=' . urlencode('Added to RM Offerings with code ' . $product_code . '.' . ($itemType === 'Item' ? ' Next: create the purchase order.' : ''))); exit; } // NEW (RM Market Insights)
             header('Location: index.php?success=' . urlencode(($itemType === 'Service' ? 'Service' : 'Product') . ' added successfully with code ' . $product_code . '.'));
             exit;
         }
@@ -156,6 +180,7 @@ $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APO
             <?php } ?>
 
             <form method="POST" id="productForm">
+                <?php if ($miOpp) { ?><input type="hidden" name="mi_opportunity_id" value="<?= (int) $miOpp['id']; ?>"><div class="alert alert-info small py-2" style="border-radius:10px">From RM Market Insights: approved opportunity "<?= $h($miOpp['name']); ?>". Check the details, then save. Opening quantity stays 0: stock comes from the purchase order.</div><?php } // NEW ?>
                 <div class="row g-3 mb-3">
                     <div class="col-md-6">
                         <label class="form-label small fw-semibold text-muted">Type</label>
@@ -224,7 +249,7 @@ $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APO
                     <div class="col-6 item-only-field">
                         <label class="form-label small fw-semibold text-muted">Buying Price</label>
                         <div class="input-group">
-                            <input type="number" step="0.01" min="0" id="buyingPriceInput" class="form-control rm-input" placeholder="0.00">
+                            <input type="number" step="0.01" min="0" id="buyingPriceInput" class="form-control rm-input" placeholder="0.00" value="<?= $h($miBuy); ?>">
                             <select id="buyingPriceUnitSelect" class="form-select rm-input" style="max-width:150px;" data-no-search></select>
                         </div>
                         <small class="text-muted" id="buyingPricePreview"></small>
@@ -233,7 +258,7 @@ $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APO
                     <div class="col-6">
                         <label class="form-label small fw-semibold text-muted" id="priceLabel">Selling Price</label>
                         <div class="input-group">
-                            <input type="number" step="0.01" min="0" id="sellingPriceInput" class="form-control rm-input" placeholder="0.00" required>
+                            <input type="number" step="0.01" min="0" id="sellingPriceInput" class="form-control rm-input" placeholder="0.00" required value="<?= $h($miSell); ?>">
                             <select id="sellingPriceUnitSelect" class="form-select rm-input item-only-field" style="max-width:150px;" data-no-search></select>
                         </div>
                         <small class="text-muted" id="sellingPricePreview"></small>

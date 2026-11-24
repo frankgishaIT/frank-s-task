@@ -13,6 +13,7 @@ $o = mysqli_fetch_assoc(mysqli_query($conn, "SELECT * FROM mi_opportunities WHER
 if (!$o) { mi_go('opportunities.php', 'error', 'Not found.'); }
 if ($o['merged_into']) { mi_go('opportunity.php?id=' . (int) $o['merged_into'], 'success', '"' . $o['name'] . '" was merged into this record.'); }
 $self = 'opportunity.php?id=' . $id;
+mi_sync_status($conn, $o); // follows the purchase order (In Implementation → Launched/Active)
 $canRes = mic($conn, 'research');
 $reviewStatuses = ['New', 'Under Review', 'More Information Required']; // Recommended / Approved / Rejected / Deferred: Decision page
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -77,7 +78,7 @@ foreach ($reqs as $r) { $k = date('o-\WW', strtotime($r['requested_at'])); if (i
 $branches = br_enabled($conn) ? array_column(br_all($conn), 'name', 'id') : [];
 $sales = null;
 if ($prod && $o['kind'] === 'product') {
-    try { $sales = mysqli_fetch_assoc(mysqli_query($conn, "SELECT COALESCE(SUM(si.quantity), 0) q, COUNT(DISTINCT s.id) n FROM sale_items si JOIN sales s ON s.id = si.sale_id WHERE si.product_id = " . (int) $prod['id'] . " AND s.status <> 'Cancelled' AND s.created_at >= '" . date('Y-m-d', strtotime('-90 days')) . "'")); } catch (Throwable $e) { $sales = null; }
+    $sales = mi_sold($conn, (int) $prod['id'], 90);
 }
 include __DIR__ . '/../../includes/header.php';
 include __DIR__ . '/../../includes/sidebar.php';
@@ -141,6 +142,15 @@ mi_tabs($conn, 'opportunities.php', $o['name'], mic($conn, 'request') ? '<a href
             <input class="form-control form-control-sm" id="miOFind" placeholder="Search the duplicate…"><div id="miORes" class="mt-1"></div></form></details>
     </div></div><?php } ?>
     <?php if ($merged) { ?><div class="small text-muted mb-2">Merged into this record: <?= mi_e(implode(', ', array_column($merged, 'name'))); ?></div><?php } ?>
+    <?php $bt = $o['product_id'] && $o['kind'] === 'product' ? mi_bought_together($conn, (int) $o['product_id']) : []; $rb = mi_requesters_buy($conn, $id); if ($bt || $rb) { ?>
+    <div class="card border-0 shadow-sm mb-3"><div class="card-body small"><div class="fw-semibold mb-1">Sales patterns</div>
+        <?php if ($bt) { ?><div class="text-muted">Often bought in the same sale</div><?php foreach ($bt as $b) { ?><div class="d-flex justify-content-between"><span><?= mi_e($b['product_name']); ?></span><span class="text-muted"><?= (int) $b['n']; ?> sale(s)</span></div><?php } } ?>
+        <?php if ($rb) { ?><div class="text-muted <?= $bt ? 'mt-2' : ''; ?>">The customers who asked for it also buy</div><?php foreach ($rb as $b) { ?><div class="d-flex justify-content-between"><span><?= mi_e($b['product_name']); ?></span><span class="text-muted"><?= (int) $b['customers']; ?> customer(s)</span></div><?php } ?><div class="text-muted mt-1">Complementary products: useful for stocking and offers.</div><?php } ?>
+    </div></div><?php } ?>
+    <?php if (in_array($o['status'], ['Approved', 'In Implementation', 'Launched/Active', 'Completed'], true)) { $L = mi_links($conn, $id); ?><div class="card border-0 shadow-sm mb-3"><div class="card-body small"><div class="d-flex justify-content-between"><span class="fw-semibold">Implementation</span><a href="<?= in_array($o['status'], ['Launched/Active', 'Completed'], true) ? 'monitor' : 'decision'; ?>.php?id=<?= $id; ?>">Open</a></div>
+        <div class="text-muted"><?= mi_e(mi_purchase_stage($o, $L) ?: $o['status']); ?></div>
+        <?php foreach ($L['po'] as $p) { ?><div>PO #<?= (int) $p['id']; ?> · <?= mi_e($p['status']); ?></div><?php } foreach ($L['task'] as $tk) { ?><div>Task: <?= mi_e($tk['title']); ?> · <?= mi_e($tk['status']); ?></div><?php } ?>
+    </div></div><?php } ?>
     <div class="card border-0 shadow-sm"><div class="card-body small"><div class="fw-semibold mb-1">History</div>
         <?php foreach ($audit as $a) { ?><div class="border-bottom py-1"><span class="text-muted"><?= mi_e(substr($a['created_at'], 0, 16)); ?></span> · <strong><?= mi_e($a['names'] ?? 'System'); ?></strong> · <?= mi_e($a['details']); ?></div><?php } ?></div></div>
 </div></div>

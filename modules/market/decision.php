@@ -13,6 +13,7 @@ require __DIR__ . '/common.php';
 require_once __DIR__ . '/../../includes/notification_helper.php';
 if (!mi_can_evaluate($conn)) { mi_require($conn, 'research'); }
 $o = mi_load_opp($conn, 'decision.php');
+mi_sync_status($conn, $o); // follows the purchase order: In Implementation → Launched/Active
 $id = (int) $o['id']; $self = 'decision.php?id=' . $id; $svc = $o['kind'] === 'service';
 $uid = (int) current_user_id(); $isAdmin = current_user_role() === 'Admin';
 $canSubmit = mic($conn, 'research'); $canApprove = mic($conn, 'approve');
@@ -40,6 +41,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $r = mysqli_query($conn, "SELECT id FROM users WHERE role = 'Admin' AND is_active = 1 AND id <> $uid");
             while ($x = mysqli_fetch_assoc($r)) { notifyUser($conn, (int) $x['id'], 'Market opportunity awaiting approval', $o['name'] . ': ' . $rec . '. Open RM Market Insights → Recommendations.'); }
             mi_go($self, 'success', 'Submitted for management approval.');
+        }
+        if (in_array($do, ['task', 'launch', 'complete'], true)) {
+            if (!$canSubmit && !$canApprove) { throw new RuntimeException('You may not change the implementation.'); }
+            if (!in_array($o['status'], ['Approved', 'In Implementation', 'Launched/Active'], true)) { throw new RuntimeException('Only approved opportunities can be implemented.'); }
+            if ($do === 'task') {
+                $pj = (int) ($_POST['project_id'] ?? 0); $title = $t('title', 200); $as = (int) ($_POST['assigned_to'] ?? 0) ?: null;
+                $pr = in_array($_POST['priority'] ?? '', ['Low', 'Medium', 'High'], true) ? $_POST['priority'] : 'Medium';
+                $due = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_POST['due_date'] ?? '') ? $_POST['due_date'] : '';
+                if (!$pj || !mysqli_fetch_row(mysqli_query($conn, "SELECT 1 FROM projects WHERE id = $pj AND status != 'Completed'"))) { throw new RuntimeException('Choose the project of the task.'); }
+                if (!$title) { throw new RuntimeException('Give the task a title.'); }
+                if ($as && !mysqli_fetch_row(mysqli_query($conn, "SELECT 1 FROM users WHERE id = $as AND is_active = 1"))) { throw new RuntimeException('Choose an active employee.'); }
+                $desc = trim(($t('description', 2000) ?? '') . "\n\nRM Market Insights: " . $o['name'] . ' (opportunity #' . $id . ').'); $stt = 'Pending';
+                $st = mysqli_prepare($conn, "INSERT INTO tasks (project_id, title, description, assigned_to, priority, status, due_date) VALUES (?, ?, ?, ?, ?, ?, NULLIF(?, ''))");
+                mysqli_stmt_bind_param($st, 'ississs', $pj, $title, $desc, $as, $pr, $stt, $due); mysqli_stmt_execute($st); $tid = (int) mysqli_insert_id($conn);
+                br_stamp($conn, 'tasks', $tid, br_enabled($conn) ? br_write_branch($conn) : null);
+                mi_link_add($conn, $id, 'task', $tid);
+                if ($as) { notifyUser($conn, $as, 'New task assigned', 'You have been assigned "' . $title . '"' . ($due ? ' (due ' . date('d M Y', strtotime($due)) . ')' : '') . '.'); }
+                mi_audit($conn, $id, null, 'task', 'Implementation task #' . $tid . ' created: ' . $title);
+                if ($o['status'] === 'Approved' && $svc) { mysqli_query($conn, "UPDATE mi_opportunities SET status = 'In Implementation' WHERE id = $id"); }
+                mi_go($self, 'success', 'Task created and linked.');
+            }
+            if ($do === 'launch') {
+                if (!$svc) { throw new RuntimeException('A product is launched automatically when its purchase order is received into stock.'); }
+                mysqli_query($conn, "UPDATE mi_opportunities SET status = 'Launched/Active', launched_at = '$now' WHERE id = $id");
+                mi_audit($conn, $id, null, 'launched', 'Service introduced' . ($t('comments') ? ': ' . $t('comments') : ''));
+                mi_go($self, 'success', 'Marked as introduced: results are now monitored.');
+            }
+            if ($do === 'complete') {
+                if ($o['status'] !== 'Launched/Active') { throw new RuntimeException('Only launched opportunities can be completed.'); }
+                mysqli_query($conn, "UPDATE mi_opportunities SET status = 'Completed', completed_at = '$now' WHERE id = $id");
+                mi_audit($conn, $id, null, 'completed', 'Monitoring completed' . ($t('comments') ? ': ' . $t('comments') : ''));
+                mi_go($self, 'success', 'Completed: the final results are kept for future recommendations.');
+            }
         }
         if ($do === 'decide') {
             if (!$canApprove) { throw new RuntimeException('Only management can take this decision.'); }
@@ -93,8 +127,33 @@ $fig = $svc ? ['Service price' => mi_money($R['price']), 'Direct cost / service'
         <div class="row g-1"><?php foreach ($fig as $l => $x) { ?><div class="col-6 col-md-3"><div class="text-muted"><?= mi_e($l); ?></div><div class="fw-semibold"><?= mi_e($x); ?></div></div><?php } ?></div>
         <ul class="ps-3 mt-2 mb-0"><?php foreach ($R['why'] as $w) { ?><li><?= mi_e($w); ?></li><?php } ?></ul>
     </div></div>
-    <?php if ($approved && in_array($o['status'], ['Approved', 'In Implementation'], true)) { ?><div class="alert alert-success small"><strong>Approved</strong> by <?= mi_e($approved['names']); ?> on <?= date('d M Y', strtotime($approved['created_at'])); ?>: <?= $approved['approved_qty'] ? mi_num($approved['approved_qty']) . ' ' . mi_e($o['unit']) . ', ' : ''; ?>budget <?= mi_money($approved['budget']); ?>.
-        <?php if (!$svc) { ?><div class="mt-1">Next: create the purchase order in <a href="../purchase_orders/create.php">Purchase Orders</a><?= $o['product_id'] ? '' : ' (first add the product to RM Offerings)'; ?>. Automatic transfer of the approved supplier, quantity and price comes in the next update.</div><?php } ?></div><?php } ?>
+    <?php if ($approved && in_array($o['status'], ['Approved', 'In Implementation', 'Launched/Active', 'Completed'], true)) { $L = mi_links($conn, $id); $stage = mi_purchase_stage($o, $L); ?>
+    <div class="card border-0 shadow-sm mb-3" style="border-left:4px solid #0FA968 !important"><div class="card-body small">
+        <div class="d-flex justify-content-between flex-wrap gap-2"><div class="fw-semibold">Implementation</div><?= $stage ? '<span class="badge" style="background:#E8F7EF;color:#0B7A4B">' . mi_e($stage) . '</span>' : ''; ?></div>
+        <div class="mb-2">Approved by <?= mi_e($approved['names']); ?> on <?= date('d M Y', strtotime($approved['created_at'])); ?>: <?= $approved['approved_qty'] ? mi_num($approved['approved_qty']) . ' ' . mi_e($o['unit']) . ', ' : ''; ?>budget <?= mi_money($approved['budget']); ?>.</div>
+        <?php if (!$o['product_id']) { ?>
+            <div class="p-2 rounded mb-2" style="background:#FFF8E6">1. <?= $svc ? 'Add the service' : 'Add the product'; ?> to RM Offerings<?= $svc ? '' : ' (stock 0 — stock comes from the purchase order)'; ?>.
+                <?php if ($isAdmin) { ?><a href="../products/create.php?mi=<?= $id; ?>" class="btn btn-sm btn-primary py-0 ms-1">Add to RM Offerings</a> <span class="text-muted">name, category, unit and prices are filled in</span><?php } else { ?><span class="text-muted">An Administrator adds items to RM Offerings.</span><?php } ?></div>
+        <?php } elseif (!$svc && !$L['po'] && in_array(current_user_role(), ['Admin', 'Manager'], true)) { ?>
+            <div class="p-2 rounded mb-2" style="background:#FFF8E6">2. Create the purchase order. <a href="../purchase_orders/create.php?mi=<?= $id; ?>" class="btn btn-sm btn-primary py-0 ms-1">Create purchase order</a> <span class="text-muted">supplier, quantity and price come from the approval</span></div>
+        <?php } ?>
+        <?php foreach ($L['po'] as $p) { ?><div class="d-flex justify-content-between border-bottom py-1"><a href="../purchase_orders/view.php?id=<?= (int) $p['id']; ?>">Purchase order #<?= (int) $p['id']; ?></a><span><?= mi_e($p['supplier']); ?> · <?= mi_money($p['total_amount']); ?> · <strong><?= mi_e($p['status']); ?></strong></span></div><?php } ?>
+        <?php foreach ($L['task'] as $tk) { ?><div class="d-flex justify-content-between border-bottom py-1"><a href="../tasks/view.php?id=<?= (int) $tk['id']; ?>">Task: <?= mi_e($tk['title']); ?></a><span><?= mi_e($tk['names'] ?: 'unassigned'); ?><?= $tk['due_date'] ? ' · due ' . date('d M', strtotime($tk['due_date'])) : ''; ?> · <strong><?= mi_e($tk['status']); ?></strong></span></div><?php } ?>
+        <?php if ($o['status'] !== 'Completed' && ($canSubmit || $canApprove)) { $projects = mysqli_fetch_all(mysqli_query($conn, "SELECT id, project_name FROM projects WHERE status != 'Completed' ORDER BY project_name"), MYSQLI_ASSOC); ?>
+        <details class="mt-2"><summary class="text-primary fw-semibold">Assign an implementation task</summary><form method="POST" class="row g-2 mt-1"><?= mi_csrf_field(); ?><input type="hidden" name="id" value="<?= $id; ?>"><input type="hidden" name="do" value="task">
+            <div class="col-md-6"><input name="title" class="form-control form-control-sm" maxlength="200" required value="<?= mi_e(($approved['next_action'] ?: ($svc ? 'Prepare the launch of' : 'Order and receive')) . ' — ' . $o['name']); ?>"></div>
+            <div class="col-md-6"><select name="project_id" class="form-select form-select-sm" required><option value="">Project…</option><?php foreach ($projects as $pj) { ?><option value="<?= (int) $pj['id']; ?>"><?= mi_e($pj['project_name']); ?></option><?php } ?></select></div>
+            <div class="col-md-4"><select name="assigned_to" class="form-select form-select-sm"><option value="">Assign to…</option><?php foreach ($users as $u) { ?><option value="<?= (int) $u['id']; ?>" <?= (int) $approved['assigned_to'] === (int) $u['id'] ? 'selected' : ''; ?>><?= mi_e($u['names']); ?></option><?php } ?></select></div>
+            <div class="col-md-3"><select name="priority" class="form-select form-select-sm"><option>Medium</option><option>High</option><option>Low</option></select></div>
+            <div class="col-md-3"><input type="date" name="due_date" class="form-control form-control-sm" value="<?= mi_e($approved['follow_up'] ?? ''); ?>"></div>
+            <div class="col-md-2"><button class="btn btn-sm btn-primary w-100">Create</button></div>
+            <div class="col-12"><input name="description" class="form-control form-control-sm" maxlength="2000" placeholder="Details (optional)"></div></form></details>
+        <?php } ?>
+        <?php if ($svc && in_array($o['status'], ['Approved', 'In Implementation'], true) && ($canSubmit || $canApprove)) { ?><form method="POST" class="mt-2 d-flex gap-1"><?= mi_csrf_field(); ?><input type="hidden" name="id" value="<?= $id; ?>"><input type="hidden" name="do" value="launch"><input name="comments" class="form-control form-control-sm" placeholder="Note (optional)"><button class="btn btn-sm btn-success text-nowrap">Service introduced</button></form><?php } ?>
+        <?php if ($o['status'] === 'Launched/Active') { ?><div class="mt-2"><a href="monitor.php?id=<?= $id; ?>" class="fw-semibold">See the results since launch →</a></div>
+            <?php if ($canSubmit || $canApprove) { ?><form method="POST" class="mt-2 d-flex gap-1" onsubmit="return confirm('Stop monitoring and keep the final results?')"><?= mi_csrf_field(); ?><input type="hidden" name="id" value="<?= $id; ?>"><input type="hidden" name="do" value="complete"><input name="comments" class="form-control form-control-sm" placeholder="Conclusion (optional)"><button class="btn btn-sm btn-light border text-nowrap">Complete monitoring</button></form><?php } } ?>
+        <?php if ($o['status'] === 'Completed') { ?><div class="mt-2"><a href="monitor.php?id=<?= $id; ?>" class="fw-semibold">Final results →</a></div><?php } ?>
+    </div></div><?php } ?>
     <div class="card border-0 shadow-sm"><div class="card-body small"><div class="fw-semibold mb-1">Decision history</div>
         <?php foreach ($hist as $h) { $s = json_decode((string) $h['snapshot'], true) ?: []; ?><div class="border-bottom py-2">
             <div class="d-flex justify-content-between flex-wrap"><span><strong><?= mi_e($h['action']); ?></strong> · <?= mi_e($h['names']); ?></span><span class="text-muted"><?= mi_e(substr($h['created_at'], 0, 16)); ?></span></div>

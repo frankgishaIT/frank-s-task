@@ -14,9 +14,12 @@ require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../includes/access_control.php';
 require_once __DIR__ . '/../../includes/market_helpers.php';
 require_once __DIR__ . '/../../includes/market_eval.php';
+require_once __DIR__ . '/../../includes/market_ops.php';
 require_once __DIR__ . '/../../includes/branch_helpers.php';
 mi_ensure($conn);
 mi_eval_ensure($conn);
+mi_ops_ensure($conn);
+if (!defined('MI_NO_ALERTS')) { try { mi_alerts_run($conn); } catch (Throwable $e) { error_log('mi_alerts_run: ' . $e->getMessage()); } } // smart alerts, at most once an hour
 
 function mic(mysqli $conn, string $a): bool { return access_can('market.' . $a, $conn); }
 function mi_require(mysqli $conn, string $a): void { if (!mic($conn, $a)) { http_response_code(403); include __DIR__ . '/../../includes/access_denied.php'; exit; } }
@@ -63,8 +66,8 @@ function mi_period_form(array $per, array $extra = []): string
 function mi_tabs(mysqli $conn, string $active, string $title, string $right = ''): void
 {
     $tabs = [['index.php', 'Dashboard', 'view'], ['request.php', 'Record a request', 'request'], ['requests.php', 'Requests', 'view'], ['opportunities.php', 'Demand analysis', 'view'],
-             ['recommendations.php', 'Recommendations', 'research'], ['gaps.php', 'Capability gaps', 'research'], ['discover.php', 'New product discovery', 'request'],
-             ['skills.php', 'Employee skills', 'research'], ['settings.php', 'Settings', 'settings']];
+             ['recommendations.php', 'Recommendations', 'research'], ['monitor.php', 'Implementation & results', 'research'], ['gaps.php', 'Capability gaps', 'research'],
+             ['discover.php', 'New product discovery', 'request'], ['reports.php', 'Reports', 'reports'], ['skills.php', 'Employee skills', 'research'], ['settings.php', 'Settings', 'settings']];
     echo '<style>.mi-tabs{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:2px;border-bottom:1px solid #E4E7EF;margin-bottom:14px;scrollbar-width:none}.mi-tabs::-webkit-scrollbar{display:none}.mi-tabs a{padding:7px 12px;font-size:13.5px;color:#5B6275;text-decoration:none;border-bottom:2px solid transparent;white-space:nowrap}
         .mi-tabs a.on{color:#1E2FE0;border-bottom-color:#1E2FE0;font-weight:600}.mi-k .lbl{font-size:12px;color:#6B7280}.mi-k .val{font-weight:700;font-size:1.3rem;color:#0B1A8C}.mi-k .sub{font-size:11.5px;color:#8A90A2}
         .mi-pill{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;white-space:nowrap}.mi-tbl td,.mi-tbl th{font-size:13px;vertical-align:middle}</style>';

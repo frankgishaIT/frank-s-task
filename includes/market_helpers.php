@@ -32,6 +32,8 @@ const MI_SETTING_DEFAULTS = [
     'alert_repeat_count' => '3', 'alert_repeat_days' => '14',                     // alert: requested N times within D days
     'target_margin' => '25', 'min_margin' => '15', 'conversion_pct' => '60',       // feasibility: suggested price, minimum margin, share of requests expected to buy
     'sales_period_days' => '60', 'busy_tasks' => '8', 'occasional_days' => '90',  // stock period; employee busy from N open tasks; window for "occasional" services
+    'alerts_on' => '1', 'approval_wait_days' => '3', 'approve_order_days' => '7',  // smart alerts: on/off; remind when approval waits N days; approved but not ordered after N days
+    'oos_alert_count' => '3', 'fast_factor' => '1.25',                            // alert when out of stock for N customers; "faster than expected" from 1.25 × the expected pace
 ];
 
 function mi_ensure(mysqli $conn): void

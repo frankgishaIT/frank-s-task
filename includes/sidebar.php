@@ -233,6 +233,12 @@ if ($rmCompactUi) { ?>
       <i class="bi bi-building-gear"></i> Assets
      </a>
    <?php } ?>
+    <!-- NEW: RM Customer First (customer requests: explore every solution, escalate, record the outcome) -->
+    <?php require_once __DIR__ . '/access_control.php'; if (access_can('customer_first.record', $conn)) { ?>
+    <a href="../customer_first/<?= access_can('customer_first.manage', $conn) ? 'index' : 'new'; ?>.php" class="<?= navActive('/customer_first/', $currentPath) ?>">
+        <i class="bi bi-person-heart"></i> RM Customer First
+    </a>
+    <?php } ?>
     <!-- NEW: RM Market Insights (customer requests, demand analysis, new product discovery) -->
     <?php require_once __DIR__ . '/access_control.php'; if (access_can('market.view', $conn)) { ?>
     <a href="../market/index.php" class="<?= navActive('/market/', $currentPath) ?>">

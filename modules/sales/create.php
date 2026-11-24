@@ -6,6 +6,8 @@ require '../../includes/product_unit_helpers.php';
 require_once '../../includes/sms_messages.php'; // NEW: customer SMS (MY MOTIVE SMS, messages 2 and 3)
 require_once '../../includes/digital_payment_helpers.php'; // NEW: Digital Payment (MTN MoMo through XentriPay)
 require_role(['Admin', 'Manager', 'Employee']);
+require_once '../../includes/price_approval.php'; // NEW (Customer First 3.5): the existing below-set-price approval, completed
+pa_ensure($conn);
 
 $customers = mysqli_query($conn, 'SELECT id, name, phone FROM customers WHERE is_active = 1 ORDER BY name'); // CHANGED: phone, to fill in the Digital Payment pop-up
 $customerList = [];
@@ -85,6 +87,8 @@ if (isset($_POST['save'])) {
         }
         $lineTotal = $qty * $price;
         $subtotal += $lineTotal;
+        $setPrice = round((float) $found['selling_price'] * $packSize, 2); // NEW (3.5): the set price of this line (RM Offerings price × pack size)
+        $belowSet = ($belowSet ?? 0) + max(0, ($setPrice - $price) * $qty);
 
         $lineItems[] = [
             'item_type' => $isService ? 'Service' : 'Product',
@@ -96,6 +100,7 @@ if (isset($_POST['save'])) {
             'line_total' => $lineTotal,
             'pack_label' => $packLabel,
             'pack_size' => $packSize,
+            'set_price' => $setPrice,
         ];
     }
 
@@ -129,7 +134,15 @@ if (isset($_POST['save'])) {
             $userId = current_user_id();
             $role = current_user_role();
 
-            $needsDiscountApproval = $discountAmount > 0 && $role === 'Employee';
+            // CHANGED (3.5): a unit price typed BELOW the set price needs the same approval as a discount (it used to go through).
+            $belowSet = round($belowSet ?? 0, 2);
+            $needsDiscountApproval = ($discountAmount > 0 || $belowSet > 0) && $role === 'Employee';
+            $priceReason = mb_substr(trim((string) ($_POST['price_reason'] ?? '')), 0, 255);
+            if ($needsDiscountApproval && mb_strlen($priceReason) < 3) {
+                $error = 'Selling below the set price (' . ($belowSet > 0 ? 'RWF ' . number_format($belowSet, 2) . ' below' : 'discount RWF ' . number_format($discountAmount, 2)) . ') needs manager approval: give the reason for the request.';
+            }
+        }
+        if (empty($error) && isset($needsDiscountApproval)) {
 
             // Automatic Credit Eligibility: customers with fewer than 500
             // Loyalty Points cannot complete a Credit sale without
@@ -146,9 +159,10 @@ if (isset($_POST['save'])) {
 
             $needsApproval = $needsDiscountApproval || $needsCreditApproval;
             $status = $needsApproval ? 'Pending Discount Approval' : sales_compute_status($amountPaidInput, $totalAmount);
-            $discountRequestedBy = $discountAmount > 0 ? $userId : null;
-            $discountApprovedBy = ($discountAmount > 0 && !$needsApproval) ? $userId : null;
-            $discountApprovedAt = ($discountAmount > 0 && !$needsApproval) ? date('Y-m-d H:i:s') : null;
+            $priced = $discountAmount > 0 || $belowSet > 0; // CHANGED (3.5): discount OR lines below the set price
+            $discountRequestedBy = $priced ? $userId : null;
+            $discountApprovedBy = ($priced && !$needsApproval) ? $userId : null;
+            $discountApprovedAt = ($priced && !$needsApproval) ? date('Y-m-d H:i:s') : null;
             $needsCreditApprovalInt = (int) $needsCreditApproval;
 
             // CHANGED: the sale, its lines, the stock deduction, the income record and the fund
@@ -166,11 +180,15 @@ if (isset($_POST['save'])) {
                 mysqli_stmt_execute($saleStatement);
                 $saleId = mysqli_insert_id($conn);
                 br_stamp($conn, 'sales', (int) $saleId, $brBranch); // NEW (Multi-branch)
+                if ($priced) { // NEW (3.5): reason of the below-set-price request
+                    $pr = $priceReason !== '' ? $priceReason : null; $sid = (int) $saleId; $pa = mysqli_prepare($conn, 'UPDATE sales SET discount_reason = ? WHERE id = ?'); mysqli_stmt_bind_param($pa, 'si', $pr, $sid); mysqli_stmt_execute($pa);
+                }
 
                 foreach ($lineItems as $item) {
                     $itemStatement = mysqli_prepare($conn, 'INSERT INTO sale_items (sale_id, item_type, product_id, service_name, quantity, unit, unit_price, line_total, pack_label, pack_size) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
                     mysqli_stmt_bind_param($itemStatement, 'isisssddsi', $saleId, $item['item_type'], $item['product_id'], $item['service_name'], $item['quantity'], $item['unit'], $item['unit_price'], $item['line_total'], $item['pack_label'], $item['pack_size']);
                     mysqli_stmt_execute($itemStatement);
+                    $siId = (int) mysqli_insert_id($conn); mysqli_query($conn, 'UPDATE sale_items SET set_price = ' . (float) $item['set_price'] . ' WHERE id = ' . $siId); // NEW (3.5)
                 }
 
                 if ($paymentMethod === 'Digital Payment') {
@@ -218,7 +236,7 @@ if (isset($_POST['save'])) {
                     } elseif ($needsCreditApproval) {
                         $successMessage = 'Sale saved. This customer has fewer than 500 Loyalty Points, so the Credit sale needs manager approval before it is completed.';
                     } else {
-                        $successMessage = 'Sale saved. Waiting for manager approval of the discount before invoicing.';
+                        $successMessage = 'Sale saved. Waiting for manager approval of the price below the set price before invoicing.';
                     }
                 }
 
@@ -339,6 +357,14 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
                     <label class="form-label small fw-semibold text-muted">Amount Paid (RWF)</label>
                    <input type="number" name="amount_paid" id="amountPaidInput" class="form-control rm-input" min="0.01" step="0.01" placeholder="Enter amount received" required>
                 </div>
+            </div>
+
+            <!-- NEW (3.5): selling below the set price — visible, with the reason, and approval for Employees -->
+            <div id="belowSetBox" class="alert alert-warning small py-2 mb-3" style="display:none; border-radius:10px;">
+                <div><i class="bi bi-shield-exclamation me-1"></i><strong>Below the set price.</strong> Set price <strong id="bsSet"></strong> · proposed <strong id="bsProp"></strong> · difference <strong id="bsDiff" class="text-danger"></strong></div>
+                <?php if (current_user_role() === 'Employee') { ?><div class="mt-1">This sale will wait for <strong>manager approval</strong> before the invoice is released. Reason for the request:</div>
+                <input name="price_reason" id="priceReason" maxlength="255" class="form-control form-control-sm mt-1" value="<?= htmlspecialchars((string) ($_POST['price_reason'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" placeholder="e.g. loyal customer buying in bulk, matching a competitor price">
+                <?php } else { ?><div class="mt-1 text-muted">As <?= htmlspecialchars(current_user_role(), ENT_QUOTES, 'UTF-8'); ?>, you may approve it yourself. Reason (recorded):</div><input name="price_reason" maxlength="255" class="form-control form-control-sm mt-1"><?php } ?>
             </div>
 
             <div class="text-end mb-4" style="font-size:14px;">
@@ -521,7 +547,7 @@ function buildRow() {
         '<td class="target-cell"><div class="rm-searchable catalog-field"></div></td>' +
         '<td class="unit-cell"><span class="text-muted small">N/A</span></td>' +
         '<td><input type="number" class="form-control rm-input qty-input" name="quantity[]" min="1" value="1" required></td>' +
-        '<td><input type="number" class="form-control rm-input price-input" name="unit_price[]" min="0" step="0.01" value="0.00"></td>' +
+        '<td><input type="number" class="form-control rm-input price-input" name="unit_price[]" min="0" step="0.01" value="0.00"><div class="small set-hint" style="font-size:11px"></div></td>' +
         '<td><span class="line-total">0.00</span></td>' +
         '<td><button type="button" class="btn btn-outline-danger btn-sm remove-row">&times;</button></td>';
     return tr;
@@ -596,6 +622,10 @@ function bindRow(row) {
         const price = parseFloat(priceInput.value || 0);
         const q = parseInt(qty.value || 0);
         lineTotalEl.textContent = (price * q).toFixed(2);
+        // NEW (3.5): set price of the line (selling price × pack size) and whether the price is below it
+        const us = unitCell.querySelector('select'); const pk = us && us.selectedIndex >= 0 ? parseInt(us.options[us.selectedIndex].getAttribute('data-pack-size') || 1) : 1;
+        const setP = basePrice * (typeSelect.value === 'Item' ? pk : 1); row.dataset.set = (setP * q).toFixed(2);
+        const hint = row.querySelector('.set-hint'); if (hint) { hint.innerHTML = setP > 0 ? (price < setP - 0.004 ? '<span class="text-danger">set ' + setP.toFixed(2) + ' ↓</span>' : '<span class="text-muted">set ' + setP.toFixed(2) + '</span>') : ''; }
         recalcTotals();
     }
 
@@ -620,6 +650,10 @@ function recalcTotals() {
     });
     const discount = parseFloat(discountInput.value || 0);
     const total = Math.max(0, subtotal - discount);
+    let setTotal = 0; itemsBody.querySelectorAll('.item-row').forEach(function (row) { setTotal += parseFloat(row.dataset.set || 0); });
+    const box = document.getElementById('belowSetBox'), below = setTotal - total; // NEW (3.5)
+    if (box) { box.style.display = below > 0.004 ? '' : 'none'; document.getElementById('bsSet').textContent = 'RWF ' + setTotal.toFixed(2); document.getElementById('bsProp').textContent = 'RWF ' + total.toFixed(2); document.getElementById('bsDiff').textContent = '− RWF ' + below.toFixed(2);
+        const pr = document.getElementById('priceReason'); if (pr) { pr.required = below > 0.004; } }
     document.getElementById('subtotalDisplay').textContent = 'RWF ' + subtotal.toFixed(2);
     document.getElementById('totalDisplay').textContent = 'RWF ' + total.toFixed(2);
     amountPaidInput.max = total;

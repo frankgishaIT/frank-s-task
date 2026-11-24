@@ -32,7 +32,9 @@ portal_staff_tabs('index.php'); portal_staff_alerts();
 ?>
 <h5 class="mb-1"><?= portal_request_number($rid); ?> · <?= $e($req['subject']); ?></h5>
 <div class="small text-muted mb-3"><?= $e($req['type']); ?> · <?= $e($req['name']); ?> (<?= portal_customer_code((int) $req['customer_id']); ?>, <?= $e($req['phone']); ?>) · status <strong><?= $e($req['status']); ?></strong>
-    · <a href="../customers/reports.php?report=statement&period=this_year&customer_id=<?= (int) $req['customer_id']; ?>">Customer statement</a></div>
+    · <a href="../customers/reports.php?report=statement&period=this_year&customer_id=<?= (int) $req['customer_id']; ?>">Customer statement</a>
+    <?php if (function_exists('access_can') && access_can('customer_first.record', $conn)) { $cfCase = null; try { $cfCase = mysqli_fetch_row(mysqli_query($conn, 'SELECT id FROM cf_cases WHERE portal_request_id = ' . (int) $rid . ' LIMIT 1')); } catch (Throwable $ex) { } ?>
+    · <?= $cfCase ? '<a href="../customer_first/case.php?id=' . (int) $cfCase[0] . '">RM Customer First case</a>' : '<a href="../customer_first/new.php?portal_request=' . (int) $rid . '">Open an RM Customer First case</a>'; ?><?php } // NEW (Customer First) ?></div>
 <?php foreach ($msgs as $m) { ?>
 <div class="card border-0 shadow-sm mb-2" style="<?= $m['from_customer'] ? 'margin-right:10%;' : 'margin-left:10%; border-left:3px solid #1E2FE0 !important;'; ?>"><div class="card-body py-2 small">
     <div class="text-muted mb-1"><?= $m['from_customer'] ? $e($req['name']) : 'RISE MOTIVE · ' . $e($m['names']); ?> · <?= date('d M Y, H:i', strtotime($m['created_at'])); ?></div>

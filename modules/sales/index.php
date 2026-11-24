@@ -43,6 +43,13 @@ $creditSummary = mysqli_fetch_assoc(mysqli_query($conn, "
     FROM sales
     WHERE status IN ('Credit', 'Partially Paid')" . $creditScopeWhere));
 
+// NEW (Customer First 3.5): the below-set-price requests with their status, approver, date and decision reason.
+require_once __DIR__ . '/../../includes/price_approval.php';
+pa_ensure($conn);
+$priceReqs = mysqli_query($conn, "SELECT sales.id, sales.sale_date, sales.status, sales.total_amount, sales.discount_amount, sales.discount_reason, sales.discount_approved_by, sales.price_decision, sales.price_decided_at, sales.discount_approved_at, sales.price_decision_reason,
+    customers.name AS customer_name, r.names AS requested_by_name, d.names AS decided_by_name FROM sales LEFT JOIN customers ON customers.id = sales.customer_id LEFT JOIN users r ON r.id = sales.discount_requested_by
+    LEFT JOIN users d ON d.id = COALESCE(sales.price_decided_by, sales.discount_approved_by) WHERE sales.discount_requested_by IS NOT NULL AND sales.sale_date >= '" . date('Y-m-d', strtotime('-60 days')) . "'"
+    . ($role === 'Employee' ? ' AND sales.discount_requested_by = ' . (int) $userId : '') . br_and($conn, 'sales.branch_id') . ' ORDER BY sales.id DESC LIMIT 15');
 $pending = null;
 $cancelRequests = null;
 if (in_array($role, ['Manager', 'Admin'], true)) {
@@ -66,6 +73,10 @@ function sale_pending_reason_badges($row) {
     if ((float) $row['discount_amount'] > 0) {
         $badges[] = '<span class="badge bg-info text-dark me-1">Discount</span>';
     }
+    if ((float) $row['discount_amount'] <= 0 && empty($row['needs_credit_approval'])) { // NEW (3.5): a unit price below the set price
+        $badges[] = '<span class="badge bg-warning text-dark me-1">Below set price</span>';
+    }
+    if (!empty($row['discount_reason'])) { $badges[] = '<div class="small text-muted">' . htmlspecialchars($row['discount_reason'], ENT_QUOTES, 'UTF-8') . '</div>'; }
     if (!empty($row['needs_credit_approval'])) {
         $badges[] = '<span class="badge bg-danger me-1">Credit &lt; 500 pts</span>';
     }
@@ -113,6 +124,21 @@ function sale_pending_reason_badges($row) {
         </table>
     </div>
 </div>
+<?php } ?>
+
+<?php if ($priceReqs && mysqli_num_rows($priceReqs) > 0) { ?>
+<!-- NEW (Customer First 3.5): price approvals (selling below the set price) -->
+<details class="card border-0 shadow-sm mb-4" <?= $role === 'Employee' ? 'open' : ''; ?>><summary class="card-header bg-white"><h5 class="mb-0 d-inline">Price approvals <span class="small text-muted fw-normal">(below the set price, last 60 days)</span></h5></summary>
+    <div class="card-body p-0"><div class="table-responsive"><table class="table table-sm table-hover bg-white mb-0 small">
+        <tr><th>Sale</th><th>Customer</th><th>Requested by</th><th>Reason</th><th class="text-end">Total</th><th>Status</th><th>Decision</th></tr>
+        <?php while ($row = mysqli_fetch_assoc($priceReqs)) { [$pl, $pc] = pa_status($row); ?>
+        <tr><td><a href="<?= $row['status'] === 'Pending Discount Approval' && $role !== 'Employee' ? 'approve_discount.php' : 'invoice.php'; ?>?id=<?= (int) $row['id']; ?>">#<?= (int) $row['id']; ?></a> <span class="text-muted"><?= date('d M', strtotime($row['sale_date'])); ?></span></td>
+            <td><?= htmlspecialchars($row['customer_name'] ?? 'Walk-in', ENT_QUOTES, 'UTF-8'); ?></td><td><?= htmlspecialchars($row['requested_by_name'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></td>
+            <td><?= htmlspecialchars($row['discount_reason'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></td><td class="text-end"><?= number_format($row['total_amount'], 0); ?></td>
+            <td><?php if ($pl) { ?><span class="badge bg-<?= $pc; ?><?= $pc === 'warning' ? ' text-dark' : ''; ?>"><?= $pl; ?></span><?php } ?></td>
+            <td><?= $row['status'] !== 'Pending Discount Approval' && $row['decided_by_name'] ? htmlspecialchars($row['decided_by_name'], ENT_QUOTES, 'UTF-8') . ' · ' . date('d M Y', strtotime((string) ($row['price_decided_at'] ?: $row['discount_approved_at']))) . ($row['price_decision_reason'] ? '<div class="text-muted">' . htmlspecialchars($row['price_decision_reason'], ENT_QUOTES, 'UTF-8') . '</div>' : '') : '—'; ?></td></tr>
+        <?php } ?>
+    </table></div></div></details>
 <?php } ?>
 
 <?php if ($cancelRequests && mysqli_num_rows($cancelRequests) > 0) { ?>

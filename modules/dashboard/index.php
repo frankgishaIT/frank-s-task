@@ -154,8 +154,9 @@ $activityFeed = array_slice($activityFeed, 0, 6);
 </div>
 
 <?php
-// NEW (Task 2): BEST EMPLOYEE OF THE MONTH, shown to everyone right after they sign in.
-try { require_once '../../includes/best_employee.php'; be_banner($conn); } catch (Throwable $e) { error_log('best employee banner: ' . $e->getMessage()); }
+// CHANGED (Task 4): ONE shared rotating area replaces the permanent Best Employee banner. Reminders, products, product
+// advice, services, the Best Employee of the Month and approved announcements all rotate inside it (Staff Dashboard Cards).
+try { require_once '../../includes/sdc_helpers.php'; sdc_carousel($conn); } catch (Throwable $e) { error_log('staff carousel: ' . $e->getMessage()); }
 ?>
 
 <div class="row g-3 mb-4">

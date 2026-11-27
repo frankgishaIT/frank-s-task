@@ -239,6 +239,12 @@ if ($rmCompactUi) { ?>
         <i class="bi bi-person-heart"></i> RM Customer First
     </a>
     <?php } ?>
+    <!-- NEW: Staff Dashboard Cards Management (the rotating area on the Dashboard) -->
+    <?php if (access_can('staff_cards.manage', $conn) || access_can('staff_cards.approve', $conn) || access_can('staff_cards.settings', $conn)) { ?>
+    <a href="../staff_cards/index.php" class="<?= navActive('/staff_cards/', $currentPath) ?>">
+        <i class="bi bi-collection-play"></i> Staff Dashboard Cards
+    </a>
+    <?php } ?>
     <!-- NEW: RM Market Insights (customer requests, demand analysis, new product discovery) -->
     <?php require_once __DIR__ . '/access_control.php'; if (access_can('market.view', $conn)) { ?>
     <a href="../market/index.php" class="<?= navActive('/market/', $currentPath) ?>">

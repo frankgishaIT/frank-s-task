@@ -48,6 +48,7 @@ function access_catalog(): array
         'sms'               => ['SMS', ['view', 'create', 'templates', 'essential', 'test']],
         'market'            => ['RM Market Insights', ['view', 'request', 'research', 'finance', 'approve', 'reports', 'settings']],
         'customer_first'    => ['RM Customer First', ['record', 'manage']],
+        'staff_cards'       => ['Staff Dashboard Cards (carousel)', ['manage', 'approve', 'settings']], // NEW (Task 4)
         'fin_accounts'      => ['Financial Accounts', ['view', 'manage', 'transfer', 'adjust', 'reconcile', 'approve', 'identifiers']],
         'portal'            => ['RM Customer Portal (staff side)', ['view', 'edit', 'manage']],
         'forecasting'       => ['RM Business Forecasting', ['view', 'reports', 'manage']],
@@ -90,6 +91,8 @@ const ACCESS_NEW_DEFAULTS = [
     'sms.templates' => ['admin'], 'sms.essential' => ['admin'], 'sms.test' => ['admin'],
     // NEW: RM Customer First (every employee records customer requests; managers monitor all of them)
     'customer_first.record' => ['admin', 'manager', 'employee'], 'customer_first.manage' => ['admin', 'manager'],
+    // NEW: Staff Dashboard Cards — everyone sees the carousel; these are for managing it.
+    'staff_cards.manage' => ['admin', 'manager'], 'staff_cards.approve' => ['admin', 'manager'], 'staff_cards.settings' => ['admin'],
     // NEW: Financial Accounts (where the money is held). Finance users get transfer / reconcile in Roles & Permissions.
     'fin_accounts.view' => ['admin', 'manager'], 'fin_accounts.manage' => ['admin'], 'fin_accounts.transfer' => ['admin'], 'fin_accounts.adjust' => ['admin'],
     'fin_accounts.reconcile' => ['admin'], 'fin_accounts.approve' => ['admin'], 'fin_accounts.identifiers' => ['admin'],
@@ -327,6 +330,7 @@ function access_page_permission(string $script): ?string
     if ($module === 'portal') { return in_array($f, ['accounts', 'settings'], true) ? 'portal.manage' : (in_array($f, ['documents', 'records'], true) ? 'portal.edit' : 'portal.view'); }
     // NEW (Task 10): SMS Management. Template / log / usage pages need sms.view; each page checks sms.templates, sms.essential, sms.test itself.
     if ($module === 'sms' && in_array($f, ['index', 'template', 'log', 'usage', 'settings'], true)) { return $f === 'settings' ? 'sms.templates' : 'sms.view'; }
+    if ($module === 'staff_cards') { return '*'; } // NEW: the carousel feed is for everyone; each management page checks its own permission
     if ($module === 'customer_first') { return '*'; } // NEW: every Customer First page checks its own permission
     if ($module === 'fin_accounts') { return '*'; } // NEW: every Financial Accounts page checks its own permission
     if ($module === 'market') { return $f === 'settings' ? 'market.settings' : '*'; } // NEW: every Market Insights page checks its own permission

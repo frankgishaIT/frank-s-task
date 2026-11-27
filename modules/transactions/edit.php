@@ -81,6 +81,11 @@ if (isset($_POST['update'])) {
         $error = 'Please choose the Expense Category.';
     } elseif ($expenseCategory !== null && !category_is_valid($conn, 'expense', $expenseCategory, $transaction['expense_category'] ?? null)) {
         $error = 'Please choose an Expense Category from the list.';
+    } elseif (($transaction['status'] ?? '') === 'approved' && trim((string) ($_POST['edit_reason'] ?? '')) === ''
+        && (abs((float) $transaction['amount'] - (float) $amount) >= 0.01 || $transaction['transaction_date'] !== $transactionDate || $transaction['transaction_type'] !== $type
+            || $transaction['category'] !== $category || (string) ($transaction['expense_category'] ?? '') !== (string) ($expenseCategory ?? ''))) {
+        // NEW (Task 2, 2.9): a POSTED transaction is never corrected silently: the reason is kept in the audit history.
+        $error = 'This transaction is already posted: give the reason for the correction.';
     } else {
         mysqli_begin_transaction($conn);
         try {
@@ -122,6 +127,17 @@ if (isset($_POST['update'])) {
             $statement = mysqli_prepare($conn, 'UPDATE transactions SET category = ?, amount = ?, transaction_type = ?, description = ?, transaction_date = ?, recorded_by = ?, expense_category = ? WHERE id = ?');
             mysqli_stmt_bind_param($statement, 'sdsssisi', $category, $amount, $type, $description, $transactionDate, $recordedBy, $expenseCategory, $id);
             mysqli_stmt_execute($statement);
+
+            // NEW (cross-task audit trail): every edit is recorded in the transaction audit (who, when, what changed).
+            $chg = [];
+            foreach (['category' => $category, 'amount' => $amount, 'transaction_type' => $type, 'description' => $description, 'transaction_date' => $transactionDate, 'expense_category' => $expenseCategory] as $k => $nv) {
+                $ov = $current[$k] ?? '';
+                if ($k === 'amount' ? abs((float) $ov - (float) $nv) >= 0.01 : (string) $ov !== (string) ($nv ?? '')) { $chg[] = $k . ': ' . ($k === 'amount' ? number_format((float) $ov) : $ov) . ' → ' . ($k === 'amount' ? number_format((float) $nv) : $nv); }
+            }
+            if ($chg) {
+                require_once __DIR__ . '/../../includes/transaction_audit_helpers.php';
+                tx_audit_log($conn, ['id' => (int) $id, 'amount' => $amount, 'transaction_type' => $type, 'category' => $category], 'Edited', mb_substr(trim((string) ($_POST['edit_reason'] ?? '')), 0, 500), implode('; ', $chg) . (($current['status'] ?? '') === 'approved' && ($amountChanged || $dateChanged) ? ' (posted: fund entries reversed and re-recorded)' : ''), $userId);
+            }
 
             // An APPROVED fund expense is in the fund ledger: reverse the old entry and record
             // the corrected one. (A pending one is only a reservation, read from this row.)
@@ -271,6 +287,13 @@ $modal_subtitle = 'Update this transaction\'s details.';
                     </select>
                 </div>
 
+                <?php if (($transaction['status'] ?? '') === 'approved') { /* NEW (Task 2, 2.9): reason for correcting a posted transaction */ ?>
+                <div class="mb-3">
+                    <label class="form-label small fw-semibold text-muted">Reason for the correction <span class="text-danger">*</span></label>
+                    <input name="edit_reason" maxlength="500" class="form-control rm-input" value="<?= htmlspecialchars((string) ($_POST['edit_reason'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" placeholder="Needed when you change the amount, date, type or category">
+                    <div class="form-text">This transaction is posted. The change and its reason are kept in the transaction audit history.</div>
+                </div>
+                <?php } ?>
                 <div class="d-grid gap-2 d-md-flex justify-content-end mt-4">
                     <button class="btn btn-primary rm-btn-primary" type="submit" name="update">
                         <i class="bi bi-check-circle-fill me-2"></i>Update Transaction

@@ -49,6 +49,7 @@ function access_catalog(): array
         'market'            => ['RM Market Insights', ['view', 'request', 'research', 'finance', 'approve', 'reports', 'settings']],
         'customer_first'    => ['RM Customer First', ['record', 'manage']],
         'staff_cards'       => ['Staff Dashboard Cards (carousel)', ['manage', 'approve', 'settings']], // NEW (Task 4)
+        'audit_trail'       => ['Audit Trail (Market Insights, Financial Accounts, Customer First, carousel)', ['view']], // NEW (cross-task)
         'fin_accounts'      => ['Financial Accounts', ['view', 'manage', 'transfer', 'adjust', 'reconcile', 'approve', 'identifiers']],
         'portal'            => ['RM Customer Portal (staff side)', ['view', 'edit', 'manage']],
         'forecasting'       => ['RM Business Forecasting', ['view', 'reports', 'manage']],
@@ -85,6 +86,18 @@ const ACCESS_ONE_TIME_GRANTS = [
         'note' => 'Marketing & Growth opened to everyone (management decision): Managers and Employees can view, create, work leads and see reports; approvals, finance and settings stay with Administrators.'],
 ];
 
+/**
+ * NEW (cross-task section 5.2): the SUGGESTED roles of the specification, created once and EMPTY. Nobody holds them
+ * until an Administrator assigns them in Roles & Permissions, in addition to the person's Employee role.
+ * Ordinary staff keep no access to financial adjustments, sensitive account details or management approvals.
+ */
+const ACCESS_SUGGESTED_ROLES = [
+    'Supervisor' => ['desc' => 'Suggested role: reviews customer requests, validates information and assigns follow-ups. Give it in addition to Employee.',
+        'perms' => ['customer_first.record', 'customer_first.manage', 'market.view', 'market.request', 'market.research', 'market.reports', 'tasks.view', 'tasks.create', 'tasks.edit']],
+    'Finance User' => ['desc' => 'Suggested role: manages permitted financial records and reconciliation (no adjustments, approvals or account set-up). Give it in addition to Employee.',
+        'perms' => ['fin_accounts.view', 'fin_accounts.transfer', 'fin_accounts.reconcile', 'transactions.view', 'transactions.create', 'transactions.edit', 'transactions.reports', 'funds.view', 'market.finance', 'audit_trail.view']],
+];
+
 const ACCESS_NEW_DEFAULTS = [
     'library.view' => ['admin', 'manager', 'employee'], 'library.download' => ['admin', 'manager', 'employee'],
     'library.create' => ['admin', 'manager'], 'library.edit' => ['admin', 'manager'], 'library.replace' => ['admin', 'manager'],
@@ -92,6 +105,7 @@ const ACCESS_NEW_DEFAULTS = [
     // NEW: RM Customer First (every employee records customer requests; managers monitor all of them)
     'customer_first.record' => ['admin', 'manager', 'employee'], 'customer_first.manage' => ['admin', 'manager'],
     // NEW: Staff Dashboard Cards — everyone sees the carousel; these are for managing it.
+    'audit_trail.view' => ['admin', 'manager'], // NEW: each line is still shown only to those who may see its module
     'staff_cards.manage' => ['admin', 'manager'], 'staff_cards.approve' => ['admin', 'manager'], 'staff_cards.settings' => ['admin'],
     // NEW: Financial Accounts (where the money is held). Finance users get transfer / reconcile in Roles & Permissions.
     'fin_accounts.view' => ['admin', 'manager'], 'fin_accounts.manage' => ['admin'], 'fin_accounts.transfer' => ['admin'], 'fin_accounts.adjust' => ['admin'],
@@ -229,6 +243,22 @@ function access_ensure(mysqli $conn): void
         access_log($conn, null, null, null, 'permission_added', $grant['note']);
     }
 
+    // NEW: the suggested roles (Supervisor, Finance User), once, empty. A role an Administrator deleted is not re-created.
+    foreach (ACCESS_SUGGESTED_ROLES as $name => $r) {
+        $marker = mysqli_real_escape_string($conn, 'role:' . $name);
+        if ((int) mysqli_fetch_row(mysqli_query($conn, "SELECT COUNT(*) FROM acl_known_permissions WHERE permission = '$marker'"))[0]) { continue; }
+        mysqli_query($conn, "INSERT IGNORE INTO acl_known_permissions VALUES ('$marker')");
+        $n = mysqli_real_escape_string($conn, $name);
+        if (mysqli_fetch_row(mysqli_query($conn, "SELECT id FROM acl_roles WHERE name = '$n'"))) { continue; } // a role with that name already exists: leave it
+        $s = mysqli_prepare($conn, 'INSERT INTO acl_roles (name, description) VALUES (?, ?)');
+        mysqli_stmt_bind_param($s, 'ss', $name, $r['desc']);
+        mysqli_stmt_execute($s);
+        $rid = (int) mysqli_insert_id($conn);
+        $p = mysqli_prepare($conn, 'INSERT IGNORE INTO acl_role_permissions (role_id, permission) VALUES (?, ?)');
+        foreach (array_intersect($r['perms'], access_all_permissions()) as $perm) { mysqli_stmt_bind_param($p, 'is', $rid, $perm); mysqli_stmt_execute($p); }
+        access_log($conn, null, null, $rid, 'role_created', 'Suggested role "' . $name . '" created (nobody holds it yet): ' . implode(', ', $r['perms']) . '.');
+    }
+
     // An employee added later without any role gets the starting role of their account type.
     mysqli_query($conn, "INSERT IGNORE INTO acl_user_roles (user_id, role_id)
         SELECT u.id, r.id FROM users u JOIN acl_roles r ON r.system_key = LOWER(u.role)
@@ -330,6 +360,7 @@ function access_page_permission(string $script): ?string
     if ($module === 'portal') { return in_array($f, ['accounts', 'settings'], true) ? 'portal.manage' : (in_array($f, ['documents', 'records'], true) ? 'portal.edit' : 'portal.view'); }
     // NEW (Task 10): SMS Management. Template / log / usage pages need sms.view; each page checks sms.templates, sms.essential, sms.test itself.
     if ($module === 'sms' && in_array($f, ['index', 'template', 'log', 'usage', 'settings'], true)) { return $f === 'settings' ? 'sms.templates' : 'sms.view'; }
+    if ($module === 'audit_trail') { return 'audit_trail.view'; } // NEW
     if ($module === 'staff_cards') { return '*'; } // NEW: the carousel feed is for everyone; each management page checks its own permission
     if ($module === 'customer_first') { return '*'; } // NEW: every Customer First page checks its own permission
     if ($module === 'fin_accounts') { return '*'; } // NEW: every Financial Accounts page checks its own permission

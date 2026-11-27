@@ -245,6 +245,12 @@ if ($rmCompactUi) { ?>
         <i class="bi bi-collection-play"></i> Staff Dashboard Cards
     </a>
     <?php } ?>
+    <!-- NEW: one Audit Trail across the four tasks -->
+    <?php if (access_can('audit_trail.view', $conn)) { ?>
+    <a href="../audit_trail/index.php" class="<?= navActive('/audit_trail/', $currentPath) ?>">
+        <i class="bi bi-journal-check"></i> Audit Trail
+    </a>
+    <?php } ?>
     <!-- NEW: RM Market Insights (customer requests, demand analysis, new product discovery) -->
     <?php require_once __DIR__ . '/access_control.php'; if (access_can('market.view', $conn)) { ?>
     <a href="../market/index.php" class="<?= navActive('/market/', $currentPath) ?>">

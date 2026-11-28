@@ -65,6 +65,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         dl_audit($conn, 'rate', $oid, 'rate_added', $t['code'] . ' · ' . $p['product_name'] . ': ' . $txt, $reason ?: null, 'staff', $pid);
         dl_go($back, 'success', $p['product_name'] . ' added at ' . dl_pct($rate) . '.');
     }
+    if ($act === 'access_send') {
+        dl_require($conn, 'taskers');
+        if ($t['tasker_status'] !== 'Active') { dl_go($back, 'error', 'Only an Active RM Tasker can receive portal access.'); }
+        $acc = dl_account($conn, $pid);
+        if ($acc && $acc['status'] === 'blocked') { dl_go($back, 'error', 'Portal access is blocked: unblock it first.'); }
+        $r = dl_send_access($conn, $pid);
+        dl_go($back, 'success', 'Access link sent (SMS ' . ($r['sms'] ? 'sent' : 'NOT sent') . ', e-mail ' . ($r['email'] ? 'sent' : 'not sent') . '). It is valid 72 hours.');
+    }
+    if ($act === 'access_block') {
+        dl_require($conn, 'taskers');
+        $reason = mb_substr(trim((string) ($_POST['reason'] ?? '')), 0, 255);
+        $acc = dl_account($conn, $pid);
+        if (!$acc) { dl_go($back, 'error', 'No portal account yet.'); }
+        $to = $acc['status'] === 'blocked' ? ($acc['password_hash'] ? 'active' : 'pending') : 'blocked';
+        if ($to === 'blocked' && $reason === '') { dl_go($back, 'error', 'Give the reason for blocking the access.'); }
+        mysqli_query($conn, "UPDATE dl_tasker_accounts SET status = '$to', token_hash = NULL WHERE party_id = $pid");
+        dl_audit($conn, 'tasker', $pid, $to === 'blocked' ? 'portal_blocked' : 'portal_unblocked', $t['code'] . ' portal access ' . ($to === 'blocked' ? 'blocked' : 'restored'), $reason ?: null, 'staff', $pid);
+        dl_go($back, 'success', $to === 'blocked' ? 'Portal access blocked.' : 'Portal access restored.');
+    }
     if ($act === 'preferred') {
         dl_require($conn, 'approve');
         $on = (int) !((int) $t['preferred']);
@@ -121,7 +140,14 @@ dl_tabs($conn, 'taskers.php', $t['code'] . ' · ' . $t['display'], $canEdit ? '<
         <button class="btn btn-sm <?= (int) $t['preferred'] ? 'btn-outline-secondary' : 'btn-outline-warning'; ?> py-0"><?= (int) $t['preferred'] ? 'Remove Preferred status' : 'Mark as Preferred RM Tasker'; ?></button></form>
     <?php if ((int) $t['preferred'] && $t['preferred_reason']) { ?><div class="text-muted mt-1">Why preferred: <?= dl_e($t['preferred_reason']); ?></div><?php } ?>
     <?php } ?>
-    <div class="text-muted mt-2">Delegations, payments and payment history appear here once the RM Tasker is assigned work.</div>
+    <?php $acc = dl_account($conn, $pid); ?>
+    <div class="fw-semibold mt-3 mb-1">Customers Portal access (RM Tasker view)</div>
+    <div><?= !$acc ? 'Not sent yet' : ($acc['status'] === 'active' ? 'Active · last sign-in ' . ($acc['last_login_at'] ? dl_e(date('d M Y H:i', strtotime($acc['last_login_at']))) : 'never') : ($acc['status'] === 'blocked' ? '<span class="text-danger">Blocked</span>' : 'Link sent, password not set yet')); ?></div>
+    <?php if (dlc($conn, 'taskers')) { ?><div class="d-flex flex-wrap gap-1 mt-1">
+        <?php if (!$acc || $acc['status'] !== 'blocked') { ?><form method="post"><?= dl_csrf_field(); ?><input type="hidden" name="id" value="<?= $pid; ?>"><input type="hidden" name="act" value="access_send"><button class="btn btn-outline-primary btn-sm py-0"><?= $acc && $acc['status'] === 'active' ? 'Send a new password link' : 'Send portal access link'; ?></button></form><?php } ?>
+        <?php if ($acc) { ?><form method="post" onsubmit="<?= $acc['status'] === 'blocked' ? '' : "var r=prompt('Reason?');if(!r){return false;}this.reason.value=r;"; ?>"><?= dl_csrf_field(); ?><input type="hidden" name="id" value="<?= $pid; ?>"><input type="hidden" name="act" value="access_block"><input type="hidden" name="reason"><button class="btn btn-outline-<?= $acc['status'] === 'blocked' ? 'success' : 'danger'; ?> btn-sm py-0"><?= $acc['status'] === 'blocked' ? 'Unblock' : 'Block access'; ?></button></form><?php } ?>
+    </div><?php } ?>
+    <div class="text-muted mt-1">The RM Tasker signs in with <?= dl_e($t['code']); ?> and sees only their own tasks and payments, never customer or business information.</div>
 </div></div></div>
 </div>
 
@@ -172,6 +198,13 @@ function dlReset() { var f = document.getElementById('rateForm'); f.reset(); f.o
 </script>
 <?php } ?>
 
+<?php $mine = mysqli_fetch_all(mysqli_query($conn, "SELECT d.id, d.status, d.response, d.deadline, d.pay_exp, d.pay_due, d.perf_score, p.product_name FROM dl_delegations d LEFT JOIN products p ON p.id = d.product_id WHERE d.party_id = $pid ORDER BY d.id DESC LIMIT 50"), MYSQLI_ASSOC); ?>
+<?php if ($mine) { ?>
+<h6 class="mb-1">Delegations</h6>
+<div class="card mb-3"><div class="table-responsive"><table class="table table-sm dl-tbl mb-0"><thead><tr><th>Delegation</th><th>Service</th><th>Response</th><th>Status</th><th>Deadline</th><th class="text-end">Payment</th><th class="text-end">Performance</th></tr></thead><tbody>
+<?php foreach ($mine as $r) { ?><tr><td><a href="view.php?id=<?= (int) $r['id']; ?>"><?= dl_ref((int) $r['id']); ?></a></td><td class="small"><?= dl_e($r['product_name']); ?></td><td class="small"><?= dl_e(dl_response_text($r['response'])); ?></td><td><?= dl_status_badge($r['status']); ?></td><td class="small"><?= dl_e(dl_deadline_text($r['deadline'])); ?></td><td class="text-end small"><?= dl_money($r['pay_due'] ?? $r['pay_exp']); ?></td><td class="text-end small"><?= $r['perf_score'] !== null ? dl_e((float) $r['perf_score']) . '/100' : '—'; ?></td></tr><?php } ?>
+</tbody></table></div></div>
+<?php } ?>
 <h6 class="mb-1">Rate history</h6>
 <div class="card"><div class="table-responsive"><table class="table table-sm dl-tbl mb-0"><thead><tr><th>When</th><th>Service / product</th><th>Change</th><th>Reason</th><th>By</th></tr></thead><tbody>
 <?php foreach ($hist as $r) { ?><tr><td class="text-nowrap small"><?= dl_e(date('d M Y H:i', strtotime($r['created_at']))); ?></td><td><?= dl_e($r['product_name']); ?></td><td class="small"><?= dl_e($r['change_text']); ?></td><td class="small"><?= dl_e($r['reason']); ?></td><td class="small"><?= dl_e($names[(int) $r['user_id']] ?? '—'); ?></td></tr><?php } ?>

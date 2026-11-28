@@ -41,6 +41,13 @@ function portal_header(string $title, ?array $customer = null): void
     $menu[] = ['suggest.php', 'lightbulb', 'Suggest a Product']; // NEW: RM Market Insights — customer product / service suggestions
     $menu[] = ['profile.php', 'person', 'My Profile'];
     $menu[] = ['requests.php', 'headset', 'Support'];
+    // NEW (Delegations): a person signed in as an RM Tasker sees ONLY their own tasks and payments — no customer menu.
+    $isTasker = !empty($customer['tasker_code']);
+    if ($isTasker) {
+        if ($here === 'tasker_task.php') { $here = 'tasker.php'; }
+        $menu = [['tasker.php', 'list-check', 'My Tasks']];
+        if (is_file(__DIR__ . '/../portal/tasker_payments.php')) { $menu[] = ['tasker_payments.php', 'cash-stack', 'My Payments']; }
+    }
     ?><!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?= portal_e($title); ?> · RM Customer Portal</title>
@@ -116,10 +123,16 @@ function portal_header(string $title, ?array $customer = null): void
 <header class="p-head"><div class="inner">
     <div class="d-flex align-items-center gap-2">
         <?php if ($customer) { ?><button class="btn btn-sm btn-light d-lg-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#pMenu" aria-label="Menu"><i class="bi bi-list"></i></button><?php } ?>
-        <a href="index.php" class="p-logo" aria-label="RISE MOTIVE"><span class="disc"><?php if ($logo) { ?><img src="<?= portal_e($logo); ?>" alt="RISE MOTIVE"><?php } else { ?><i class="bi bi-shield-check fs-2 text-white"></i><?php } ?></span></a>
+        <a href="<?= !empty($isTasker) ? 'tasker.php' : 'index.php'; ?>" class="p-logo" aria-label="RISE MOTIVE"><span class="disc"><?php if ($logo) { ?><img src="<?= portal_e($logo); ?>" alt="RISE MOTIVE"><?php } else { ?><i class="bi bi-shield-check fs-2 text-white"></i><?php } ?></span></a>
     </div>
     <p class="p-title-head">RM CUSTOMER PORTAL</p>
-    <?php if ($customer) { ?>
+    <?php if ($customer && !empty($isTasker)) { /* NEW: RM Tasker — name and RMST number, only Logout */ ?>
+    <div class="p-user">
+        <div class="dropdown"><a href="#" class="dropdown-toggle" data-bs-toggle="dropdown" data-bs-popper-config='{"strategy":"fixed"}' aria-expanded="false"><span class="avatar"><i class="bi bi-tools"></i></span>
+            <span class="who"><strong><?= portal_e($customer['name']); ?></strong><br><small>RM Tasker · <?= portal_e($customer['tasker_code']); ?></small></span></a>
+            <ul class="dropdown-menu dropdown-menu-end shadow"><li><a class="dropdown-item text-danger" href="logout.php"><i class="bi bi-box-arrow-right me-2"></i>Logout</a></li></ul></div>
+    </div>
+    <?php } elseif ($customer) { ?>
     <div class="p-user">
         <div class="dropdown"><a href="#" class="dropdown-toggle" data-bs-toggle="dropdown" data-bs-popper-config='{"strategy":"fixed"}' aria-expanded="false"><span class="avatar"><i class="bi bi-person-fill"></i></span>
             <span class="who"><strong><?= portal_e($customer['name']); ?></strong><br><small><?= portal_e(portal_customer_code((int) $customer['id'])); ?></small></span></a>

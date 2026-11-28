@@ -18,7 +18,7 @@
 require_once __DIR__ . '/sms_helpers.php';
 
 const SMS_RECIPIENTS = ['customer' => 'Customers', 'student' => 'Students (Learning Centre)', 'applicant' => 'Applicants (Learning Centre / internships)',
-    'employee' => 'Employees', 'supervisor' => 'Supervisors', 'branch_manager' => 'Branch managers', 'instructor' => 'Instructors', 'supplier' => 'Business partners (suppliers)'];
+    'employee' => 'Employees', 'supervisor' => 'Supervisors', 'branch_manager' => 'Branch managers', 'instructor' => 'Instructors', 'supplier' => 'Business partners (suppliers)', 'tasker' => 'RM Taskers (Delegations)'];
 const SMS_CUSTOMER_GROUPS = ['student' => 'Learning Centre students', 'credit' => 'Customers who owe money', 'loyalty' => 'Customers with loyalty points', 'portal' => 'Customer Portal users', 'other' => 'Other customers'];
 const SMS_STATUSES = ['queued' => 'Queued', 'sent' => 'Sent', 'delivered' => 'Delivered', 'failed' => 'Failed', 'skipped' => 'Not sent (no phone / SMS off)',
     'disabled' => 'Not sent (notification off)', 'filtered' => 'Not sent (targeting)', 'duplicate' => 'Duplicate blocked', 'blocked' => 'Blocked (wrong audience)', 'cancelled' => 'Cancelled'];
@@ -99,6 +99,20 @@ function sms_catalog(): array
         'PORTAL_REPLY' => ['name' => 'Answer to a portal request', 'module' => 'Customer Portal', 'trigger' => 'Staff answer a customer request', 'to' => ['customer'], 'kind' => 'info',
             'vars' => $cust + ['request_number' => ['Request number', 'REQ-000045']], 'rules' => ['dedupe' => 'interval', 'interval' => 2], 'targets' => ['branch', 'customer_group'], 'legacy' => 'portal_reply',
             'default' => 'RISE MOTIVE answered your request {request_number}. Sign in to the customer portal to read it.'],
+        // NEW: Delegations — RM Taskers. The assignment SMS carries the portal link and the official WhatsApp chat (never a staff number).
+        'DL_ASSIGNED' => ['name' => 'New assignment to an RM Tasker', 'module' => 'Delegations', 'trigger' => 'A delegation is sent to an RM Tasker', 'to' => ['tasker'], 'kind' => 'transactional', 'required' => ['task_link'],
+            'vars' => ['tasker_name' => ['Tasker first name', 'Aline'], 'service' => ['Service', 'Logo design'], 'reference' => ['Delegation ID', 'DL000012'], 'amount' => ['Expected payment (RWF)', '10,000'],
+                'deadline' => ['Deadline', date('d M Y H:i', strtotime('+1 day'))], 'task_link' => ['Link to the task in the portal', 'https://myspace.risemotive.rw/portal/tasker_task.php?ref=DL000012'], 'whatsapp' => ['Official WhatsApp chat link', 'https://wa.me/250795344768']],
+            'rules' => ['dedupe' => 'once', 'interval' => 0], 'targets' => [],
+            'default' => "Dear {tasker_name}, RISE MOTIVE has a new service request for you. Service: {service}. Ref: {reference}. Expected payment: RWF {amount}. Deadline: {deadline}. Accept or reject: {task_link} To avoid delaying the customer, RISE MOTIVE may contact you on WhatsApp ({whatsapp}) or by phone."],
+        'DL_TASK_UPDATE' => ['name' => 'Update to an RM Tasker', 'module' => 'Delegations', 'trigger' => 'Deadline reminder, deadline change, work returned for correction, reassignment or cancellation', 'to' => ['tasker'], 'kind' => 'info',
+            'vars' => ['tasker_name' => ['Tasker first name', 'Aline'], 'reference' => ['Delegation ID', 'DL000012'], 'message' => ['What changed', 'Reminder: Logo design is due today at 17:00.'], 'task_link' => ['Link to the task', 'https://myspace.risemotive.rw/portal/tasker_task.php?ref=DL000012']],
+            'rules' => ['dedupe' => 'none', 'interval' => 0], 'targets' => [],
+            'default' => 'RISE MOTIVE ({reference}): {message} Details: {task_link}'],
+        'DL_ACCESS' => ['name' => 'RM Tasker portal access link', 'module' => 'Delegations', 'trigger' => 'Staff send an RM Tasker access to the portal', 'to' => ['tasker'], 'kind' => 'security', 'required' => ['link'],
+            'vars' => ['tasker_name' => ['Tasker first name', 'Aline'], 'tasker_id' => ['RM Tasker ID', 'RMST00001'], 'link' => ['Set-password link (72 h)', 'https://myspace.risemotive.rw/portal/tasker_activate.php?t=…']],
+            'rules' => ['dedupe' => 'none', 'interval' => 0], 'targets' => [],
+            'default' => 'Dear {tasker_name}, your RM Tasker ID is {tasker_id}. Set your RISE MOTIVE portal password within 72 hours: {link} Do not share this link.'],
         'LC_TRACK_OTP' => ['name' => 'Application tracking code', 'module' => 'Learning Centre', 'trigger' => 'An applicant opens their application on the website', 'to' => ['applicant'], 'kind' => 'security', 'required' => ['code'],
             'vars' => ['code' => ['One-time code', '482913']], 'rules' => ['dedupe' => 'none', 'interval' => 0], 'targets' => [], 'legacy' => 'learning_otp',
             'default' => 'RM Learning Centre code: {code} (valid 10 minutes). Do not share it.'],

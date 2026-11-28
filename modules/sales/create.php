@@ -16,6 +16,8 @@ while ($c = mysqli_fetch_assoc($customers)) { $customerList[] = $c; }
 $catalog = mysqli_query($conn, "SELECT id, item_type, product_name, product_code, selling_price, quantity, unit FROM products WHERE is_active = 1 ORDER BY item_type, product_name");
 $catalogList = [];
 while ($p = mysqli_fetch_assoc($catalog)) { $catalogList[] = $p; }
+// NEW (Delegations): how each offering is fulfilled (Internal / Delegatable / External Only / Not Available).
+$dlFulfil = []; try { $dlR = mysqli_query($conn, 'SELECT product_id, fulfilment, delegation_allowed FROM dl_offering_settings'); if ($dlR) { foreach (mysqli_fetch_all($dlR, MYSQLI_ASSOC) as $dlX) { $dlFulfil[(int) $dlX['product_id']] = $dlX['fulfilment'] === 'Delegatable' && !(int) $dlX['delegation_allowed'] ? 'Internal' : $dlX['fulfilment']; } } } catch (Throwable $e) { $dlFulfil = []; }
 
 $itemProductIds = array_map(function ($p) { return $p['id']; }, array_filter($catalogList, function ($p) { return $p['item_type'] === 'Item'; }));
 $unitsMap = product_units_map($conn, $itemProductIds);
@@ -54,6 +56,11 @@ if (isset($_POST['save'])) {
         if (!$found) { continue; }
 
         $isService = $found['item_type'] === 'Service';
+        // NEW (Delegations): an offering RISE MOTIVE cannot currently provide is not sold (record it as an unavailable request).
+        if (($dlFulfil[$catalogId] ?? 'Internal') === 'Not Available') {
+            $lineError = '"' . $found['product_name'] . '" is marked Not Available: RISE MOTIVE cannot provide it now. Record it in Delegations → Unavailable requests.';
+            break;
+        }
         $packLabel = 'Piece';
         $packSize = 1;
 
@@ -240,6 +247,11 @@ if (isset($_POST['save'])) {
                     }
                 }
 
+                // NEW (Delegations): a line that only an RM Tasker can provide goes straight to choosing the Tasker.
+                if (in_array('External Only', array_map(function ($li) use ($dlFulfil) { return $dlFulfil[(int) $li['product_id']] ?? 'Internal'; }, $lineItems), true)) {
+                    header('Location: ../delegations/new.php?sale=' . $saleId . '&success=' . urlencode($successMessage . ' Now choose the RM Tasker for the external service.'));
+                    exit;
+                }
                 header('Location: invoice.php?id=' . $saleId . '&success=' . urlencode($successMessage));
                 exit;
             }
@@ -392,7 +404,7 @@ function escapeHtml(s) {
 }
 
 const CATALOG = <?= json_encode(array_map(function ($p) {
-    return ['id' => (int) $p['id'], 'type' => $p['item_type'], 'name' => $p['product_name'], 'code' => $p['product_code'], 'price' => (float) $p['selling_price'], 'stock' => (int) $p['quantity'], 'unit' => $p['unit']];
+    return ['id' => (int) $p['id'], 'type' => $p['item_type'], 'name' => $p['product_name'], 'code' => $p['product_code'], 'price' => (float) $p['selling_price'], 'stock' => (int) $p['quantity'], 'unit' => $p['unit'], 'ff' => $GLOBALS['dlFulfil'][(int) $p['id']] ?? 'Internal']; // ff: NEW (Delegations)
 }, $catalogList), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 
 const CUSTOMERS = <?= json_encode(array_map(function ($c) {
@@ -589,6 +601,13 @@ function bindRow(row) {
 
     function handleSelect(item) {
         const price = item ? item.price : 0;
+        // NEW (Delegations): say how the offering is fulfilled.
+        let ffNote = row.querySelector('.dl-ff');
+        if (!ffNote) { ffNote = document.createElement('div'); ffNote.className = 'dl-ff small mt-1'; catalogFieldEl.parentNode.appendChild(ffNote); }
+        const ff = item ? (item.ff || 'Internal') : 'Internal';
+        ffNote.innerHTML = ff === 'External Only' ? '<span style="color:#8A5A00">Provided by an RM Tasker: you choose the Tasker right after saving.</span>'
+            : ff === 'Delegatable' ? '<span style="color:#1E2FE0">Can be delegated to an RM Tasker after saving (Sales → Delegate).</span>'
+            : ff === 'Not Available' ? '<span class="text-danger">Not available now: record it as an unavailable request instead.</span>' : '';
         basePrice = price;
         if (typeSelect.value === 'Item' && item) {
             populateUnitCell(item.id);

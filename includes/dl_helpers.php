@@ -38,6 +38,7 @@ const DL_SETTING_DEFAULTS = [
     'follow_up_minutes' => '60', 'follow_up_urgent_minutes' => '20', 'reminder_hours' => '2',
     'verify_days' => '3', 'confirm_days' => '3', 'pay_terms_days' => '7',
     'whatsapp_link' => '',
+    'receipt_tasker_name' => '1',    // show the Tasker's (business) name on the customer receipt
 ];
 
 function dl_e($v): string { return htmlspecialchars((string) ($v ?? ''), ENT_QUOTES, 'UTF-8'); }
@@ -179,7 +180,7 @@ function dl_tasker_history(mysqli $conn): array
         $rows = mysqli_fetch_all(mysqli_query($conn, "SELECT party_id,
                 SUM(CASE WHEN verified_at IS NOT NULL THEN 1 ELSE 0 END) done,
                 SUM(CASE WHEN verified_at IS NOT NULL AND completed_at IS NOT NULL AND completed_at <= deadline THEN 1 ELSE 0 END) ontime,
-                SUM(CASE WHEN response IN ('Accepted', 'Staff-confirmed') THEN 1 ELSE 0 END) accepted,
+                SUM(CASE WHEN response IN ('Tasker-confirmed', 'Staff-confirmed') THEN 1 ELSE 0 END) accepted,
                 SUM(CASE WHEN response IS NOT NULL THEN 1 ELSE 0 END) responded,
                 AVG(CASE WHEN verified_at IS NOT NULL THEN perf_score END) perf,
                 AVG(CASE WHEN verified_at IS NOT NULL THEN quality_rating END) quality,
@@ -190,7 +191,8 @@ function dl_tasker_history(mysqli $conn): array
             $cache[(int) $r['party_id']] = ['done' => $done, 'ontime' => $done ? (int) $r['ontime'] / $done : null, 'accepted' => (int) $r['responded'] ? (int) $r['accepted'] / (int) $r['responded'] : null,
                 'quality' => $r['quality'] !== null ? (float) $r['quality'] : null, 'perf' => $r['perf'] !== null ? (float) $r['perf'] : null, 'assigned' => (int) $r['assigned'], 'complaints' => 0];
         }
-        foreach (mysqli_fetch_all(mysqli_query($conn, "SELECT party_id, COUNT(*) n FROM dl_issues WHERE responsibility = 'Tasker' GROUP BY party_id"), MYSQLI_ASSOC) as $r) {
+        $hasIssues = mysqli_query($conn, "SHOW TABLES LIKE 'dl_issues'");
+        if ($hasIssues && mysqli_num_rows($hasIssues)) foreach (mysqli_fetch_all(mysqli_query($conn, "SELECT party_id, COUNT(*) n FROM dl_issues WHERE responsibility = 'Tasker' GROUP BY party_id"), MYSQLI_ASSOC) as $r) {
             if (isset($cache[(int) $r['party_id']])) { $cache[(int) $r['party_id']]['complaints'] = (int) $r['n']; }
         }
     } catch (Throwable $e) { /* the delegation tables arrive with the workflow */ }

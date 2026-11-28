@@ -157,6 +157,8 @@ $activityFeed = array_slice($activityFeed, 0, 6);
 // CHANGED (Task 4): ONE shared rotating area replaces the permanent Best Employee banner. Reminders, products, product
 // advice, services, the Best Employee of the Month and approved announcements all rotate inside it (Staff Dashboard Cards).
 try { require_once '../../includes/sdc_helpers.php'; sdc_carousel($conn); } catch (Throwable $e) { error_log('staff carousel: ' . $e->getMessage()); }
+// NEW (Delegations): follow-ups when an RM Tasker has not answered, deadline reminders, missed-deadline alerts (every 10 min at most).
+try { if (is_file(__DIR__ . '/../../includes/dl_workflow.php')) { require_once __DIR__ . '/../../includes/dl_workflow.php'; dl_monitor($conn); } } catch (Throwable $e) { error_log('dl_monitor: ' . $e->getMessage()); }
 ?>
 
 <div class="row g-3 mb-4">

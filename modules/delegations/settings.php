@@ -21,6 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $wa = trim((string) ($_POST['whatsapp_link'] ?? ''));
     if ($wa !== '' && !preg_match('#^https://(wa\.me|api\.whatsapp\.com|chat\.whatsapp\.com)/#i', $wa)) { dl_go('settings.php', 'error', 'The WhatsApp link must be an official https://wa.me/… (or api.whatsapp.com) link.'); }
     $new['whatsapp_link'] = $wa;
+    $new['receipt_tasker_name'] = empty($_POST['receipt_tasker_name']) ? '0' : '1';
     $basis = ($_POST['profit_basis'] ?? 'cogs') === 'cogs_direct' ? 'cogs_direct' : 'cogs';
     $reason = mb_substr(trim((string) ($_POST['basis_reason'] ?? '')), 0, 255);
     if ($basis !== dl_setting($conn, 'profit_basis')) {
@@ -50,7 +51,7 @@ $inp = function ($k, $l, $suffix = '%', $step = '1') use ($g) { return '<div cla
     <div class="row g-2 mb-3"><?= $inp('w_cost', 'Cost efficiency') . $inp('w_speed', 'Speed') . $inp('w_quality', 'Quality') . $inp('w_reliability', 'Reliability') . $inp('w_availability', 'Availability'); ?></div>
     <div class="row g-2 mb-3"><?= $inp('min_history', 'Completed delegations before own record counts', '', '1') . $inp('preferred_bonus', 'Preferred RM Tasker bonus', 'points', '0.5'); ?><div class="col-md-6 small text-muted align-self-end">Below the minimum, an RM Tasker is shown as "New / limited history" and gets neutral quality and reliability values, not poor ones.</div></div>
     <h6 class="mb-1">Performance rating weights <span class="small text-muted fw-normal">(must add up to 100%)</span></h6>
-    <div class="row g-2 mb-3"><?= $inp('p_quality', 'Service quality') . $inp('p_ontime', 'On-time completion') . $inp('p_satisfaction', 'Customer satisfaction') . $inp('p_reliability', 'Reliability') . $inp('p_communication', 'Communication'); ?></div>
+    <div class="row g-2 mb-3"><?= $inp('p_quality', 'Service quality') . $inp('p_ontime', 'On-time completion') . $inp('p_satisfaction', 'Customer satisfaction') . $inp('p_reliability', 'Instructions followed') . $inp('p_communication', 'Communication'); ?></div>
     <h6 class="mb-1">Profit-sharing basis <span class="small text-muted fw-normal">(management decision)</span></h6>
     <div class="mb-1"><label class="small d-block"><input type="radio" name="profit_basis" value="cogs" <?= dl_setting($conn, 'profit_basis') === 'cogs' ? 'checked' : ''; ?>> <b>Revenue − cost of sales</b> = profit pool; other direct costs are deducted after the Tasker's share</label>
         <label class="small d-block"><input type="radio" name="profit_basis" value="cogs_direct" <?= dl_setting($conn, 'profit_basis') === 'cogs_direct' ? 'checked' : ''; ?>> <b>Revenue − cost of sales − other direct costs</b> = profit pool</label></div>
@@ -61,6 +62,8 @@ $inp = function ($k, $l, $suffix = '%', $step = '1') use ($g) { return '<div cla
     <div class="row g-2 mb-2"><?= $inp('verify_days', 'Complaint / verification period', 'days') . $inp('pay_terms_days', 'Tasker payment terms', 'days') . $inp('confirm_days', 'Payment confirmation window', 'days'); ?></div>
     <div class="row g-2 mb-3"><div class="col-md-8"><label class="form-label small mb-0">Official RISE MOTIVE WhatsApp chat link (sent to Taskers)</label><input name="whatsapp_link" class="form-control form-control-sm" value="<?= $g('whatsapp_link'); ?>" placeholder="https://wa.me/2507…"></div>
         <div class="col-md-4 small text-muted align-self-end">Only the official business chat: never a staff member's personal number.</div></div>
+    <label class="small d-block mb-3"><input type="checkbox" name="receipt_tasker_name" value="1" <?= dl_setting($conn, 'receipt_tasker_name') === '1' ? 'checked' : ''; ?>> Show the RM Tasker's (business) name on the customer receipt, next to "Service fulfilled by an external RISE MOTIVE Tasker". The Tasker's percentage, payment and RISE MOTIVE's profit are never shown.</label>
+    <div class="small text-muted mb-3">Monitoring (follow-ups, deadline reminders, missed deadlines) runs every 10 minutes while staff use MY MOTIVE. For exact timing, schedule <code>modules/delegations/cron.php?key=…</code> every 15 minutes with the same secret key as the SMS daily task.</div>
     <button class="btn btn-primary btn-sm">Save settings</button>
 </div></form>
 <h6>Recent changes</h6>

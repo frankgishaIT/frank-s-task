@@ -2,6 +2,7 @@
 $pageSearchScope = 'sales'; // tells the topbar search what module we're in
 require '../../config/db.php';
 require_role(['Admin', 'Manager', 'Employee']);
+require_once __DIR__ . '/../../includes/access_control.php'; // NEW (Delegations): Delegate / DL buttons follow the permissions
 require '../../includes/pagination.php';
 include '../../includes/header.php'; include '../../includes/sidebar.php';
 
@@ -209,6 +210,20 @@ function sale_pending_reason_badges($row) {
                     <?= $viewFilter === 'credit' ? 'No outstanding credit sales.' : 'No sales recorded yet.'; ?>
                 </td></tr>
             <?php } ?>
+            <?php
+            // NEW (Delegations): delegations of the sales on this page, and lines that still need (or may use) an RM Tasker.
+            $dlBySale = []; $dlNeed = [];
+            try {
+                $dlSaleRows = mysqli_fetch_all(mysqli_query($conn, $sql), MYSQLI_ASSOC); // the same page of sales
+                $dlIds = implode(',', array_map(function ($r) { return (int) $r['id']; }, $dlSaleRows)) ?: '0';
+                if (access_can('delegations.view', $conn) && ($dlT = mysqli_query($conn, "SHOW TABLES LIKE 'dl_delegations'")) && mysqli_num_rows($dlT)) {
+                    foreach (mysqli_fetch_all(mysqli_query($conn, "SELECT id, sale_id, status FROM dl_delegations WHERE sale_id IN ($dlIds) AND status NOT IN ('Cancelled', 'Reassigned')"), MYSQLI_ASSOC) as $dlR) { $dlBySale[(int) $dlR['sale_id']][] = $dlR; }
+                    foreach (mysqli_fetch_all(mysqli_query($conn, "SELECT DISTINCT si.sale_id FROM sale_items si JOIN dl_offering_settings o ON o.product_id = si.product_id
+                        WHERE si.sale_id IN ($dlIds) AND (o.fulfilment = 'External Only' OR (o.fulfilment = 'Delegatable' AND o.delegation_allowed = 1))
+                        AND NOT EXISTS (SELECT 1 FROM dl_delegations d WHERE d.sale_item_id = si.id AND d.status NOT IN ('Cancelled', 'Reassigned', 'Rejected'))"), MYSQLI_NUM) as [$dlS]) { $dlNeed[(int) $dlS] = true; }
+                }
+            } catch (Throwable $e) { error_log('sales delegations: ' . $e->getMessage()); $dlBySale = []; $dlNeed = []; }
+            ?>
             <?php while ($sale = mysqli_fetch_assoc($sales)) {
                 // CHANGED: the balance includes unpaid overdue charges.
                 $balance = (float) $sale['total_amount'] - (float) $sale['amount_paid'] + (float) ($sale['charges_accrued'] ?? 0) - (float) ($sale['charges_paid'] ?? 0);
@@ -230,6 +245,12 @@ function sale_pending_reason_badges($row) {
                 <td><?= sale_status_badge($sale['status']); ?></td>
                 <td class="text-nowrap">
                     <a href="invoice.php?id=<?= (int) $sale['id']; ?>" target="_blank" class="btn btn-outline-primary btn-sm">Invoice</a>
+                    <?php foreach ($dlBySale[(int) $sale['id']] ?? [] as $dlR) { /* NEW (Delegations) */ ?>
+                        <a href="../delegations/view.php?id=<?= (int) $dlR['id']; ?>" class="btn btn-outline-secondary btn-sm" title="<?= htmlspecialchars($dlR['status'], ENT_QUOTES, 'UTF-8'); ?>"><i class="bi bi-people"></i> DL<?= str_pad((string) (int) $dlR['id'], 6, '0', STR_PAD_LEFT); ?></a>
+                    <?php } ?>
+                    <?php if (!empty($dlNeed[(int) $sale['id']]) && $sale['status'] !== 'Cancelled' && access_can('delegations.create', $conn)) { ?>
+                        <a href="../delegations/new.php?sale=<?= (int) $sale['id']; ?>" class="btn btn-warning btn-sm" title="Give the external service to an RM Tasker"><i class="bi bi-people"></i> Delegate</a>
+                    <?php } ?>
 
                     <?php if ($owes) { ?>
                         <a href="pay_credit.php?id=<?= (int) $sale['id']; ?>" class="btn btn-outline-success btn-sm">Pay</a>

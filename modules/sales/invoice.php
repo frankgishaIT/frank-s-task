@@ -49,6 +49,21 @@ $itemsStatement = mysqli_prepare($conn, 'SELECT sale_items.*, COALESCE(NULLIF(sa
 mysqli_stmt_bind_param($itemsStatement, 'i', $id);
 mysqli_stmt_execute($itemsStatement);
 $items = mysqli_stmt_get_result($itemsStatement);
+// NEW (Delegations): externally fulfilled lines show the delegation reference and an external-fulfilment note — never
+// the Tasker's percentage, payment, cost of sales or RISE MOTIVE's profit.
+$dlLines = [];
+try {
+    $dlT = mysqli_query($conn, "SHOW TABLES LIKE 'dl_delegations'");
+    if ($dlT && mysqli_num_rows($dlT)) {
+        $dlShowName = true;
+        $dlSet = mysqli_query($conn, "SELECT v FROM dl_settings WHERE k = 'receipt_tasker_name'");
+        if ($dlSet && ($dlV = mysqli_fetch_row($dlSet))) { $dlShowName = $dlV[0] === '1'; }
+        foreach (mysqli_fetch_all(mysqli_query($conn, "SELECT d.id, d.sale_item_id, d.completed_at, d.verified_at, bp.business_name, bp.name FROM dl_delegations d LEFT JOIN business_parties bp ON bp.id = d.party_id
+            WHERE d.sale_id = " . (int) $id . " AND d.status NOT IN ('Cancelled', 'Reassigned', 'Rejected', 'Pending Approval', 'Draft')"), MYSQLI_ASSOC) as $dlR) {
+            $dlLines[(int) $dlR['sale_item_id']] = ['ref' => 'DL' . str_pad((string) (int) $dlR['id'], 6, '0', STR_PAD_LEFT), 'tasker' => $dlShowName ? (trim((string) $dlR['business_name']) ?: (string) $dlR['name']) : '', 'done' => $dlR['verified_at'] ?: $dlR['completed_at']];
+        }
+    }
+} catch (Throwable $e) { $dlLines = []; }
 
 $isPending = $sale['status'] === 'Pending Discount Approval';
 $isCancelled = $sale['status'] === 'Cancelled';
@@ -243,6 +258,9 @@ ob_start();
         <?= htmlspecialchars($item['product_name'] ?? $item['service_name'] ?? 'Item', ENT_QUOTES, 'UTF-8'); ?>
         <?php if ($item['item_type'] === 'Product') { ?>
           <span style="font-size:9px; color:#6B7280;">(<?= htmlspecialchars($item['product_code'] ?? '', ENT_QUOTES, 'UTF-8'); ?> — <?= htmlspecialchars($item['unit'] ?? 'Pieces', ENT_QUOTES, 'UTF-8'); ?>)</span>
+        <?php } ?>
+        <?php if (isset($dlLines[(int) $item['id']])) { $dlL = $dlLines[(int) $item['id']]; /* NEW (Delegations) */ ?>
+          <br><span style="font-size:9px; color:#6B7280;">Ref. <?= $dlL['ref']; ?><?= $dlL['tasker'] !== '' ? ' · ' . htmlspecialchars($dlL['tasker'], ENT_QUOTES, 'UTF-8') : ''; ?><?= $dlL['done'] ? ' · completed ' . date('d M Y', strtotime($dlL['done'])) : ''; ?><br>Service fulfilled by an external RISE MOTIVE Tasker.</span>
         <?php } ?>
       </td>
       <td><?= htmlspecialchars($item['item_type'] === 'Product' ? 'Product' : 'Service', ENT_QUOTES, 'UTF-8'); ?></td>

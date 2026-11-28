@@ -5,20 +5,27 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 $conn = portal_boot();
 if (!portal_is_open($conn)) { http_response_code(503); echo 'The customer portal is not available at the moment.'; exit; }
 if (portal_customer($conn)) { header('Location: index.php'); exit; }
+// NEW (Delegations): RM Taskers sign in here too (RM Tasker ID or phone) and see ONLY their own tasks — never customer access.
+require_once __DIR__ . '/../includes/dl_portal.php';
+if (dlp_tasker($conn)) { header('Location: tasker.php'); exit; }
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $idf = trim((string) ($_POST['identifier'] ?? ''));
     if (!portal_csrf_ok()) { $error = 'Your session expired. Please try again.'; }
     elseif (portal_login_locked($conn, $idf)) { $error = 'Too many failed attempts. Please wait 15 minutes, or reset your password.'; }
     else {
-        $c = portal_find_customer($conn, $idf);
+        $isTaskerId = (bool) preg_match('/^RMST\d+$/i', $idf); // NEW: an RM Tasker ID is never a customer identifier
+        $c = $isTaskerId ? null : portal_find_customer($conn, $idf);
         $a = $c ? portal_account($conn, (int) $c['id']) : null;
         if ($c && $a && $a['status'] === 'active' && $a['password_hash'] && password_verify((string) ($_POST['password'] ?? ''), $a['password_hash'])) {
             session_regenerate_id(true);
+            unset($_SESSION['portal_tasker_id']); // NEW: one identity per session
             $_SESSION['portal_customer_id'] = (int) $c['id'];
             mysqli_query($conn, 'UPDATE portal_accounts SET last_login_at = NOW() WHERE customer_id = ' . (int) $c['id']);
             portal_log($conn, (int) $c['id'], 'login', '');
             header('Location: index.php'); exit;
         }
+        // NEW: RM Tasker sign-in (own account; a Tasker-only person gets no customer access).
+        if (dlp_login($conn, $idf, (string) ($_POST['password'] ?? ''))) { header('Location: tasker.php'); exit; }
         portal_log($conn, $c ? (int) $c['id'] : null, 'login_failed', mb_strtolower($idf));
         $error = $a && $a['status'] === 'blocked' ? 'This account is not allowed to use the portal. Please contact RISE MOTIVE.'
             : 'Wrong phone / Customer ID or password. New here? Activate your account first.';
@@ -36,7 +43,7 @@ portal_header('Sign in');
     </div>
     <?php portal_alerts(); if (isset($error)) { ?><div class="alert alert-danger small"><?= portal_e($error); ?></div><?php } ?>
     <form method="POST"><?= portal_csrf_field(); ?>
-        <label class="form-label fw-semibold" for="idf">Phone number or Customer ID</label>
+        <label class="form-label fw-semibold" for="idf">Phone number, Customer ID or RM Tasker ID</label>
         <div class="input-group mb-3"><span class="input-group-text bg-white"><i class="bi bi-phone"></i></span>
             <input id="idf" name="identifier" class="form-control form-control-lg" required autocomplete="username" placeholder="e.g. 0788123456" value="<?= portal_e($_POST['identifier'] ?? ''); ?>"></div>
         <div class="d-flex justify-content-between"><label class="form-label fw-semibold" for="pw">Password</label><a href="activate.php?reset=1" class="small fw-semibold">Forgot password?</a></div>

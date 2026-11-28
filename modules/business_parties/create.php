@@ -75,6 +75,7 @@ $modal_icon = 'bi-briefcase-fill'; $modal_title = 'Add Business Party'; $modal_s
                     <option value="Supplier" <?= ($type ?? '') === 'Supplier' ? 'selected' : ''; ?>>RM Supplier</option>
                     <option value="Payee" <?= ($type ?? '') === 'Payee' ? 'selected' : ''; ?>>RM Payee</option>
                     <option value="Partner" <?= ($type ?? '') === 'Partner' ? 'selected' : ''; ?>>RM Partner</option>
+                    <option value="Tasker">RM Tasker (external service provider)</option><!-- NEW: opens the RM Tasker registration -->
                 </select>
             </div>
 
@@ -177,6 +178,7 @@ $modal_icon = 'bi-briefcase-fill'; $modal_title = 'Add Business Party'; $modal_s
         });
     }
 
+    typeSelect.addEventListener('change', function () { if (typeSelect.value === 'Tasker') { window.location.href = '../delegations/tasker_edit.php'; } }); // NEW
     typeSelect.addEventListener('change', updateVisibleFields);
     updateVisibleFields();
 })();

@@ -12,6 +12,7 @@ $party = mysqli_fetch_assoc(mysqli_stmt_get_result($statement));
 if (!$party) { header('Location: index.php?success=Business party not found.'); exit; }
 
 $type = $party['type']; // type is fixed at creation, not editable
+if ($type === 'Tasker') { header('Location: ../delegations/tasker_edit.php?id=' . (int) $id); exit; } // NEW: RM Taskers have their own profile form
 $tin = $party['tin']; $businessName = $party['business_name']; $representativeName = $party['representative_name'];
 $name = $party['name']; $phone = $party['phone']; $email = $party['email'];
 $paymentAccountType = $party['payment_account_type']; $paymentAccountDetails = $party['payment_account_details'];

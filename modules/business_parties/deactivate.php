@@ -5,12 +5,13 @@ require_role(['Admin', 'Manager']);
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
 if (!$id) { header('Location: index.php?success=Invalid business party.'); exit; }
 
-$statement = mysqli_prepare($conn, 'SELECT is_active FROM business_parties WHERE id = ?');
+$statement = mysqli_prepare($conn, 'SELECT is_active, type FROM business_parties WHERE id = ?');
 mysqli_stmt_bind_param($statement, 'i', $id);
 mysqli_stmt_execute($statement);
 $party = mysqli_fetch_assoc(mysqli_stmt_get_result($statement));
 if (!$party) { header('Location: index.php?success=Business party not found.'); exit; }
 
+if ($party['type'] === 'Tasker') { header('Location: ../delegations/tasker_edit.php?id=' . (int) $id); exit; } // NEW: an RM Tasker's status needs a reason (profile)
 $newStatus = $party['is_active'] ? 0 : 1;
 $update = mysqli_prepare($conn, 'UPDATE business_parties SET is_active = ? WHERE id = ?');
 mysqli_stmt_bind_param($update, 'ii', $newStatus, $id);

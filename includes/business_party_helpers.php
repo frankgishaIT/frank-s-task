@@ -8,11 +8,15 @@ function business_party_display_name($party) {
     if ($party['type'] === 'Supplier') {
         return $party['business_name'] ?: ('Supplier #' . $party['id']);
     }
+    if ($party['type'] === 'Tasker') { // NEW: RM Tasker — business name, else the individual's name
+        return $party['business_name'] ?: ($party['name'] ?: ('RM Tasker #' . $party['id']));
+    }
     return $party['name'] ?: ($party['type'] . ' #' . $party['id']);
 }
 
 function business_party_type_badge($type) {
-    $label = htmlspecialchars($type, ENT_QUOTES, 'UTF-8');
+    $label = htmlspecialchars($type === 'Tasker' ? 'RM Tasker' : $type, ENT_QUOTES, 'UTF-8'); // NEW: RM Tasker
+    if ($type === 'Tasker') { return '<span class="badge text-white" style="background-color:#7C5CE0;">' . $label . '</span>'; }
 
     // CHANGED: Partner now has white text. Bootstrap's light cyan is hard to read with white
     // text, so Partner uses a darker cyan background (change #0891B2 to adjust the colour).

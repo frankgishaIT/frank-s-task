@@ -95,10 +95,12 @@ function offering_type_label(string $type): string { return $type === 'Service' 
 </tr>
 <?php if (mysqli_num_rows($result) === 0) { ?><tr><td colspan="10" class="text-center text-muted py-4">No products or services yet.</td></tr><?php } ?>
 <?php $rowNumber = $offset + 1; ?>
+<?php // NEW (Delegations): how each offering is fulfilled (Internal / Delegatable / External Only / Not Available)
+$dlFulfil = []; try { $dlR = mysqli_query($conn, 'SELECT product_id, fulfilment FROM dl_offering_settings'); if ($dlR) { foreach (mysqli_fetch_all($dlR, MYSQLI_NUM) as [$dlP, $dlF]) { $dlFulfil[(int) $dlP] = $dlF; } } } catch (Throwable $e) { $dlFulfil = []; } ?>
 <?php while ($row = mysqli_fetch_assoc($result)) { $isService = $row['item_type'] === 'Service'; ?>
 <tr>
     <td><?= $rowNumber++; ?></td>
-    <td><span class="badge <?= $isService ? 'bg-success text-white' : 'bg-primary'; ?>"><?= offering_type_label($row['item_type']); ?></span></td>
+    <td><span class="badge <?= $isService ? 'bg-success text-white' : 'bg-primary'; ?>"><?= offering_type_label($row['item_type']); ?></span><?php if (($dlFulfil[(int) $row['id']] ?? 'Internal') !== 'Internal') { ?> <a href="../delegations/offering.php?id=<?= (int) $row['id']; ?>" class="badge text-decoration-none" style="background:#FFF4D6;color:#8A5A00;font-weight:600"><?= htmlspecialchars($dlFulfil[(int) $row['id']], ENT_QUOTES, 'UTF-8'); ?></a><?php } ?></td>
     <td><?= htmlspecialchars($row['product_name'], ENT_QUOTES, 'UTF-8'); ?></td>
     <td><?= htmlspecialchars($row['product_code'], ENT_QUOTES, 'UTF-8'); ?></td>
     <td>

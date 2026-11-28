@@ -9,7 +9,7 @@ include '../../includes/header.php'; include '../../includes/sidebar.php';
 const BP_PER_PAGE = 10;
 
 $typeFilter = $_GET['type'] ?? '';
-$whereClause = in_array($typeFilter, ['Supplier', 'Payee', 'Partner'], true) ? " WHERE type = '" . mysqli_real_escape_string($conn, $typeFilter) . "'" : '';
+$whereClause = in_array($typeFilter, ['Supplier', 'Payee', 'Partner', 'Tasker'], true) ? " WHERE type = '" . mysqli_real_escape_string($conn, $typeFilter) . "'" : '';
 
 $currentPage = get_current_page();
 $totalRows = mysqli_fetch_assoc(mysqli_query($conn, 'SELECT COUNT(*) AS c FROM business_parties' . $whereClause))['c'];
@@ -42,6 +42,7 @@ $parties = mysqli_query($conn, $sql);
     <a href="index.php?type=Supplier" class="rm-btn rm-btn-sm <?= $typeFilter === 'Supplier' ? 'rm-btn-primary' : 'rm-btn-light'; ?>">RM Suppliers</a>
     <a href="index.php?type=Payee" class="rm-btn rm-btn-sm <?= $typeFilter === 'Payee' ? 'rm-btn-primary' : 'rm-btn-light'; ?>">RM Payees</a>
     <a href="index.php?type=Partner" class="rm-btn rm-btn-sm <?= $typeFilter === 'Partner' ? 'rm-btn-primary' : 'rm-btn-light'; ?>">RM Partners</a>
+    <a href="index.php?type=Tasker" class="rm-btn rm-btn-sm <?= $typeFilter === 'Tasker' ? 'rm-btn-primary' : 'rm-btn-light'; ?>">RM Taskers</a><!-- NEW -->
 </div>
 
 <div class="card border-0 shadow-sm">
@@ -62,10 +63,14 @@ $parties = mysqli_query($conn, $sql);
     <td><?= htmlspecialchars(implode(', ', array_filter([$party['sector'], $party['district'], $party['province']])), ENT_QUOTES, 'UTF-8'); ?></td>
     <td><?php if ($party['is_active']) { ?><span class="badge bg-success">Active</span><?php } else { ?><span class="badge bg-danger">Inactive</span><?php } ?></td>
     <td class="text-nowrap">
+        <?php if ($party['type'] === 'Tasker') { /* NEW: an RM Tasker is managed in its profile (services, rates, status) */ ?>
+        <a href="../delegations/tasker.php?id=<?= (int) $party['id']; ?>" class="rm-btn rm-btn-warning rm-btn-sm">RM Tasker profile</a>
+        <?php } else { ?>
         <a href="edit.php?id=<?= (int) $party['id']; ?>" class="rm-btn rm-btn-warning rm-btn-sm">Edit</a>
         <!-- NEW: this party's payables and receivables, this year -->
         <a href="reports.php?report=<?= $party['type'] === 'Partner' ? 'receivables' : 'payables'; ?>&period=this_year&party_id=<?= (int) $party['id']; ?>" class="rm-btn rm-btn-light rm-btn-sm">Statement</a>
         <a href="deactivate.php?id=<?= (int) $party['id']; ?>" class="rm-btn <?= $party['is_active'] ? 'rm-btn-danger' : 'rm-btn-success'; ?> rm-btn-sm" onclick="return confirm('<?= $party['is_active'] ? 'Deactivate this?' : 'Reactivate this?'; ?>')"><?= $party['is_active'] ? 'Deactivate' : 'Activate'; ?></a>
+        <?php } ?>
     </td>
 </tr>
 <?php } ?>

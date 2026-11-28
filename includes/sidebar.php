@@ -245,6 +245,12 @@ if ($rmCompactUi) { ?>
         <i class="bi bi-collection-play"></i> Staff Dashboard Cards
     </a>
     <?php } ?>
+    <!-- NEW: Delegations & RM Taskers -->
+    <?php if (access_can('delegations.view', $conn)) { ?>
+    <a href="../delegations/index.php" class="<?= navActive('/delegations/', $currentPath) ?>">
+        <i class="bi bi-people"></i> Delegations
+    </a>
+    <?php } ?>
     <!-- NEW: one Audit Trail across the four tasks -->
     <?php if (access_can('audit_trail.view', $conn)) { ?>
     <a href="../audit_trail/index.php" class="<?= navActive('/audit_trail/', $currentPath) ?>">

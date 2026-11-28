@@ -268,7 +268,15 @@ dl_tabs($conn, 'list.php', $d['ref'] . ' · ' . $d['product_name'], dl_status_ba
     <?php if ($d['verified_at']) { ?>
     <div class="card mb-3"><div class="card-body py-2 small"><div class="fw-semibold mb-1">Verification</div>
         Quality <?= dl_e((float) $d['quality_rating']); ?>/5 · customer satisfaction <?= dl_e((float) $d['satisfaction_rating']); ?>/5 · instructions <?= dl_e((float) $d['instructions_rating']); ?>/5 · communication <?= dl_e((float) $d['communication_rating']); ?>/5 · <?= (int) $d['ontime'] ? 'on time' : 'late'; ?>
-        → <b><?= dl_e((float) $d['perf_score']); ?>/100</b><?= (int) $d['customer_confirmed'] ? ' · customer confirmed' : ''; ?>. Rating final on <?= dl_e(date('d M Y', strtotime($d['rating_final_at']))); ?> if no complaint.<?= $d['verification_note'] ? '<div>' . nl2br(dl_e($d['verification_note'])) . '</div>' : ''; ?>
+        → <b><?= dl_e((float) $d['perf_score']); ?>/100</b><?= (int) $d['customer_confirmed'] ? ' · customer confirmed' : ''; ?>. <?= strtotime($d['rating_final_at']) > time() ? 'Provisional: counts in the Tasker\'s rating from ' . dl_e(date('d M Y', strtotime($d['rating_final_at']))) . ' if no issue is open.' : 'Final.'; ?><?= $d['verification_note'] ? '<div>' . nl2br(dl_e($d['verification_note'])) . '</div>' : ''; ?>
+    </div></div>
+    <?php } ?>
+    <?php /* NEW (batch 4): service quality & issues of this delegation */ $iss = dlq_for_delegation($conn, $id); if ($iss || (dlc($conn, 'create') && $d['status'] !== 'Draft')) { ?>
+    <div class="card mb-3"><div class="card-body py-2 small"><div class="d-flex align-items-center mb-1"><span class="fw-semibold">Quality &amp; issues</span>
+        <?php if (dlc($conn, 'create') && $d['party_id'] && !in_array($d['status'], ['Draft', 'Reassigned'], true)) { ?><a href="issues.php?new=<?= $id; ?>" class="btn btn-outline-danger btn-sm py-0 ms-auto">Report an issue</a><?php } ?></div>
+        <?php foreach ($iss as $x) { ?><div class="border-top py-1 d-flex flex-wrap gap-2 align-items-center"><a href="issue.php?id=<?= (int) $x['id']; ?>"><?= dlq_ref((int) $x['id']); ?></a><span><?= dl_e($x['type']); ?></span><?= dlq_badge($x['status']); ?><?= dlq_resp_badge($x['responsibility']); ?>
+            <?= (float) $x['impact_amount'] > 0 ? '<span>cost ' . dl_money($x['impact_amount']) . '</span>' : ''; ?><?= $x['recovery_status'] !== 'None' ? '<span>recovery ' . dl_e($x['recovery_status']) . ' ' . dl_money($x['recovery_amount']) . '</span>' : ''; ?></div><?php } ?>
+        <?php if (!$iss) { ?><div class="text-muted">No issue reported.</div><?php } ?>
     </div></div>
     <?php } ?>
     <h6 class="mb-1">History</h6>

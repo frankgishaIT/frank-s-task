@@ -131,6 +131,10 @@ if ($error) { echo '<div class="alert alert-danger py-2 small">' . dl_e($error) 
 ?>
 <div class="dl-kpi mb-3 small d-flex flex-wrap gap-3"><span>Sale <b>#<?= (int) $line['sale_id']; ?></b> (<?= dl_e($line['sale_status']); ?>)</span><span>Customer: <b><?= dl_e($customer['name'] ?? 'Walk-in'); ?></b></span>
     <span><?= dl_e($line['product_name']); ?> × <?= dl_e(rtrim(rtrim(number_format($qty, 2), '0'), '.')); ?></span><span>Customer price: <b><?= dl_money($line['revenue']); ?></b></span><span><?= dl_fulfilment_badge($o['fulfilment']); ?></span></div>
+<?php if (!$live && dl_needs_tasker($o)) { /* NEW (batch 4): staff guidance — serve the customer, but only delegate when it is the smart option */
+    if ($o['fulfilment'] === 'External Only' || $o['internal_capability'] !== 'Yes') { ?><div class="small mb-2 p-2 rounded" style="background:#FFF8E6;color:#7A4E00"><i class="bi bi-lightbulb me-1"></i>RISE MOTIVE cannot currently provide this service internally, but you may serve the customer through an available RM Tasker. Check the recommended providers before turning the customer away.</div>
+    <?php } else { ?><div class="small mb-2 p-2 rounded" style="background:#EEF1FD;color:#1E2FE0"><i class="bi bi-info-circle me-1"></i>RISE MOTIVE can provide this service internally. Delegate it only when internal delivery is not possible at an acceptable quality, time and cost, and say why below.</div><?php }
+} ?>
 <?php if ($live) { ?><div class="alert alert-info py-2 small">Already delegated: <a href="view.php?id=<?= (int) $live['id']; ?>"><?= dl_ref((int) $live['id']); ?></a>.</div>
 <?php } elseif (!dl_needs_tasker($o)) { ?><div class="alert alert-info py-2 small">This offering is provided internally (Scenario A): process the sale normally. No external Tasker payment is created.</div>
 <?php } elseif (!$c['eligible']) { ?><div class="alert alert-warning py-2 small">No RM Tasker can take it now<?= $c['other'] ? ': ' . dl_e(implode('; ', array_map(function ($r) { return $r['display'] . ' (' . $r['why'] . ')'; }, $c['other']))) : ''; ?>.

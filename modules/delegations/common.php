@@ -4,16 +4,18 @@
  * Permissions (Roles & Permissions, module delegations):
  *   view (Tasker directory, comparison) · create (delegate a sale, record completion) · approve (approve delegations,
  *   costs, completion) · taskers (Tasker profiles, services, rates, offering settings) · finance (record and verify
- *   payments, reconcile) · settings (weights, profit-sharing basis, follow-up periods).
+ *   payments, reconcile) · quality (investigate service issues, findings, recoveries, Tasker incentives) ·
+ *   reports (Delegation Reports, management KPIs, staff delegation performance, internalization analysis) ·
+ *   settings (weights, profit-sharing basis, follow-up periods). Every employee with "create" can REPORT an issue.
  */
 if (session_status() === PHP_SESSION_NONE) { require_once __DIR__ . '/../../includes/session_boot.php'; rm_session_start(); }
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../includes/access_control.php';
 require_once __DIR__ . '/../../includes/dl_helpers.php';
 require_once __DIR__ . '/../../includes/dl_workflow.php';
-require_once __DIR__ . '/../../includes/dl_payments.php';
+require_once __DIR__ . '/../../includes/dl_quality.php';
 require_role(['Admin', 'Manager', 'Employee']);
-dlp_ensure($conn);
+dlq_ensure($conn);
 try { dl_monitor($conn); } catch (Throwable $e) { error_log('dl_monitor: ' . $e->getMessage()); } // follow-ups, reminders, missed deadlines (every 10 min at most)
 
 function dlc(mysqli $conn, string $a): bool { return access_can('delegations.' . $a, $conn); }
@@ -29,7 +31,8 @@ function dl_users(mysqli $conn): array { return array_column(mysqli_fetch_all(my
 function dl_tabs(mysqli $conn, string $active, string $title, string $right = ''): void
 {
     $tabs = [['index.php', 'Overview', 'view'], ['list.php', 'Delegations', 'view'], ['taskers.php', 'RM Taskers', 'view'], ['offerings.php', 'Services & Taskers', 'view'], ['compare.php', 'Compare', 'view'],
-        ['payments.php', 'Payments', 'finance'], ['disputes.php', 'Payment disputes', 'finance'], ['lost.php', 'Unavailable requests', 'view'], ['settings.php', 'Settings', 'settings']];
+        ['payments.php', 'Payments', 'finance'], ['disputes.php', 'Payment disputes', 'finance'], ['issues.php', 'Quality & issues', 'view'], ['performance.php', 'Performance', 'view'],
+        ['staff.php', 'Staff delegation', 'reports'], ['reports.php', 'Reports', 'reports'], ['internal.php', 'Internalization', 'reports'], ['lost.php', 'Unavailable requests', 'view'], ['settings.php', 'Settings', 'settings']];
     echo '<style>.dl-tabs{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:2px;border-bottom:1px solid #E4E7EF;margin-bottom:14px;scrollbar-width:none}.dl-tabs::-webkit-scrollbar{display:none}
         .dl-tabs a{padding:7px 12px;font-size:13.5px;color:#5B6275;text-decoration:none;border-bottom:2px solid transparent;white-space:nowrap}.dl-tabs a.on{color:#1E2FE0;border-bottom-color:#1E2FE0;font-weight:600}
         .dl-tbl td,.dl-tbl th{font-size:13px;vertical-align:middle}.dl-st{font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;white-space:nowrap;background:#F1F2F6;color:#4B5263}

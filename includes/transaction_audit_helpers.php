@@ -93,7 +93,7 @@ function tx_source(mysqli $conn, array $tx): ?array
         return ['label' => 'Sale RM' . str_pad((string) $sale['id'], 6, '0', STR_PAD_LEFT), 'url' => '../sales/invoice.php?id=' . (int) $sale['id'],
                 'how' => 'Cancel the sale in Sales (Request Cancel, then approve the cancellation). Its income, profit shares and stock are reversed together.'];
     }
-    $m = $one("SELECT ref_type, ref_id FROM fund_movements WHERE transaction_id = ? AND ref_type IN ('PO', 'PAYROLL', 'ASSET_PAY', 'REWARD') ORDER BY id LIMIT 1");
+    $m = $one("SELECT ref_type, ref_id FROM fund_movements WHERE transaction_id = ? AND ref_type IN ('PO', 'PAYROLL', 'ASSET_PAY', 'REWARD', 'DL_PAYMENT', 'DL_BONUS') ORDER BY id LIMIT 1");
     if ($m) {
         $rid = (int) $m['ref_id'];
         switch ($m['ref_type']) {
@@ -106,6 +106,13 @@ function tx_source(mysqli $conn, array $tx): ?array
             case 'ASSET_PAY':
                 return ['label' => 'Asset purchase', 'url' => '../asset_management/view.php?id=' . $rid,
                         'how' => 'Return the asset to the seller (Assets > Remove Asset > Returned to Seller). The refund goes back into the RM Capital Fund.'];
+            case 'DL_PAYMENT': // NEW (Delegations): an RM Tasker payment is reversed from its delegation, never deleted here
+                $dl = $one('SELECT p.delegation_id FROM dl_payments p JOIN fund_movements m ON m.ref_id = p.id AND m.ref_type = \'DL_PAYMENT\' WHERE m.transaction_id = ? LIMIT 1');
+                return ['label' => 'RM Tasker payment TP' . str_pad((string) $rid, 6, '0', STR_PAD_LEFT), 'url' => '../delegations/pay.php?id=' . (int) ($dl['delegation_id'] ?? 0),
+                        'how' => 'Reverse it in Delegations > the delegation > Payments (Finance with approval rights, with the reason). The money goes back to its fund and the delegation\'s balance is corrected with it.'];
+            case 'DL_BONUS':
+                return ['label' => 'RM Tasker performance bonus', 'url' => '../delegations/performance.php',
+                        'how' => 'Approved Tasker bonuses are kept with their approval in Delegations > Performance. Correct it with an approved adjustment instead of deleting it.'];
             case 'REWARD':
                 return ['label' => 'Customer reward', 'url' => '../customers/rewards.php',
                         'how' => 'Cancel or reverse the reward in Customers > Rewards. The points and the money are returned together.'];

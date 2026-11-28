@@ -130,6 +130,12 @@ dl_tabs($conn, 'taskers.php', $t['code'] . ' · ' . $t['display'], $canEdit ? '<
 </div></div></div>
 <div class="col-lg-5"><div class="card h-100"><div class="card-body py-2 small">
     <div class="fw-semibold mb-1">Performance</div>
+    <?php $rt = dlq_tasker_rating($conn, $pid); /* NEW (batch 4): rating from verified, final outcomes */ if ($rt['score'] !== null || $rt['provisional']) { ?>
+        <div class="mb-1">Rating: <b class="fs-6"><?= $rt['score'] !== null ? number_format($rt['score'], 1) . '/100' : '—'; ?></b> · <?= dl_e($rt['band']); ?><?= $rt['penalty'] ? ' <span class="text-danger">(−' . number_format($rt['penalty']) . ' for ' . (int) $rt['upheld'] . ' upheld issue' . ($rt['upheld'] == 1 ? '' : 's') . ')</span>' : ''; ?></div>
+        <div class="text-muted mb-1"><?= (int) $rt['final']; ?> final assignment<?= $rt['final'] == 1 ? '' : 's'; ?><?= $rt['provisional'] ? ' · ' . (int) $rt['provisional'] . ' provisional (review period or open issue: not counted yet)' : ''; ?> · <a href="performance.php">all Taskers</a></div>
+        <div>Quality <?= $rt['quality'] !== null ? number_format($rt['quality'], 1) : '—'; ?> · satisfaction <?= $rt['satisfaction'] !== null ? number_format($rt['satisfaction'], 1) : '—'; ?> · instructions <?= $rt['instructions'] !== null ? number_format($rt['instructions'], 1) : '—'; ?> · communication <?= $rt['communication'] !== null ? number_format($rt['communication'], 1) : '—'; ?> (of 5)</div>
+        <div>Issues: <?= (int) $rt['upheld']; ?> upheld · <?= (int) $rt['open_issues']; ?> under investigation (not counted) · <?= (int) $rt['not_upheld']; ?> not the Tasker's<?= $rt['error_cost'] ? ' · cost of upheld errors ' . dl_money($rt['error_cost']) : ''; ?></div>
+    <?php } ?>
     <?php if ($h && $h['done']) { ?>
         <div>Completed and verified: <b><?= (int) $h['done']; ?></b> of <?= (int) $h['assigned']; ?> assigned</div>
         <div>On time: <b><?= round(($h['ontime'] ?? 0) * 100); ?>%</b> · accepted: <?= $h['accepted'] !== null ? round($h['accepted'] * 100) . '%' : '—'; ?></div>
@@ -205,6 +211,14 @@ function dlReset() { var f = document.getElementById('rateForm'); f.reset(); f.o
 <?php foreach ($mine as $r) { ?><tr><td><a href="view.php?id=<?= (int) $r['id']; ?>"><?= dl_ref((int) $r['id']); ?></a></td><td class="small"><?= dl_e($r['product_name']); ?></td><td class="small"><?= dl_e(dl_response_text($r['response'])); ?></td><td><?= dl_status_badge($r['status']); ?></td><td class="small"><?= dl_e(dl_deadline_text($r['deadline'])); ?></td><td class="text-end small"><?= dl_money($r['pay_due'] ?? $r['pay_exp']); ?></td><td class="text-end small"><?= $r['perf_score'] !== null ? dl_e((float) $r['perf_score']) . '/100' : '—'; ?></td></tr><?php } ?>
 </tbody></table></div></div>
 <?php } ?>
+<?php $tiss = mysqli_fetch_all(mysqli_query($conn, 'SELECT * FROM dl_issues WHERE party_id = ' . $pid . ' ORDER BY id DESC'), MYSQLI_ASSOC); $tinc = mysqli_fetch_all(mysqli_query($conn, 'SELECT * FROM dl_incentives WHERE party_id = ' . $pid . ' ORDER BY id DESC'), MYSQLI_ASSOC); ?>
+<h6 class="mt-3 mb-1">Errors, complaints &amp; corrective actions</h6>
+<div class="card mb-3"><div class="table-responsive"><table class="table table-sm dl-tbl mb-0"><thead><tr><th>Issue</th><th>Delegation</th><th>Type</th><th>Date</th><th class="text-end">Cost</th><th>Responsibility</th><th>Corrective action</th><th>Status</th></tr></thead><tbody>
+<?php foreach ($tiss as $x) { ?><tr><td><a href="issue.php?id=<?= (int) $x['id']; ?>"><?= dlq_ref((int) $x['id']); ?></a></td><td><a href="view.php?id=<?= (int) $x['delegation_id']; ?>"><?= dl_ref((int) $x['delegation_id']); ?></a></td><td class="small"><?= dl_e($x['type']); ?></td><td class="small"><?= dl_e(date('d M Y', strtotime($x['reported_at']))); ?></td>
+    <td class="text-end small"><?= (float) $x['impact_amount'] > 0 ? dl_money($x['impact_amount']) : '—'; ?></td><td><?= dlq_resp_badge($x['responsibility']); ?></td><td class="small"><?= dl_e($x['corrective_action'] ?: '—'); ?></td><td><?= dlq_badge($x['status']); ?></td></tr><?php } ?>
+<?php if (!$tiss) { ?><tr><td colspan="8" class="text-center text-muted py-2 small">No issue recorded.</td></tr><?php } ?>
+</tbody></table></div></div>
+<?php if ($tinc) { ?><div class="small mb-3"><b>Incentives:</b> <?= implode(' · ', array_map(function ($x) { return dl_e($x['kind'] . ($x['amount'] ? ' ' . dl_money($x['amount']) : '') . ' (' . $x['period'] . ', ' . strtolower($x['status']) . ')'); }, $tinc)); ?></div><?php } ?>
 <?php if (dlc($conn, 'finance') || dlc($conn, 'approve')) { $money = dl_tasker_money($conn, $pid); /* NEW (batch 3): PAYMENT HISTORY */ ?>
 <h6 class="mb-1" id="payments">PAYMENT HISTORY</h6>
 <div class="card mb-2"><div class="card-body py-2 small">

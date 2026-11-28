@@ -49,7 +49,7 @@ function access_catalog(): array
         'market'            => ['RM Market Insights', ['view', 'request', 'research', 'finance', 'approve', 'reports', 'settings']],
         'customer_first'    => ['RM Customer First', ['record', 'manage']],
         'staff_cards'       => ['Staff Dashboard Cards (carousel)', ['manage', 'approve', 'settings']], // NEW (Task 4)
-        'delegations'       => ['Delegations & RM Taskers', ['view', 'create', 'approve', 'taskers', 'finance', 'settings']], // NEW
+        'delegations'       => ['Delegations & RM Taskers', ['view', 'create', 'approve', 'taskers', 'finance', 'quality', 'reports', 'settings']], // NEW
         'audit_trail'       => ['Audit Trail (Market Insights, Financial Accounts, Customer First, carousel)', ['view']], // NEW (cross-task)
         'fin_accounts'      => ['Financial Accounts', ['view', 'manage', 'transfer', 'adjust', 'reconcile', 'approve', 'identifiers']],
         'portal'            => ['RM Customer Portal (staff side)', ['view', 'edit', 'manage']],
@@ -110,6 +110,7 @@ const ACCESS_NEW_DEFAULTS = [
     // NEW: Delegations — staff delegate and compare; managers approve; admins manage Taskers, rates and settings; finance records payments.
     'delegations.view' => ['admin', 'manager', 'employee'], 'delegations.create' => ['admin', 'manager', 'employee'], 'delegations.approve' => ['admin', 'manager'],
     'delegations.taskers' => ['admin'], 'delegations.finance' => ['admin'], 'delegations.settings' => ['admin'],
+    'delegations.quality' => ['admin', 'manager'], 'delegations.reports' => ['admin', 'manager'], // investigate service issues · reports, staff performance, internalization
     'staff_cards.manage' => ['admin', 'manager'], 'staff_cards.approve' => ['admin', 'manager'], 'staff_cards.settings' => ['admin'],
     // NEW: Financial Accounts (where the money is held). Finance users get transfer / reconcile in Roles & Permissions.
     'fin_accounts.view' => ['admin', 'manager'], 'fin_accounts.manage' => ['admin'], 'fin_accounts.transfer' => ['admin'], 'fin_accounts.adjust' => ['admin'],

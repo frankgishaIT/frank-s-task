@@ -1,10 +1,12 @@
 <?php
-// NEW FILE: portal/tasker_task.php — RM Tasker: one of MY tasks (accept, decline, concern, start, delay, deliver, feedback, raise an issue).
+// NEW FILE: portal/tasker_task.php — RM Tasker: one of MY tasks (accept, decline, concern, start, delay, deliver, feedback, raise an issue, my side on a reported issue).
 require_once __DIR__ . '/../includes/portal_helpers.php';
 require_once __DIR__ . '/../includes/portal_layout.php';
 $conn = portal_boot();
 require_once __DIR__ . '/../includes/dl_portal.php';
+require_once __DIR__ . '/../includes/dl_quality.php'; // NEW (batch 4): issues on my task — I can give my side before any finding
 $t = dlp_require($conn);
+dlq_ensure($conn);
 $pid = (int) $t['id'];
 $ref = (string) ($_GET['ref'] ?? $_POST['ref'] ?? '');
 $d = dlp_own($conn, $t, $ref);
@@ -64,6 +66,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             dl_event($conn, $id, 'completed', 'Delivered by the RM Tasker' . ($nf ? ' with ' . $nf . ' file(s)' : '') . ': ' . $msg, 'tasker', 0, null, 1, $pid);
             dl_notify_staff($conn, $staff, $d['ref'] . ' delivered by ' . $who, 'Check the work and verify it (or return it for correction).');
             $go('success', 'Thank you. RISE MOTIVE will check the work' . (strtotime($now) <= strtotime($d['deadline']) ? ' (delivered on time).' : '.'));
+        case 'issue_reply':
+            $iid = (int) ($_POST['issue'] ?? 0);
+            $iss = mysqli_fetch_assoc(mysqli_query($conn, 'SELECT * FROM dl_issues WHERE id = ' . $iid . ' AND delegation_id = ' . $id . ' AND party_id = ' . $pid));
+            if (!$iss) { $go('error', 'Issue not found.'); }
+            if ($msg === '') { $go('error', 'Write your explanation.'); }
+            dlq_note($conn, $iid, 'tasker_side', $msg, 1, 'tasker', $pid);
+            dl_audit($conn, 'issue', $iid, 'tasker_reply', dlq_ref($iid) . ' · the RM Tasker gave their side', null, 'tasker', $pid);
+            dl_notify_staff($conn, array_merge(dl_users_with($conn, 'delegations.quality'), $iss['assigned_to'] ? [(int) $iss['assigned_to']] : []), $who . ' replied on ' . dlq_ref($iid), mb_substr($msg, 0, 300));
+            $go('success', 'Thank you. Your explanation is part of the review.');
         case 'issue':
             if ($msg === '') { $go('error', 'Describe the problem.'); }
             dl_event($conn, $id, 'tasker_issue', 'Issue / dispute raised by the RM Tasker: ' . $msg, 'tasker', 0, null, 1, $pid);
@@ -104,6 +115,16 @@ portal_alerts();
     <div class="card mb-3"><div class="card-body"><h2>Feedback from RISE MOTIVE</h2>
         <div>Quality <?= $e((float) $d['quality_rating']); ?>/5 · customer satisfaction <?= $e((float) $d['satisfaction_rating']); ?>/5 · instructions <?= $e((float) $d['instructions_rating']); ?>/5 · communication <?= $e((float) $d['communication_rating']); ?>/5 · <?= (int) $d['ontime'] ? 'on time' : 'late'; ?></div>
         <div class="fw-bold">Performance: <?= $e((float) $d['perf_score']); ?>/100</div><?= $d['verification_note'] ? '<div class="mt-1">' . nl2br($e($d['verification_note'])) . '</div>' : ''; ?>
+    </div></div>
+    <?php } ?>
+    <?php $myIss = mysqli_fetch_all(mysqli_query($conn, 'SELECT * FROM dl_issues WHERE delegation_id = ' . $id . ' AND party_id = ' . $pid . ' ORDER BY id DESC'), MYSQLI_ASSOC); foreach ($myIss as $x) {
+        $xn = mysqli_fetch_all(mysqli_query($conn, 'SELECT * FROM dl_issue_notes WHERE issue_id = ' . (int) $x['id'] . ' AND visible_to_tasker = 1 ORDER BY id'), MYSQLI_ASSOC);
+        $done = in_array($x['status'], ['Resolved', 'Closed'], true); $mine = in_array($x['responsibility'], ['RM Tasker', 'Shared'], true); ?>
+    <div class="card mb-3 border-warning"><div class="card-body"><h2>Issue reported: <?= $e($x['type']); ?></h2>
+        <div class="small mb-1"><?= $done ? 'Reviewed · finding: <b>' . ($mine ? ($x['responsibility'] === 'Shared' ? 'shared responsibility' : 'your responsibility') : 'not your responsibility') . '</b>' . ($x['resolution'] ? ' · ' . $e($x['resolution']) : '') : 'Under review. It does not affect your rating unless the review finds it was your responsibility.'; ?></div>
+        <?php foreach ($xn as $n) { ?><div class="small border-top pt-1 mt-1"><span class="text-muted"><?= $e(date('d M Y H:i', strtotime($n['created_at']))); ?> · <?= $n['actor'] === 'tasker' ? 'You' : 'RISE MOTIVE'; ?>:</span> <?= nl2br($e($n['note'])); ?></div><?php } ?>
+        <?php if (!$done) { ?><form method="post" class="mt-2"><?= $csrf; ?><input type="hidden" name="ref" value="<?= $e($d['ref']); ?>"><input type="hidden" name="act" value="issue_reply"><input type="hidden" name="issue" value="<?= (int) $x['id']; ?>">
+            <textarea name="message" rows="2" class="form-control mb-2" placeholder="Your side: what happened, what you delivered…" required></textarea><button class="btn btn-outline-primary btn-sm">Send my explanation</button></form><?php } ?>
     </div></div>
     <?php } ?>
     <h2>History</h2>

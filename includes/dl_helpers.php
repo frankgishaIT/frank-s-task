@@ -39,6 +39,10 @@ const DL_SETTING_DEFAULTS = [
     'verify_days' => '3', 'confirm_days' => '3', 'pay_terms_days' => '7',
     'whatsapp_link' => '',
     'receipt_tasker_name' => '1',    // show the Tasker's (business) name on the customer receipt
+    // performance, Preferred RM Tasker and internalization (batch 4)
+    'issue_penalty' => '5',          // points off a Tasker's rating per issue UPHELD against them (never for uninvestigated complaints)
+    'pref_min_score' => '85', 'pref_min_jobs' => '5', // suggestion threshold for Preferred RM Tasker status (management decides)
+    'int_months' => '6', 'int_min_volume' => '4', 'int_max_payback' => '24', // internalization analysis
 ];
 
 function dl_e($v): string { return htmlspecialchars((string) ($v ?? ''), ENT_QUOTES, 'UTF-8'); }
@@ -167,7 +171,8 @@ function dl_fulfilment_badge(string $f): string
 
 /**
  * History of a Tasker from completed delegations (filled by the delegation workflow). Returns per party_id:
- * done, ontime (0–1), accepted (0–1), quality (1–5 average of verified ratings), complaints (upheld), assigned.
+ * done, ontime (0–1), accepted (0–1), quality (1–5 average of verified ratings), complaints (issues UPHELD against the Tasker after
+ * investigation; a complaint still under investigation never counts), assigned.
  */
 function dl_tasker_history(mysqli $conn): array
 {
@@ -192,7 +197,7 @@ function dl_tasker_history(mysqli $conn): array
                 'quality' => $r['quality'] !== null ? (float) $r['quality'] : null, 'perf' => $r['perf'] !== null ? (float) $r['perf'] : null, 'assigned' => (int) $r['assigned'], 'complaints' => 0];
         }
         $hasIssues = mysqli_query($conn, "SHOW TABLES LIKE 'dl_issues'");
-        if ($hasIssues && mysqli_num_rows($hasIssues)) foreach (mysqli_fetch_all(mysqli_query($conn, "SELECT party_id, COUNT(*) n FROM dl_issues WHERE responsibility = 'Tasker' GROUP BY party_id"), MYSQLI_ASSOC) as $r) {
+        if ($hasIssues && mysqli_num_rows($hasIssues)) foreach (mysqli_fetch_all(mysqli_query($conn, "SELECT party_id, COUNT(*) n FROM dl_issues WHERE responsibility IN ('RM Tasker', 'Shared') AND status IN ('Resolved', 'Closed') GROUP BY party_id"), MYSQLI_ASSOC) as $r) {
             if (isset($cache[(int) $r['party_id']])) { $cache[(int) $r['party_id']]['complaints'] = (int) $r['n']; }
         }
     } catch (Throwable $e) { /* the delegation tables arrive with the workflow */ }
@@ -250,6 +255,8 @@ function dl_candidates(mysqli $conn, int $productId, ?float $price = null): arra
             $r['q_src'] = 'verified';
             $r['q'] = $r['hist']['quality'] ?? ($r['quality_rating'] !== null ? (float) $r['quality_rating'] : $neutralQ);
             $r['rel'] = ($r['hist']['ontime'] ?? $neutralR) * 0.7 + ($r['hist']['accepted'] ?? 1) * 0.3;
+            // Error frequency: issues upheld against the Tasker lower reliability (at most by half).
+            if ($r['hist']['done'] > 0 && $r['hist']['complaints'] > 0) { $r['rel'] *= 1 - min(0.5, $r['hist']['complaints'] / $r['hist']['done']); }
         }
         $r['rate'] = (float) $r['rate_pct'];
         $r['hours'] = (float) $r['est_hours'] > 0 ? (float) $r['est_hours'] : null;

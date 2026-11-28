@@ -45,6 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         case 'record':
             $need($fin, 'Only Finance can record Tasker payments.');
             $need($d['pay_approved'] !== null, 'The payment amount must be approved first.');
+            $need($d['status'] !== 'Issue Review', 'A service issue on this delegation is under review: the Tasker payment is held until it is resolved (Quality & issues).');
             $amt = round((float) str_replace(',', '', (string) ($_POST['amount'] ?? '')), 2);
             $date = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) ($_POST['paid_on'] ?? '')) ? $_POST['paid_on'] : '';
             $method = in_array($_POST['method'] ?? '', DL_PAY_METHODS, true) ? $_POST['method'] : '';
@@ -138,6 +139,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             mysqli_query($conn, "UPDATE dl_payments SET status = 'Void', void_reason = '" . mysqli_real_escape_string($conn, $note) . "' WHERE id = " . (int) $p['id']);
             dl_event($conn, $id, 'payment_void', dl_pay_ref((int) $p['id']) . ' withdrawn before payment', 'staff', 0, $note);
             dl_go($back, 'success', 'Withdrawn.');
+        case 'reverse':
+            // NEW (batch 4): a posted Tasker payment cannot be deleted in Transactions; it is reversed here, by Finance with
+            // approval rights (Admins by default), with the reason. The money goes back to its fund, the transaction is kept
+            // as 'deleted' in the transactions audit, and the payment becomes Void. Nothing is lost from the history.
+            $need($fin && ($appr || $isAdmin), 'Only Finance with approval rights can reverse a recorded payment.');
+            $need($d['status'] !== 'Closed – Financially Reconciled', 'This delegation is closed.');
+            $p = mysqli_fetch_assoc(mysqli_query($conn, 'SELECT * FROM dl_payments WHERE id = ' . (int) ($_POST['pay_id'] ?? 0) . " AND delegation_id = $id AND status = 'Recorded'"));
+            $need((bool) $p, 'Payment not found.');
+            $need(mb_strlen($note) >= 10, 'Explain why the payment is reversed (wrong amount, not actually sent, money returned by the Tasker…).');
+            require_once __DIR__ . '/../../includes/fund_helpers.php';
+            require_once __DIR__ . '/../../includes/transaction_audit_helpers.php';
+            tx_audit_ensure($conn);
+            mysqli_begin_transaction($conn);
+            try {
+                $txId = (int) $p['transaction_id'];
+                $tx = $txId ? mysqli_fetch_assoc(mysqli_query($conn, 'SELECT * FROM transactions WHERE id = ' . $txId)) : null;
+                if ($tx && $tx['status'] !== 'deleted') {
+                    if (!empty($tx['fund_id'])) { fund_lock($conn, (int) $tx['fund_id']); fund_reverse_movements($conn, 'm.transaction_id = ?', 'i', [$txId], $u ?: null, tx_reference($txId) . ' reversed (' . dl_pay_ref((int) $p['id']) . '): ' . $note); }
+                    $s = mysqli_prepare($conn, "UPDATE transactions SET status = 'deleted', deleted_by = ?, deleted_at = NOW() WHERE id = ?");
+                    mysqli_stmt_bind_param($s, 'ii', $u, $txId); mysqli_stmt_execute($s);
+                    tx_audit_log($conn, $tx, 'Deleted', $note, 'RM Tasker payment ' . dl_pay_ref((int) $p['id']) . ' on ' . $d['ref'] . ' reversed from Delegations; the money was returned to its fund.', $u ?: null);
+                }
+                $why = mb_substr('Reversed: ' . $note, 0, 255);
+                $s = mysqli_prepare($conn, "UPDATE dl_payments SET status = 'Void', void_reason = ? WHERE id = ?");
+                $pidv = (int) $p['id']; mysqli_stmt_bind_param($s, 'si', $why, $pidv); mysqli_stmt_execute($s);
+                mysqli_commit($conn);
+            } catch (Throwable $e) { mysqli_rollback($conn); dl_go($back, 'error', 'Not reversed: ' . $e->getMessage()); }
+            dl_event($conn, $id, 'payment_reversed', dl_pay_ref((int) $p['id']) . ' (' . dl_money($p['amount']) . ', ref ' . $p['reference'] . ') reversed' . ($p['transaction_id'] ? ' · transaction #' . (int) $p['transaction_id'] . ' reversed in its fund' : '') . ($p['confirm_status'] === 'Confirmed' ? ' · it had been confirmed by the Tasker' : ''), 'staff', 0, $note, 1);
+            dl_audit($conn, 'payment', (int) $p['id'], 'reversed', dl_pay_ref((int) $p['id']) . ' · ' . $d['ref'] . ' · ' . dl_money($p['amount']), $note, 'staff', (int) $p['party_id']);
+            dl_sync_after_payment($conn, $id);
+            dl_go($back, 'success', 'Payment reversed; the money is back in its fund.');
         case 'reconcile':
             $need($fin || $appr, 'Not allowed.');
             $need($d['status'] === 'Paid', 'Only a fully paid delegation can be reconciled.');
@@ -189,6 +221,12 @@ dl_tabs($conn, 'payments.php', 'Tasker payment · ' . $d['ref'], dl_pay_badge($p
         <?php if ($d['status'] === 'Closed – Financially Reconciled') { ?><div class="text-success fw-semibold">Closed – financially reconciled<?= $d['reconciled_by'] ? ' by ' . dl_e($names[(int) $d['reconciled_by']] ?? '') : ''; ?> on <?= dl_e(date('d M Y', strtotime($d['closed_at']))); ?>.</div>
         <?php } elseif ($d['status'] === 'Paid' && ($fin || $appr)) { ?><?= $form('reconcile', '<input name="note" class="form-control form-control-sm mb-1" placeholder="Note (optional)">', 'Close as financially reconciled', 'btn-success'); ?><?php } ?>
     </div></div>
+    <?php /* NEW (batch 4): issues and authorized recoveries — applied only by changing the approved amount, with the reference */
+    $rec = mysqli_fetch_all(mysqli_query($conn, "SELECT * FROM dl_issues WHERE delegation_id = $id AND (status IN ('Open', 'Under Investigation') OR recovery_status IN ('Approved', 'Recovered'))"), MYSQLI_ASSOC);
+    if ($rec) { ?><div class="card mb-3 border-warning"><div class="card-body py-2 small"><div class="fw-semibold mb-1">Service issues affecting this payment</div>
+        <?php foreach ($rec as $x) { ?><div><a href="issue.php?id=<?= (int) $x['id']; ?>"><?= dlq_ref((int) $x['id']); ?></a> · <?= dl_e($x['type']); ?> · <?= dl_e($x['status']); ?><?= in_array($x['status'], DLQ_OPEN, true) && (int) $x['held_payment'] ? ' · <b>payment held until resolved</b>' : ''; ?>
+            <?= $x['recovery_status'] === 'Approved' ? ' · <b>authorized recovery ' . dl_money($x['recovery_amount']) . '</b>: to deduct it, change the approved amount with reference ' . dlq_ref((int) $x['id']) : ($x['recovery_status'] === 'Recovered' ? ' · recovered ' . dl_money($x['recovery_amount']) : ''); ?></div><?php } ?>
+        <div class="text-muted">Nothing is deducted automatically.</div></div></div><?php } ?>
     <h6 class="mb-1">Payments</h6>
     <div class="card mb-3"><div class="table-responsive"><table class="table table-sm dl-tbl mb-0">
     <thead><tr><th>Payment</th><th>Date</th><th class="text-end">Amount</th><th>Method / reference</th><th>Status</th><th>Confirmed by Tasker</th><th></th></tr></thead><tbody>
@@ -204,6 +242,7 @@ dl_tabs($conn, 'payments.php', 'Tasker payment · ' . $d['ref'], dl_pay_badge($p
                 <?= $form('approve_payment', '<input type="hidden" name="pay_id" value="' . (int) $p['id'] . '">', 'Approve & pay', 'btn-success py-0'); ?>
                 <?= $form('refuse_payment', '<input type="hidden" name="pay_id" value="' . (int) $p['id'] . '"><input name="note" class="form-control form-control-sm mb-1" placeholder="reason">', 'Refuse', 'btn-outline-danger py-0'); ?>
             <?php } elseif ($p['status'] === 'Pending approval') { ?><span class="small text-muted">waiting for another approver</span><?php } ?>
+            <?php if ($p['status'] === 'Recorded' && $fin && ($appr || $isAdmin) && $d['status'] !== 'Closed – Financially Reconciled') { ?><?= $form('reverse', '<input type="hidden" name="pay_id" value="' . (int) $p['id'] . '"><input name="note" class="form-control form-control-sm mb-1" placeholder="Why reverse it" minlength="10">', 'Reverse', 'btn-outline-danger py-0'); ?><?php } ?>
             <?php if ($p['status'] === 'Recorded' && $p['confirm_status'] !== 'Confirmed' && ($fin || $appr)) { ?><?= $form('confirm_for', '<input type="hidden" name="pay_id" value="' . (int) $p['id'] . '"><input name="note" class="form-control form-control-sm mb-1" placeholder="How the Tasker confirmed">', 'Record confirmation', 'btn-outline-secondary py-0'); ?><?php } ?>
         </td></tr>
     <?php } ?>

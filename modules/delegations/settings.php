@@ -1,5 +1,5 @@
 <?php
-/** NEW FILE: modules/delegations/settings.php — recommendation and performance weights, the approved profit-sharing basis, follow-up and payment periods. */
+/** NEW FILE: modules/delegations/settings.php — recommendation and performance weights, the approved profit-sharing basis, follow-up and payment periods, rating / Preferred / internalization thresholds. */
 require __DIR__ . '/common.php';
 dl_require($conn, 'settings');
 
@@ -18,6 +18,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $new['follow_up_urgent_minutes'] = (string) (int) $n('follow_up_urgent_minutes', 5, 1440);
     $new['reminder_hours'] = $n('reminder_hours', 0, 168);
     foreach (['verify_days' => 30, 'confirm_days' => 30, 'pay_terms_days' => 90] as $k => $hi) { $new[$k] = (string) (int) $n($k, 0, $hi); }
+    // NEW (batch 4): ratings, Preferred RM Tasker suggestion, internalization thresholds
+    $new['issue_penalty'] = $n('issue_penalty', 0, 50);
+    $new['pref_min_score'] = $n('pref_min_score', 0, 100);
+    $new['pref_min_jobs'] = (string) (int) $n('pref_min_jobs', 1, 100);
+    $new['int_months'] = (string) (int) $n('int_months', 1, 24);
+    $new['int_min_volume'] = $n('int_min_volume', 0, 10000);
+    $new['int_max_payback'] = $n('int_max_payback', 1, 240);
     $wa = trim((string) ($_POST['whatsapp_link'] ?? ''));
     if ($wa !== '' && !preg_match('#^https://(wa\.me|api\.whatsapp\.com|chat\.whatsapp\.com)/#i', $wa)) { dl_go('settings.php', 'error', 'The WhatsApp link must be an official https://wa.me/… (or api.whatsapp.com) link.'); }
     $new['whatsapp_link'] = $wa;
@@ -52,6 +59,9 @@ $inp = function ($k, $l, $suffix = '%', $step = '1') use ($g) { return '<div cla
     <div class="row g-2 mb-3"><?= $inp('min_history', 'Completed delegations before own record counts', '', '1') . $inp('preferred_bonus', 'Preferred RM Tasker bonus', 'points', '0.5'); ?><div class="col-md-6 small text-muted align-self-end">Below the minimum, an RM Tasker is shown as "New / limited history" and gets neutral quality and reliability values, not poor ones.</div></div>
     <h6 class="mb-1">Performance rating weights <span class="small text-muted fw-normal">(must add up to 100%)</span></h6>
     <div class="row g-2 mb-3"><?= $inp('p_quality', 'Service quality') . $inp('p_ontime', 'On-time completion') . $inp('p_satisfaction', 'Customer satisfaction') . $inp('p_reliability', 'Instructions followed') . $inp('p_communication', 'Communication'); ?></div>
+    <div class="row g-2 mb-3"><?= $inp('issue_penalty', 'Per issue upheld against the Tasker', 'points', '0.5') . $inp('pref_min_score', 'Preferred suggestion: rating from', '/100', '0.5') . $inp('pref_min_jobs', '…over final assignments', '', '1'); ?><div class="col-md-4 small text-muted align-self-end">Complaints under investigation never count. Preferred status is always a management decision.</div></div>
+    <h6 class="mb-1">Internalization analysis</h6>
+    <div class="row g-2 mb-3"><?= $inp('int_months', 'Demand measured over', 'months', '1') . $inp('int_min_volume', 'Minimum demand', '/month', '0.5') . $inp('int_max_payback', 'Longest acceptable payback', 'months', '1'); ?><div class="col-md-4"></div></div>
     <h6 class="mb-1">Profit-sharing basis <span class="small text-muted fw-normal">(management decision)</span></h6>
     <div class="mb-1"><label class="small d-block"><input type="radio" name="profit_basis" value="cogs" <?= dl_setting($conn, 'profit_basis') === 'cogs' ? 'checked' : ''; ?>> <b>Revenue − cost of sales</b> = profit pool; other direct costs are deducted after the Tasker's share</label>
         <label class="small d-block"><input type="radio" name="profit_basis" value="cogs_direct" <?= dl_setting($conn, 'profit_basis') === 'cogs_direct' ? 'checked' : ''; ?>> <b>Revenue − cost of sales − other direct costs</b> = profit pool</label></div>

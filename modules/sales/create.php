@@ -605,7 +605,7 @@ function bindRow(row) {
         let ffNote = row.querySelector('.dl-ff');
         if (!ffNote) { ffNote = document.createElement('div'); ffNote.className = 'dl-ff small mt-1'; catalogFieldEl.parentNode.appendChild(ffNote); }
         const ff = item ? (item.ff || 'Internal') : 'Internal';
-        ffNote.innerHTML = ff === 'External Only' ? '<span style="color:#8A5A00">Provided by an RM Tasker: you choose the Tasker right after saving.</span>'
+        ffNote.innerHTML = ff === 'External Only' ? '<span style="color:#8A5A00">RISE MOTIVE cannot currently provide this service internally, but you may serve the customer through an available RM Tasker. Check the recommended providers before turning the customer away. You choose the Tasker right after saving.</span>'
             : ff === 'Delegatable' ? '<span style="color:#1E2FE0">Can be delegated to an RM Tasker after saving (Sales → Delegate).</span>'
             : ff === 'Not Available' ? '<span class="text-danger">Not available now: record it as an unavailable request instead.</span>' : '';
         basePrice = price;

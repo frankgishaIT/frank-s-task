@@ -5,7 +5,10 @@
  *   RM Market Insights (mi_audit; opportunity decisions with their reason from mi_decisions), Financial Accounts
  *   (fa_audit: transfers, reversals, adjustments, reconciliation, account links), Transactions (transaction_audit:
  *   edits and deletions), RM Customer First (cf_log: escalations, outcomes), below-set-price decisions (sales),
- *   Staff Dashboard Cards (sdc_audit: publication, approval, deactivation) and Roles & Permissions (acl_audit).
+ *   Staff Dashboard Cards (sdc_audit: publication, approval, deactivation), Roles & Permissions (acl_audit) and
+ *   Delegations & RM Taskers (dl_audit: Taskers, rates, settings, payments, disputes, issues, incentives, decisions;
+ *   dl_events: each delegation's creation, assignment, responses, completion, verification, payments, cancellation,
+ *   reconciliation — including what staff recorded on a Tasker's behalf and what the Tasker did in the portal).
  * Permission audit_trail.view opens the page; each line is ALSO limited to people who may see its module.
  */
 if (session_status() === PHP_SESSION_NONE) { require_once __DIR__ . '/../../includes/session_boot.php'; rm_session_start(); }
@@ -32,6 +35,7 @@ $src = [
     'price'     => ['Below-set-price approvals', in_array($_SESSION['user_role'] ?? '', ['Admin', 'Manager'], true)],
     'cards'     => ['Staff Dashboard Cards', access_can('staff_cards.manage', $conn) || access_can('staff_cards.approve', $conn) || access_can('staff_cards.settings', $conn)],
     'access'    => ['Roles & Permissions', access_can('access.manage', $conn)],
+    'deleg'     => ['Delegations & RM Taskers', access_can('delegations.approve', $conn) || access_can('delegations.finance', $conn) || access_can('delegations.quality', $conn) || access_can('delegations.reports', $conn)], // NEW
 ];
 $only = isset($src[$_GET['m'] ?? '']) ? $_GET['m'] : '';
 $want = function ($k) use ($src, $only) { return $src[$k][1] && ($only === '' || $only === $k); };
@@ -83,6 +87,22 @@ if ($want('access')) {
     }
 }
 
+if ($want('deleg')) { // NEW: Delegations & RM Taskers
+    $dlRef = function ($p, $id, $n) { return $p . str_pad((string) $id, $n, '0', STR_PAD_LEFT); };
+    $lk = ['tasker' => ['tasker.php?id=', 'RM Tasker #'], 'offering' => ['offering.php?id=', 'Offering #'], 'issue' => ['issue.php?id=', 'QI', 5], 'dispute' => ['dispute.php?id=', 'PD', 5],
+        'payment' => ['', 'TP', 6], 'incentive' => ['performance.php?x=', 'Incentive #'], 'internal' => ['internal.php?id=', 'Service #'], 'staff' => ['staff.php?u=', 'Employee #'], 'settings' => ['settings.php?x=', 'Delegation settings']];
+    foreach (at_rows($conn, "SELECT * FROM dl_audit WHERE created_at BETWEEN $a AND $b ORDER BY id DESC LIMIT $L") as $r) {
+        $m = $lk[$r['entity']] ?? ['', ucfirst($r['entity']) . ' #'];
+        $rec = isset($m[2]) && $r['entity_id'] ? $dlRef($m[1], (int) $r['entity_id'], $m[2]) : ($r['entity'] === 'settings' ? $m[1] : $m[1] . ($r['entity_id'] ?? ''));
+        $link = $m[0] !== '' && ($r['entity_id'] || $r['entity'] === 'settings') ? '../delegations/' . $m[0] . (int) $r['entity_id'] : '';
+        if ($r['entity'] === 'rate' && $r['party_id']) { $rec = 'Tasker rate #' . (int) $r['entity_id']; $link = '../delegations/tasker.php?id=' . (int) $r['party_id']; }
+        if ($r['entity'] === 'lost') { $rec = 'Unavailable request #' . (int) $r['entity_id']; $link = '../delegations/lost.php'; }
+        $add('deleg', $r['created_at'], $r['entity'] . ' ' . str_replace('_', ' ', $r['action']), $rec, ($r['actor'] === 'tasker' ? '[by the RM Tasker] ' : ($r['actor'] === 'system' ? '[system] ' : '')) . $r['details'], $r['reason'], $r['user_id'], $link);
+    }
+    foreach (at_rows($conn, "SELECT * FROM dl_events WHERE created_at BETWEEN $a AND $b AND event NOT IN ('issue_notice') ORDER BY id DESC LIMIT $L") as $r) {
+        $add('deleg', $r['created_at'], str_replace('_', ' ', $r['event']), $dlRef('DL', (int) $r['delegation_id'], 6), ($r['actor'] === 'tasker' ? '[by the RM Tasker in the portal] ' : ((int) $r['on_behalf'] ? '[recorded by staff on the Tasker\'s behalf] ' : ($r['actor'] === 'system' ? '[system] ' : ''))) . $r['details'], $r['reason'], $r['user_id'], '../delegations/view.php?id=' . (int) $r['delegation_id']);
+    }
+}
 $names = array_column(at_rows($conn, 'SELECT id, names FROM users'), 'names', 'id');
 $who = (int) ($_GET['u'] ?? 0);
 $q = mb_strtolower(trim((string) ($_GET['q'] ?? '')));
@@ -98,7 +118,7 @@ if (($_GET['export'] ?? '') === 'csv') {
     header('Content-Disposition: attachment; filename="audit_trail_' . $from . '_' . $to . '.csv"');
     $o = fopen('php://output', 'w');
     fputcsv($o, ['Date / time', 'Module', 'Action', 'Record', 'Details', 'Reason', 'Responsible user']);
-    foreach ($rows as $r) { fputcsv($o, [$r['at'], $src[$r['m']][0], $r['action'], $r['record'], $r['details'], $r['reason'], $r['uid'] ? ($names[$r['uid']] ?? '#' . $r['uid']) : 'System']); }
+    foreach ($rows as $r) { fputcsv($o, [$r['at'], $src[$r['m']][0], $r['action'], $r['record'], $r['details'], $r['reason'], $r['uid'] ? ($names[$r['uid']] ?? '#' . $r['uid']) : (strpos($r['details'], '[by the RM Tasker') === 0 ? 'RM Tasker' : 'System')]); }
     exit;
 }
 $per = 100;
@@ -111,7 +131,7 @@ include __DIR__ . '/../../includes/header.php';
 include __DIR__ . '/../../includes/sidebar.php';
 ?>
 <style>.at td,.at th{font-size:12.5px;vertical-align:top}.at-m{font-size:11px;font-weight:600;padding:1px 8px;border-radius:20px;background:#EEF1FD;color:#1E2FE0;white-space:nowrap}</style>
-<div class="mb-2"><h3 class="mb-0">Audit Trail</h3><div class="small text-muted">Who did what, when and why: RM Market Insights, Financial Accounts, Transactions, RM Customer First, price approvals, Staff Dashboard Cards and Roles &amp; Permissions.</div></div>
+<div class="mb-2"><h3 class="mb-0">Audit Trail</h3><div class="small text-muted">Who did what, when and why: RM Market Insights, Financial Accounts, Transactions, RM Customer First, price approvals, Staff Dashboard Cards, Roles &amp; Permissions and Delegations &amp; RM Taskers.</div></div>
 <form class="d-flex flex-wrap gap-2 align-items-end mb-2">
     <div><label class="form-label small mb-0">From</label><input type="date" name="from" value="<?= at_e($from); ?>" class="form-control form-control-sm"></div>
     <div><label class="form-label small mb-0">To</label><input type="date" name="to" value="<?= at_e($to); ?>" class="form-control form-control-sm"></div>
@@ -127,7 +147,7 @@ include __DIR__ . '/../../includes/sidebar.php';
 <?php foreach ($show as $r) { ?>
 <tr><td class="text-nowrap"><?= at_e(date('d M Y H:i', strtotime($r['at']))); ?></td><td><span class="at-m"><?= at_e($src[$r['m']][0]); ?></span></td><td><?= at_e($r['action']); ?></td>
     <td class="text-nowrap"><?= $r['link'] ? '<a href="' . at_e($r['link']) . '">' . at_e($r['record']) . '</a>' : at_e($r['record']); ?></td><td><?= at_e($r['details']); ?></td><td><?= at_e($r['reason']); ?></td>
-    <td class="text-nowrap"><?= at_e($r['uid'] ? ($names[$r['uid']] ?? '#' . $r['uid']) : 'System'); ?></td></tr>
+    <td class="text-nowrap"><?= at_e($r['uid'] ? ($names[$r['uid']] ?? '#' . $r['uid']) : (strpos($r['details'], '[by the RM Tasker') === 0 ? 'RM Tasker' : 'System')); ?></td></tr>
 <?php } ?>
 <?php if (!$show) { ?><tr><td colspan="7" class="text-center text-muted py-5">Nothing recorded in this period.</td></tr><?php } ?>
 </tbody></table></div></div>

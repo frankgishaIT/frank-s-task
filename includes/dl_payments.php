@@ -75,7 +75,8 @@ function dl_dispute_ref(int $id): string { return 'PD' . str_pad((string) $id, 5
 /** Payments of a delegation (posted ones whose transaction was deleted in Transactions become Void, once). */
 function dl_payments(mysqli $conn, int $did): array
 {
-    $rows = mysqli_fetch_all(mysqli_query($conn, 'SELECT p.*, t.id tx_exists FROM dl_payments p LEFT JOIN transactions t ON t.id = p.transaction_id WHERE p.delegation_id = ' . $did . ' ORDER BY p.paid_on, p.id'), MYSQLI_ASSOC);
+    // CHANGED (batch 4): a transaction deleted in Transactions is kept with status 'deleted', so that counts as gone too.
+    $rows = mysqli_fetch_all(mysqli_query($conn, "SELECT p.*, CASE WHEN t.id IS NOT NULL AND COALESCE(t.status, '') <> 'deleted' THEN t.id END tx_exists FROM dl_payments p LEFT JOIN transactions t ON t.id = p.transaction_id WHERE p.delegation_id = " . $did . ' ORDER BY p.paid_on, p.id'), MYSQLI_ASSOC);
     foreach ($rows as &$r) {
         if ($r['status'] === 'Recorded' && $r['transaction_id'] && !$r['tx_exists']) {
             $why = 'Transaction #' . (int) $r['transaction_id'] . ' was deleted in Transactions';

@@ -149,9 +149,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             [$cm, $cd] = dl_cost_totals($act);
             $f = dl_profit((float) $d['revenue'], $cm, $cd, (float) $d['rate_pct'], $d['basis']);
             $final = date('Y-m-d H:i:s', time() + (int) dl_setting($conn, 'verify_days') * 86400);
+            $payDue = date('Y-m-d', time() + (int) dl_setting($conn, 'pay_terms_days') * 86400); // payment due date: verification + payment terms
             dl_set_status($conn, $id, 'Verified', ['verified_at' => $now, 'verified_by' => dl_uid(), 'quality_rating' => $q, 'satisfaction_rating' => $sat, 'instructions_rating' => $ins, 'communication_rating' => $com,
                 'perf_score' => $score, 'ontime' => $ontime, 'customer_confirmed' => $cc, 'verification_note' => $note ?: null, 'rating_final_at' => $final,
-                'cogs_act' => $f['cogs'], 'direct_act' => $f['direct'], 'pool_act' => $f['pool'], 'pay_act' => $f['tasker'], 'final_act' => $f['final'], 'pay_due' => $f['tasker']]);
+                'cogs_act' => $f['cogs'], 'direct_act' => $f['direct'], 'pool_act' => $f['pool'], 'pay_act' => $f['tasker'], 'final_act' => $f['final'], 'pay_due' => $f['tasker'], 'pay_due_date' => $payDue]);
+            if (dlc($conn, 'finance') || $canApprove) { dl_notify_staff($conn, dl_approvers($conn), $d['ref'] . ': Tasker payment to approve', ($d['tasker']['display'] ?? '') . ' is entitled to ' . dl_money($f['tasker']) . ' (due ' . date('d M Y', strtotime($payDue)) . ').'); }
             dl_event($conn, $id, 'verified', 'Verified: quality ' . $q . '/5, customer satisfaction ' . $sat . '/5, instructions ' . $ins . '/5, communication ' . $com . '/5, ' . ($ontime ? 'on time' : 'late') . ' → performance ' . $score . '/100. Actual Tasker entitlement ' . dl_money($f['tasker']) . ' (pool ' . dl_money($f['pool']) . ').' . ($note ? ' Note: ' . $note : ''), 'staff', 0, null, 1);
             dl_go($back, 'success', 'Verified. Performance ' . $score . '/100 (final after ' . (int) dl_setting($conn, 'verify_days') . ' days without a complaint). Tasker entitlement: ' . dl_money($f['tasker']) . '.');
         case 'costs':
@@ -258,6 +260,11 @@ dl_tabs($conn, 'list.php', $d['ref'] . ' · ' . $d['product_name'], dl_status_ba
         <div class="row g-2"><div class="col-md-6"><div class="text-muted">Expected costs</div><?= $costTable($exp); ?></div><div class="col-md-6"><div class="text-muted">Actual costs</div><?= $costTable($act); ?></div></div>
         <div class="text-muted">The Tasker payment itself is recorded in Tasker Payments (next step); it is not paid automatically.</div>
     </div></div>
+    <?php if ($d['verified_at'] && is_file(__DIR__ . '/../../includes/dl_payments.php')) { require_once __DIR__ . '/../../includes/dl_payments.php'; dlp_ensure($conn); $pos = dl_pay_position($conn, dl_get($conn, $id)); ?>
+    <div class="card mb-3"><div class="card-body py-2 small d-flex flex-wrap gap-3 align-items-center"><span class="fw-semibold">Tasker payment</span><?= dl_pay_badge($pos); ?>
+        <span>Approved <?= $pos['approved'] !== null ? dl_money($pos['approved']) : '—'; ?></span><span>Paid <?= dl_money($pos['paid']); ?></span><span>Outstanding <b><?= dl_money($pos['outstanding']); ?></b></span>
+        <a href="pay.php?id=<?= $id; ?>" class="btn btn-outline-primary btn-sm py-0 ms-auto">Payments</a></div></div>
+    <?php } ?>
     <?php if ($d['verified_at']) { ?>
     <div class="card mb-3"><div class="card-body py-2 small"><div class="fw-semibold mb-1">Verification</div>
         Quality <?= dl_e((float) $d['quality_rating']); ?>/5 · customer satisfaction <?= dl_e((float) $d['satisfaction_rating']); ?>/5 · instructions <?= dl_e((float) $d['instructions_rating']); ?>/5 · communication <?= dl_e((float) $d['communication_rating']); ?>/5 · <?= (int) $d['ontime'] ? 'on time' : 'late'; ?>

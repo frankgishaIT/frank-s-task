@@ -16,4 +16,4 @@ if (!$isCli && !$keyOk) {
 }
 $r = dl_monitor($conn, true);
 header('Content-Type: text/plain; charset=utf-8');
-echo 'Delegations monitoring ' . date('Y-m-d H:i') . ': ' . (int) ($r['followups'] ?? 0) . ' follow-up(s) to staff, ' . (int) ($r['reminders'] ?? 0) . ' deadline reminder(s), ' . (int) ($r['overdue'] ?? 0) . " missed-deadline alert(s).\n";
+echo 'Delegations monitoring ' . date('Y-m-d H:i') . ': ' . (int) ($r['followups'] ?? 0) . ' follow-up(s) to staff, ' . (int) ($r['reminders'] ?? 0) . ' deadline reminder(s), ' . (int) ($r['overdue'] ?? 0) . ' missed-deadline alert(s), ' . (int) ($r['confirm_reminders'] ?? 0) . ' payment-confirmation reminder(s), ' . (int) ($r['confirm_expired'] ?? 0) . ' expired confirmation(s), ' . (int) ($r['pay_overdue'] ?? 0) . " overdue payment alert(s).\n";

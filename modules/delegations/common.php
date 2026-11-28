@@ -11,8 +11,9 @@ require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../includes/access_control.php';
 require_once __DIR__ . '/../../includes/dl_helpers.php';
 require_once __DIR__ . '/../../includes/dl_workflow.php';
+require_once __DIR__ . '/../../includes/dl_payments.php';
 require_role(['Admin', 'Manager', 'Employee']);
-dlw_ensure($conn);
+dlp_ensure($conn);
 try { dl_monitor($conn); } catch (Throwable $e) { error_log('dl_monitor: ' . $e->getMessage()); } // follow-ups, reminders, missed deadlines (every 10 min at most)
 
 function dlc(mysqli $conn, string $a): bool { return access_can('delegations.' . $a, $conn); }
@@ -28,7 +29,7 @@ function dl_users(mysqli $conn): array { return array_column(mysqli_fetch_all(my
 function dl_tabs(mysqli $conn, string $active, string $title, string $right = ''): void
 {
     $tabs = [['index.php', 'Overview', 'view'], ['list.php', 'Delegations', 'view'], ['taskers.php', 'RM Taskers', 'view'], ['offerings.php', 'Services & Taskers', 'view'], ['compare.php', 'Compare', 'view'],
-        ['lost.php', 'Unavailable requests', 'view'], ['settings.php', 'Settings', 'settings']];
+        ['payments.php', 'Payments', 'finance'], ['disputes.php', 'Payment disputes', 'finance'], ['lost.php', 'Unavailable requests', 'view'], ['settings.php', 'Settings', 'settings']];
     echo '<style>.dl-tabs{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:2px;border-bottom:1px solid #E4E7EF;margin-bottom:14px;scrollbar-width:none}.dl-tabs::-webkit-scrollbar{display:none}
         .dl-tabs a{padding:7px 12px;font-size:13.5px;color:#5B6275;text-decoration:none;border-bottom:2px solid transparent;white-space:nowrap}.dl-tabs a.on{color:#1E2FE0;border-bottom-color:#1E2FE0;font-weight:600}
         .dl-tbl td,.dl-tbl th{font-size:13px;vertical-align:middle}.dl-st{font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;white-space:nowrap;background:#F1F2F6;color:#4B5263}
@@ -36,7 +37,7 @@ function dl_tabs(mysqli $conn, string $active, string $title, string $right = ''
         .dl-kpi{border:1px solid #EEF1F8;border-radius:12px;padding:10px 12px;background:#fff}.dl-kpi .v{font-size:18px;font-weight:700;color:#1E2333}.dl-kpi .l{font-size:12px;color:#6B7280}</style>';
     echo '<div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-2"><div><h3 class="mb-0">' . dl_e($title) . '</h3><div class="small text-muted">Delegations · serve customers through qualified RM Taskers</div></div>' . $right . '</div>';
     echo '<div class="dl-tabs">';
-    foreach ($tabs as [$f, $l, $p]) { if (dlc($conn, $p)) { echo '<a href="' . $f . '" class="' . ($f === $active ? 'on' : '') . '">' . $l . '</a>'; } }
+    foreach ($tabs as [$f, $l, $p]) { if (dlc($conn, $p) || ($p === 'finance' && dlc($conn, 'approve'))) { echo '<a href="' . $f . '" class="' . ($f === $active ? 'on' : '') . '">' . $l . '</a>'; } }
     echo '</div>';
     foreach (['success' => 'success', 'error' => 'danger'] as $k => $c) { if (!empty($_GET[$k])) { echo '<div class="alert alert-' . $c . ' py-2 small">' . dl_e($_GET[$k]) . '</div>'; } }
 }

@@ -254,6 +254,7 @@ function dl_notify_staff(mysqli $conn, array $userIds, string $title, string $me
 /** People who may approve delegations (for alerts). */
 function dl_approvers(mysqli $conn): array
 {
+    if (!function_exists('access_user_breakdown') && is_file(__DIR__ . '/access_control.php')) { require_once __DIR__ . '/access_control.php'; }
     $out = [];
     foreach (mysqli_fetch_all(mysqli_query($conn, "SELECT id FROM users WHERE is_active = 1 AND role IN ('Admin', 'Manager')"), MYSQLI_NUM) as [$u]) {
         try { if (in_array('delegations.approve', access_user_breakdown($conn, (int) $u)['effective'], true)) { $out[] = (int) $u; } } catch (Throwable $e) { $out[] = (int) $u; }
@@ -300,6 +301,8 @@ function dl_monitor(mysqli $conn, bool $force = false): array
         dl_event($conn, (int) $id, 'deadline_missed', 'Deadline ' . dl_deadline_text($d['deadline']) . ' passed (status ' . $d['status'] . ')', 'system');
         $done['overdue']++;
     }
+    // Tasker payments: confirmation reminders and expired windows, overdue payments.
+    if (is_file(__DIR__ . '/dl_payments.php')) { require_once __DIR__ . '/dl_payments.php'; try { $done += dl_pay_monitor($conn); } catch (Throwable $e) { error_log('dl_pay_monitor: ' . $e->getMessage()); } }
     return $done;
 }
 

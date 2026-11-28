@@ -205,6 +205,26 @@ function dlReset() { var f = document.getElementById('rateForm'); f.reset(); f.o
 <?php foreach ($mine as $r) { ?><tr><td><a href="view.php?id=<?= (int) $r['id']; ?>"><?= dl_ref((int) $r['id']); ?></a></td><td class="small"><?= dl_e($r['product_name']); ?></td><td class="small"><?= dl_e(dl_response_text($r['response'])); ?></td><td><?= dl_status_badge($r['status']); ?></td><td class="small"><?= dl_e(dl_deadline_text($r['deadline'])); ?></td><td class="text-end small"><?= dl_money($r['pay_due'] ?? $r['pay_exp']); ?></td><td class="text-end small"><?= $r['perf_score'] !== null ? dl_e((float) $r['perf_score']) . '/100' : '—'; ?></td></tr><?php } ?>
 </tbody></table></div></div>
 <?php } ?>
+<?php if (dlc($conn, 'finance') || dlc($conn, 'approve')) { $money = dl_tasker_money($conn, $pid); /* NEW (batch 3): PAYMENT HISTORY */ ?>
+<h6 class="mb-1" id="payments">PAYMENT HISTORY</h6>
+<div class="card mb-2"><div class="card-body py-2 small">
+    <div class="fw-semibold">Total amount earned <?= dl_money($money['earned']); ?> − total amount paid <?= dl_money($money['paid']); ?> = <span class="<?= $money['outstanding'] > 0.5 ? 'text-danger' : 'text-success'; ?>">outstanding <?= dl_money($money['outstanding']); ?></span></div>
+    <?php if ($money['overpaid'] > 0.5) { ?><div class="text-danger fw-semibold">Overpaid by <?= dl_money($money['overpaid']); ?>: investigate (see the delegations marked Overpaid).</div><?php } ?>
+    <div class="text-muted">Unpaid assignments: <?= (int) $money['unpaid']; ?> · partially paid: <?= (int) $money['partial']; ?> · payment disputes: <?= (int) $money['disputes']; ?> · average time from verification to full payment: <?= $money['avg_days'] !== null ? dl_e($money['avg_days']) . ' days' : '—'; ?></div>
+    <?php if ($money['months']) { ?><div class="mt-1">Paid by month: <?= implode(' · ', array_map(function ($m, $v) { return dl_e(date('M Y', strtotime($m . '-01'))) . ' ' . dl_money($v); }, array_keys($money['months']), $money['months'])); ?></div><?php } ?>
+</div></div>
+<div class="card mb-3"><div class="table-responsive"><table class="table table-sm dl-tbl mb-0">
+<thead><tr><th>Delegation</th><th>Service</th><th>Completed</th><th class="text-end">Total due</th><th class="text-end">Paid</th><th class="text-end">Outstanding</th><th>Payment date / reference</th><th>Confirmation</th><th>Status</th></tr></thead><tbody>
+<?php foreach ($money['rows'] as ['d' => $r, 'pos' => $pp]) { ?>
+<tr><td><a href="pay.php?id=<?= (int) $r['id']; ?>"><?= dl_e($r['ref']); ?></a></td><td class="small"><?= dl_e($r['product_name']); ?></td><td class="small"><?= dl_e(date('d M Y', strtotime($r['completed_at'] ?: $r['verified_at']))); ?></td>
+    <td class="text-end small"><?= dl_money($pp['approved'] ?? $pp['entitled']); ?></td><td class="text-end small"><?= dl_money($pp['paid']); ?></td><td class="text-end small"><?= dl_money($pp['outstanding']); ?></td>
+    <td class="small"><?= implode('<br>', array_map(function ($p) { return dl_e(date('d M Y', strtotime($p['paid_on']))) . ' · ' . dl_e($p['reference']); }, array_filter($pp['pays'], function ($p) { return $p['status'] === 'Recorded'; }))) ?: '—'; ?></td>
+    <td class="small"><?= $pp['paid'] > 0 ? ($pp['confirmed_all'] ? 'Confirmed' : 'Unconfirmed') : '—'; ?></td>
+    <td class="small"><?= dl_e($pp['paid'] <= 0 ? ($pp['disputes'] ? 'Disputed' : 'Unpaid') : ($pp['disputes'] ? 'Disputed' : ($pp['outstanding'] > 0.5 ? 'Partial' : ($pp['overpaid'] > 0.5 ? 'Overpaid' : 'Paid')))); ?></td></tr>
+<?php } ?>
+<?php if (!$money['rows']) { ?><tr><td colspan="9" class="text-center text-muted py-3">No verified work yet.</td></tr><?php } ?>
+</tbody></table></div></div>
+<?php } ?>
 <h6 class="mb-1">Rate history</h6>
 <div class="card"><div class="table-responsive"><table class="table table-sm dl-tbl mb-0"><thead><tr><th>When</th><th>Service / product</th><th>Change</th><th>Reason</th><th>By</th></tr></thead><tbody>
 <?php foreach ($hist as $r) { ?><tr><td class="text-nowrap small"><?= dl_e(date('d M Y H:i', strtotime($r['created_at']))); ?></td><td><?= dl_e($r['product_name']); ?></td><td class="small"><?= dl_e($r['change_text']); ?></td><td class="small"><?= dl_e($r['reason']); ?></td><td class="small"><?= dl_e($names[(int) $r['user_id']] ?? '—'); ?></td></tr><?php } ?>
